@@ -187,7 +187,7 @@ public sealed class Settings
 
     [Category("1. 全般"), DisplayName("動作モード"),
      Description("Tsf = Windows の IME として入力欄に直接入力 (Win + Space で Meltype を選ぶ) / Keyboard = Meltype の変換ボックスで入力 (英単語は自動で英字、Space で変換、Enter で確定) / AutoSwitch = 入力開始時に判定して Microsoft IME を自動で ON にする")]
-    public InputMode Mode { get; set; } = InputMode.Keyboard;
+    public InputMode Mode { get; set; } = InputMode.Tsf;
 
     [Category("1. 全般"), DisplayName("半角/全角 で Meltype を ON/OFF"),
      Description("Keyboard モードで、変換ボックスが出ていないときの 半角/全角 キーを Meltype キーボードの ON/OFF (直接入力) に使います。")]
@@ -384,6 +384,12 @@ public sealed class Settings
     [Browsable(false)]
     public bool TsfIntroduced { get; set; }
 
+    /// <summary>
+    /// Meltype IME を入れるかを聞いたか (Meltype IME が入る前の版から更新した人に、起動したときに一度だけ聞く)。
+    /// </summary>
+    [Browsable(false)]
+    public bool TsfOffered { get; set; }
+
     /// <summary>プロファイル (仕事用・趣味用・SNS 用など)。設定画面の上と、トレイのメニューで切り替える。</summary>
     [Browsable(false)]
     public List<SettingsProfile> Profiles { get; set; } = [];
@@ -402,7 +408,7 @@ public sealed class Settings
         nameof(Profiles), nameof(ActiveProfile), nameof(SettingsVersion), nameof(WelcomeShown),
         nameof(Enabled), nameof(JapaneseKeyboardOnly), nameof(AllowInjectedInput), nameof(FileLog), nameof(LogTypedText), nameof(AutoUpdate),
         // 入力の方式 (Windows の IME として入力するか) は PC 全体の選び方なので、プロファイルで変えない
-        nameof(Mode), nameof(TsfIntroduced),
+        nameof(Mode), nameof(TsfIntroduced), nameof(TsfOffered),
     ];
 
     /// <summary>今の設定の値のうち、プロファイルに入れるもの。</summary>
@@ -720,7 +726,7 @@ public sealed class Settings
             if (MaxHoldMs == 1200) MaxHoldMs = 2500;
         }
         // v3: Meltype キーボード (変換ボックス) を追加。v2 以前の config.json には Mode が無いので、
-        // 読み込み時に初期値 (Keyboard) になる。
+        // 読み込み時に初期値になる。
         if (SettingsVersion < 4)
         {
             // v4: アプリの種類 (コード) を追加。コードエディター・ターミナルを「コード」にする (ユーザーが OFF にしたものはそのまま)。

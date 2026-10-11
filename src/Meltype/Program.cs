@@ -70,14 +70,14 @@ internal static class Program
             try { settings.Save(AppPaths.ConfigFile); } catch { }
         }
 
-        // 動作モードが Meltype IME なのに、Meltype IME が登録されていない (登録を外した・ほかのユーザーがアンインストールした):
-        // どこでも何も起きなくなるので、Meltype キーボードに戻して保存する (Meltype IME を入れ直したら、トレイで選び直す)。
+        // 動作モードが Meltype IME なのに使えない: どこでも何も起きなくなるので、Meltype キーボードに戻して保存する
+        // (Meltype IME を入れ直したら、トレイで選び直す)。
         // 保存しておくと、あとで前の版 (動作モード「Meltype IME」を読めない) を入れても、設定が初期化されない
-        if (settings.Mode == InputMode.Tsf && Tip.TipServer.IsKnownUnregistered)
+        if (ShouldFallBackToKeyboard(settings, Tip.TipServer.IsKnownUnregistered, Tip.TipServer.IsInUserLanguageList, System.Runtime.InteropServices.RuntimeInformation.OSArchitecture))
         {
             settings.Mode = InputMode.Keyboard;
             try { settings.Save(AppPaths.ConfigFile); } catch { }
-            Diagnostics.Log.Warn("Meltype IME が登録されていないので、動作モードを Meltype キーボードに戻しました。");
+            Diagnostics.Log.Warn("Meltype IME を使えない (ARM64 の Windows・登録されていない・キーボードの一覧に無い) ので、動作モードを Meltype キーボードに戻しました。");
         }
 
         // ダウンロード済みの新しい版があれば、起動せずに更新する (install.ps1 が新しい版を起動する)。
@@ -107,6 +107,16 @@ internal static class Program
         }
         return 0;
     }
+
+    /// <summary>
+    /// 起動したときに、動作モードを Meltype IME から Meltype キーボードに戻すか。
+    /// ARM64 の Windows (Meltype IME は対応していない)・Meltype IME が登録されていない (登録を外した・ほかのユーザーがアンインストールした) とき。
+    /// まだ Meltype IME に切り替えたことがない (初期値の Meltype IME のまま) ときは、このユーザーのキーボードの一覧に無いときも戻す
+    /// (ほかのユーザーが登録した PC で Meltype IME を断ると、Win + Space で選べない)。
+    /// </summary>
+    internal static bool ShouldFallBackToKeyboard(Settings settings, bool knownUnregistered, bool inUserLanguageList, System.Runtime.InteropServices.Architecture architecture) =>
+        settings.Mode == InputMode.Tsf &&
+        (architecture == System.Runtime.InteropServices.Architecture.Arm64 || knownUnregistered || (!settings.TsfIntroduced && !inUserLanguageList));
 
     /// <summary>
     /// 落ちたとき (起動できなかったとき) の例外を crash.log に書き足す。ファイルへのログ (設定) が OFF でも書く:
