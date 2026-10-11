@@ -293,13 +293,7 @@ public sealed partial class CompositionDetector
             var found = -1;
             // ドメイン・拡張子の . の後ろは、ローマ字として読めても英字のままにする (tetr.io、Wakatte.TV、MeltypeTip.dll)。
             if (!kanaInput && level != DetectionLevel.Manual && i > 0 && units[i - 1].Raw == "." && PrecededByEnglish(i) == true) found = DotSuffixEnd(units, i, pending, final);
-            // 入力先頭の .gitignore / .env / .dll などドットファイルは英字のまま (issue #431)。
-            // 途中の 3.14desu や「です。」の . には使わない (i == 0 のときだけ)。
-            if (!kanaInput && found < 0 && level != DetectionLevel.Manual && i == 0 && units[i].Raw == ".")
-            {
-                var dotfile = DotSuffixEnd(units, i + 1, pending, final);
-                if (dotfile > i + 1) found = dotfile;
-            }
+            if (!kanaInput && found < 0) found = LeadingDotfileEnd(units, i, pending, final, level);
             // 英文の中の記号 (, . ! ? -) は読点・句点にせず半角のまま。日本語の文の中の英単語の後 (今日はgoogle、) は日本語の記号。
             // (かな入力では 、。 も かなのキーなので対象外)
             if (!kanaInput && IsAsciiSymbol(units[i]) && PrecededByEnglish(i) == true && segments.All(s => s.IsEnglish || !s.Raw.Any(char.IsAsciiLetter)) &&
@@ -906,6 +900,17 @@ public sealed partial class CompositionDetector
             if (local < n && units[local].Raw == "@" && domainStarts) return local + 1;
         }
         return -1;
+    }
+
+    /// <summary>
+    /// 入力先頭のドットファイル (.gitignore / .env / .dll) の終わり。無ければ -1 (issue #431)。
+    /// 途中の 3.14desu や「です。」の . には使わない (start == 0 のときだけ)。FindSpans と点数区切りの両方から呼ぶ。
+    /// </summary>
+    private int LeadingDotfileEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, bool final, DetectionLevel level)
+    {
+        if (level == DetectionLevel.Manual || start != 0 || units.Count == 0 || units[0].Raw != ".") return -1;
+        var end = DotSuffixEnd(units, 1, pending, final);
+        return end > 1 ? end : -1;
     }
 
     /// <summary>

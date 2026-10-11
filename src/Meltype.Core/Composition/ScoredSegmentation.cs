@@ -92,12 +92,7 @@ public sealed partial class CompositionDetector
                 // はっきりした決まり (今までの FindSpans と同じ順) に当たれば、その区間だけを取る
                 var forced = -1;
                 if (level != DetectionLevel.Manual && i > 0 && units[i - 1].Raw == "." && PrecededByEnglish(i) == true) forced = DotSuffixEnd(units, i, pending, final);
-                // 入力先頭の .gitignore などドットファイル (FindSpans と同じ。issue #431)
-                if (forced < 0 && level != DetectionLevel.Manual && i == 0 && units[i].Raw == ".")
-                {
-                    var dotfile = DotSuffixEnd(units, i + 1, pending, final);
-                    if (dotfile > i + 1) forced = dotfile;
-                }
+                if (forced < 0) forced = LeadingDotfileEnd(units, i, pending, final, level);
                 if (IsAsciiSymbol(units[i]) && PrecededByEnglish(i) == true && Segments().All(s => s.IsEnglish || !s.Raw.Any(char.IsAsciiLetter)) &&
                     KeepsPunctuationAfterEnglish(units, i, pending, precedingEnglish)) forced = i + 1;
                 if (forced < 0) forced = UserNameEnd(units, i, pending);
