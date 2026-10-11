@@ -723,6 +723,11 @@ public sealed partial class CompositionDetector
             // 大文字 1 文字 + 助詞で始まるローマ字 (A|nisiyouka → Aにしようか、B|noan → Bの案)。
             // 名前 (Tanaka、Hanako) を区切らないよう、後ろが助詞で始まるときだけ。
             if (head.Length == 1 && char.IsAsciiLetterUpper(head[0]) && Detection.DictionaryDetector.StartsWithParticle(rest.Replace("-", "")) is not null) return k;
+            // 大文字の子音 1 文字 + 最後まで読めるローマ字で、合わせると頭から読めない (T|shatsu → Tシャツ: issue #351)。
+            // 名前 (Tanaka) は頭から読めるので区切らない。英単語 (Grape・Spike) を区切らないよう、後ろがよく使う日本語の語 (しゃつ) のときだけ
+            if (head.Length == 1 && char.IsAsciiLetterUpper(head[0]) && head[0] is not ('A' or 'I' or 'U' or 'E' or 'O' or 'N') &&
+                _romaji.Analyze(rest.Replace("-", "")) is { IsValid: true, Partial: "" or "n" } restReading && !_romaji.AnalyzeFragment(whole.ToLowerInvariant()).IsValid &&
+                restReading.Kana.Length >= 3 && (IsCommonJapanese?.Invoke(rest) == true || ContainsJapaneseReading(restReading.Kana))) return k;
         }
         // 後ろに大文字で始まる語が続く (Japanese|to|English…) と、後ろが小文字だけにならず上では区切れない。
         // 次の大文字の前までを見て、知っている語 + 助詞で始まるローマ字 (Japanese|to) なら区切る。
