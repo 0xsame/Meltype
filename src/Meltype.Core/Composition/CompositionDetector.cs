@@ -173,6 +173,19 @@ public sealed partial class CompositionDetector
                             new CompositionSegment(true, "", rest[particle.Length..])];
                     }
                 }
+                // 英字のあいだの助詞「と」(abc + to + def)。左右は 3 文字以上で、最後まで読めるローマ字ではない (issue #154)。
+                for (var end = raw.Length - 5; end >= 3; end--)
+                {
+                    if (!raw.AsSpan(end).StartsWith("to", StringComparison.Ordinal)) continue;
+                    var left = raw[..end];
+                    var right = raw[(end + 2)..];
+                    if (_romaji.Analyze(left.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
+                    if (_romaji.Analyze(right.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
+                    if (IsKnownEnglishWord(left + "to")) continue;
+                    return [new CompositionSegment(true, "", left),
+                        new CompositionSegment(false, _romaji.ConvertLenient("to", final: true), "to"),
+                        new CompositionSegment(true, "", right)];
+                }
             }
             // 英単語 2 つの合成語 (game + over): 後ろの語がローマ字として読めない英単語なら、前の語 (がめ と読める game) も英語
             // (がめover になっていた: issue #377)。前の語がよく使う日本語の語 (sake = さけ) なら、日本語 + 英単語のまま。
