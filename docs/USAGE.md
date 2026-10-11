@@ -14,8 +14,8 @@ Meltype のタスクトレイアイコンを右クリックし、次の 3 つか
 
 | モード | 動き |
 | --- | --- |
-| **Meltype IME** (Meltype IME を入れたときの既定) | Windows の IME として、打った文字が入力欄にそのまま下線付きで入る。変換の候補は入力位置の下に一覧で出る。判定・変換・キー操作は Meltype キーボードと同じ |
-| **Meltype キーボード** | Meltype 自身の変換ボックスで入力する。ローマ字はかなに、英単語 (`google` `github` …) は自動で英字のまま。Space で漢字に変換、Enter で確定 |
+| **Meltype IME** (既定) | Windows の IME として、打った文字が入力欄にそのまま下線付きで入る。変換の候補は入力位置の下に一覧で出る。判定・変換・キー操作は Meltype キーボードと同じ |
+| **Meltype キーボード** (Meltype IME を入れていないときの既定) | Meltype 自身の変換ボックスで入力する。ローマ字はかなに、英単語 (`google` `github` …) は自動で英字のまま。Space で漢字に変換、Enter で確定 |
 | **IME 自動切替** | 打ち始めの数文字から日本語と判定したときだけ Microsoft IME を ON にする。変換は Microsoft IME が行う |
 
 動作の仕組みは [DEVELOPMENT.md](DEVELOPMENT.md#動作の仕組み)、Meltype IME の仕組みは [TSF_DESIGN.md](TSF_DESIGN.md) にあります。
@@ -27,6 +27,7 @@ Meltype のタスクトレイアイコンを右クリックし、次の 3 つか
 
 
 インストールのときに管理者権限の確認に「はい」と答えると入ります (Windows に IME として登録するため)。断った場合は Meltype キーボードで動きます。
+Meltype IME が無かった版から更新したときは、Meltype を起動したときに一度だけ、Meltype IME を入れるかを聞きます。
 
 - 入れると、入力方式が Meltype に切り替わり、既定の入力方式も Meltype になります (自分で既定を決めていたときは変えません)。Microsoft IME など、ほかの IME との切り替えは **Win + Space** です
 - 打った文字は入力欄にそのまま入ります。打っている途中は点線、変換した文節は細い線、選んでいる文節は太い線 (アプリによっては反転表示) の下線が付きます

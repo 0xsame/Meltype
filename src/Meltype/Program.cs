@@ -72,12 +72,14 @@ internal static class Program
 
         // 動作モードが Meltype IME なのに、Meltype IME が登録されていない (登録を外した・ほかのユーザーがアンインストールした):
         // どこでも何も起きなくなるので、Meltype キーボードに戻して保存する (Meltype IME を入れ直したら、トレイで選び直す)。
-        // 保存しておくと、あとで前の版 (動作モード「Meltype IME」を読めない) を入れても、設定が初期化されない
-        if (settings.Mode == InputMode.Tsf && Tip.TipServer.IsKnownUnregistered)
+        // 保存しておくと、あとで前の版 (動作モード「Meltype IME」を読めない) を入れても、設定が初期化されない。
+        // まだ Meltype IME に切り替えたことがない (初期値の Meltype IME のまま) ときは、このユーザーのキーボードの一覧に無いときも戻す
+        // (ほかのユーザーが登録した PC で Meltype IME を断ると、Win + Space で選べない)
+        if (settings.Mode == InputMode.Tsf && (Tip.TipServer.IsKnownUnregistered || (!settings.TsfIntroduced && !Tip.TipServer.IsInUserLanguageList)))
         {
             settings.Mode = InputMode.Keyboard;
             try { settings.Save(AppPaths.ConfigFile); } catch { }
-            Diagnostics.Log.Warn("Meltype IME が登録されていないので、動作モードを Meltype キーボードに戻しました。");
+            Diagnostics.Log.Warn("Meltype IME が登録されていないか、キーボードの一覧に無いので、動作モードを Meltype キーボードに戻しました。");
         }
 
         // ダウンロード済みの新しい版があれば、起動せずに更新する (install.ps1 が新しい版を起動する)。

@@ -81,19 +81,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _engine.AttachComposition(_composition);
         _tipServer = new Tip.TipServer(_invoker, _composition, () => _engine.Settings);
         _tipServer.Start();
-        // Meltype IME (TSF) を入れたら、一度だけ動作モードを Meltype IME にする
-        // (PC に登録されていても、このユーザーのキーボードの一覧に無ければ Win + Space で選べないので切り替えない)
-        // (ARM64 の Windows には Meltype IME は対応していないので切り替えない)
-        if (!_engine.Settings.TsfIntroduced && Tip.TipServer.IsRegistered && Tip.TipServer.IsInUserLanguageList &&
-            System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.Arm64)
-        {
-            var next = _engine.Settings.Clone();
-            next.TsfIntroduced = true;
-            next.Mode = InputMode.Tsf;
-            _engine.ApplySettings(next);
-            Diagnostics.Log.Info("Meltype IME が入っているので、動作モードを Meltype IME にしました。");
-            Tip.TipServer.ActivateForSession();
-        }
+        IntroduceTsf();
 
         var menu = new ContextMenuStrip();
         _statusItem = new ToolStripMenuItem { Enabled = false };
@@ -170,13 +158,101 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ShowUpdateItem();
         UpdateStatus();
         // 初めて起動したら使い方を見せる (見せたことは設定に残す)
-        if (!_engine.Settings.WelcomeShown)
+        var firstRun = !_engine.Settings.WelcomeShown;
+        if (firstRun)
         {
             var next = _engine.Settings.Clone();
             next.WelcomeShown = true;
             _engine.ApplySettings(next);
             _invoker.BeginInvoke(ShowWelcome);
         }
+        // Meltype IME が入る前の版から更新した人に、一度だけ Meltype IME を入れるかを聞く
+        // (初めて起動した人には、インストーラーが聞いている)
+        if (!_engine.Settings.TsfOffered)
+        {
+            var next = _engine.Settings.Clone();
+            next.TsfOffered = true;
+            _engine.ApplySettings(next);
+            if (!firstRun && CanOfferTsf()) _invoker.BeginInvoke(OfferTsf);
+        }
+    }
+
+    /// <summary>
+    /// Meltype IME (TSF) を入れたら、一度だけ動作モードを Meltype IME にする
+    /// (PC に登録されていても、このユーザーのキーボードの一覧に無ければ Win + Space で選べないので切り替えない)
+    /// (ARM64 の Windows には Meltype IME は対応していないので切り替えない)
+    /// </summary>
+    private void IntroduceTsf()
+    {
+        if (_engine.Settings.TsfIntroduced || !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList ||
+            RuntimeInformation.OSArchitecture == Architecture.Arm64) return;
+        var next = _engine.Settings.Clone();
+        next.TsfIntroduced = true;
+        next.Mode = InputMode.Tsf;
+        _engine.ApplySettings(next);
+        Diagnostics.Log.Info("Meltype IME が入っているので、動作モードを Meltype IME にしました。");
+        Tip.TipServer.ActivateForSession();
+    }
+
+    /// <summary>
+    /// Meltype IME を入れるかを聞けるか。Meltype IME を使ったことがない・登録されていない・インストール先に meltype-ime.ps1 と DLL がある・
+    /// 前に断っていない (UAC で断ったときと、インストーラーでチェックを外したときに HKCU\Software\Meltype の ImeDeclined に残す) とき。
+    /// </summary>
+    private bool CanOfferTsf()
+    {
+        if (_engine.Settings.TsfIntroduced || !Tip.TipServer.IsKnownUnregistered || RuntimeInformation.OSArchitecture == Architecture.Arm64) return false;
+        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "meltype-ime.ps1")) || !Directory.Exists(Path.Combine(AppContext.BaseDirectory, "tip"))) return false;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Meltype");
+            return key?.GetValue("ImeDeclined") is not 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Meltype IME を入れるかを聞き、「はい」なら meltype-ime.ps1 で登録して、動作モードを Meltype IME にする。</summary>
+    private async void OfferTsf()
+    {
+        // 起動したときに出すので、ほかのウィンドウの後ろに隠れないように最前面にする
+        using var owner = new Form { TopMost = true };
+        var answer = MessageBox.Show(owner,
+            "Meltype IME を入れますか？\n\n" +
+            "Meltype IME は Windows の IME として、打った文字を入力欄に直接入れます。変換ボックスが出ないアプリでも入力できます。\n\n" +
+            "入れるときに管理者権限の確認が出ます。「いいえ」なら、今の動作モードのまま使えます。",
+            "Meltype IME", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (answer != DialogResult.Yes) return;
+        var directory = AppContext.BaseDirectory;
+        var quote = (string text) => "'" + text.Replace("'", "''") + "'";
+        var start = new ProcessStartInfo(Updater.PowerShell) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+            $". {quote(Path.Combine(directory, "meltype-ime.ps1"))}; Install-MeltypeIme -Source {quote(Path.Combine(directory, "tip"))} -Ask | Out-Null" })
+        {
+            start.ArgumentList.Add(arg);
+        }
+        try
+        {
+            using var process = Process.Start(start)!;
+            await process.WaitForExitAsync();
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log.Warn($"Meltype IME を登録できませんでした: {ex.Message}");
+        }
+        // 登録できても、キーボードの一覧に足せなければ Win + Space で選べない
+        if (!Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList)
+        {
+            MessageBox.Show("Meltype IME を使えるようにできませんでした。今の動作モードのまま使えます。", "Meltype IME", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        // 次に起動したとき IntroduceTsf で切り替え直さないように、切り替えたことも残す (あとでユーザーが戻したら、そのまま)
+        var next = _engine.Settings.Clone();
+        next.TsfIntroduced = true;
+        _engine.ApplySettings(next);
+        SetMode(InputMode.Tsf);
+        UpdateStatus();
     }
 
     private void ShowWelcome()
