@@ -1313,6 +1313,11 @@ internal static class CompositionTests
     {
         var dictionary = CandidateDictionary.Load(null);
         Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    public static void Issue419_DefuseStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("mondaiwodefusesuru\n");
+        Assert.Equal("もんだいをdefuseする", k.Host.Document);
     }
 
     [Test]
