@@ -770,7 +770,8 @@ public sealed partial class CompositionDetector
         var lowerStart = whole.Length >= 2 && char.IsAsciiLetterLower(whole[0]) && char.IsAsciiLetterUpper(whole[1]);
         if (whole.Length == 0 || !char.IsAsciiLetterUpper(whole[0]) && !lowerStart) return -1;
         // 全体が英単語・固有名詞 (Tokyo, Github) なら区切らない。
-        if (IsKnownCapitalizedWord(whole)) return -1;
+        // -pedia 複合 (Protopedia) も。Pro|to|pedia と助詞「と」に割らない。
+        if (IsKnownCapitalizedWord(whole) || IsPediaEnglishWord(whole.ToLowerInvariant())) return -1;
         for (var k = n - 1; k > start; k--)
         {
             var head = Raw(units, start, k);
