@@ -77,6 +77,17 @@ bool IsHankakuZenkaku(UINT vk) { return vk == VK_KANJI || vk == 0xF3 || vk == 0x
 
 bool KeyDown(int vk) { return (GetKeyState(vk) & 0x8000) != 0; }
 
+// US 配列の Alt + ` (半角/全角キー相当)。Alt はキーイベントの lParam も確認する。
+bool IsAltGraveToggle(UINT vk, LPARAM lParam) {
+    const ULONG_PTR message = static_cast<ULONG_PTR>(lParam);
+    const UINT scan = static_cast<UINT>((message >> 16) & 0xFF);
+    const bool graveKey = vk == VK_OEM_3 || (scan == 0x29 && (message & (static_cast<ULONG_PTR>(1) << 24)) == 0);
+    const bool altDown = (static_cast<ULONG_PTR>(lParam) & (static_cast<ULONG_PTR>(1) << 29)) != 0 ||
+                         KeyDown(VK_MENU);
+    return graveKey && altDown && !KeyDown(VK_CONTROL) && !KeyDown(VK_SHIFT) &&
+           !KeyDown(VK_LWIN) && !KeyDown(VK_RWIN);
+}
+
 // 変換中に Meltype.exe が受け持つ Ctrl+英字 (CompositionController.ControlShortcut と合わせる)。Alt・Windows キーと一緒なら違う
 bool IsCompositionShortcut(UINT vk) {
     if (!KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) return false;
@@ -628,7 +639,7 @@ void TextService::ForgetSecretField() {
     secretContext_.Reset();
 }
 
-bool TextService::WouldEat(ITfContext* context, UINT vk, wchar_t& ch, bool test) {
+bool TextService::WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t& ch, bool test) {
     ch = 0;
     secretChecked_ = false;
     secretWhileComposing_ = false;
@@ -685,6 +696,7 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, wchar_t& ch, bool test)
     }
     // 半角/全角: 日本語 ⇔ 英数 (IME の ON/OFF は IME 自身が切り替える)。Meltype.exe が使えないときも受け取る
     // (アプリに通すと、PowerShell (PSReadLine) は文字の無いキーを @ として入れる。管理者として動くアプリでは Meltype.exe につながらない)
+    if (IsAltGraveToggle(vk, lParam)) return true;
     if (IsHankakuZenkaku(vk)) return !KeyDown(VK_CONTROL) && !KeyDown(VK_MENU);
     // 調べるとき用: 文字を生むキーを通した理由 (どのキーかは書かない)
     auto pass = [&](const wchar_t* reason) {
@@ -746,7 +758,7 @@ bool TextService::IsReinjected(UINT vk) {
     return false;
 }
 
-STDMETHODIMP TextService::OnTestKeyDown(ITfContext* context, WPARAM wParam, LPARAM, BOOL* eaten) {
+STDMETHODIMP TextService::OnTestKeyDown(ITfContext* context, WPARAM wParam, LPARAM lParam, BOOL* eaten) {
     UINT vk = static_cast<UINT>(wParam);
     if (IsReinjected(vk)) {
         passVk_ = vk;  // アプリによっては、このあと OnKeyDown も呼ぶ
@@ -757,7 +769,7 @@ STDMETHODIMP TextService::OnTestKeyDown(ITfContext* context, WPARAM wParam, LPAR
     }
     passVk_ = 0;
     wchar_t ch = 0;
-    *eaten = WouldEat(context, vk, ch, true) ? TRUE : FALSE;
+    *eaten = WouldEat(context, vk, lParam, ch, true) ? TRUE : FALSE;
     // アプリにそのまま渡すキー (BackSpace・矢印・Enter・Space など) はキャレットを動かす: 前に確定した語を確定し直さない
     if (!*eaten && !IsModifier(vk)) {
         caretMoved_ = true;
@@ -776,7 +788,7 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* context, WPARAM wParam, LPARAM l
     }
     passVk_ = 0;
     wchar_t ch = 0;
-    if (!WouldEat(context, vk, ch, false)) {
+    if (!WouldEat(context, vk, lParam, ch, false)) {
         if (!IsModifier(vk)) {
             caretMoved_ = true;
             RememberPassed(vk);
@@ -785,8 +797,10 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* context, WPARAM wParam, LPARAM l
         return S_OK;
     }
     *eaten = TRUE;
+    // 押しっぱなしによる自動リピートで、入力モードを何度も切り替えない。
+    if (IsAltGraveToggle(vk, lParam) && eatenDown_[vk]) return S_OK;
     eatenDown_[vk] = true;
-    if (IsHankakuZenkaku(vk) && composition_ == nullptr) {
+    if ((IsHankakuZenkaku(vk) || IsAltGraveToggle(vk, lParam)) && composition_ == nullptr) {
         ToggleInputMode(context);
         return S_OK;
     }
