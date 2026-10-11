@@ -348,11 +348,11 @@ public sealed partial class CompositionDetector
             }
             // 短い英単語 (yap) が助詞 (ya) + 後ろの英単語 (play) の頭を食っているなら、助詞側を優先する
             // (yap|lay → ya|play。スペルチェッカーが yap / lay を知っているとやplay が yaplay になる)。
-            // 辞書の英単語そのもの (tomorrow = to + morrow) は分けない。Windows のスペルが morrow を
-            // 知っていると、ここを通すと see you ともっrow になる。
+            // 辞書の英単語そのもの (tomorrow) は分けない。打ちかけの子音 (pending の w) を head に含めないと
+            // tomorro になり、Windows のスペルが morrow を知っていると to|morrow → ともっrow になる。
             if (found > i && !kanaInput && !IsAsciiSymbol(units[i]))
             {
-                var head = Raw(units, i, found).ToLowerInvariant();
+                var head = (Raw(units, i, found) + (found == n ? pending : "")).ToLowerInvariant();
                 if (Detection.DictionaryDetector.StartsWithParticle(head) is { } leading && head.Length > leading.Length &&
                     !IsListedEnglishWord(head))
                 {
