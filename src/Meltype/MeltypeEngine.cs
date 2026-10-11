@@ -35,6 +35,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
     private readonly Thread _worker;
     private readonly System.Threading.Timer _sessionTimer;
     private readonly System.Threading.Timer _pollTimer;
+    // Chrome リモート デスクトップ・Parsec で操作されているか (#372)
+    private readonly RemoteControl _remote = new();
     private readonly System.Threading.Timer _saveTimer;
     private volatile Settings _settings;
     private volatile ImeSnapshot? _imeSnapshot;
@@ -174,7 +176,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         var settings = _settings;
         // 遠隔操作 (AnyDesk・VNC) のキーは、ほかのソフトが送ったキー (LLKHF_INJECTED) として届く。設定で許可していれば手で打ったキーとして扱う。
         // Meltype 自身が送り直したキーは、印 (InjectedMarker) でフックの入口で除いているので、ここには来ない (自分の出力を処理し直さない)。
-        if (e.Injected && settings.AllowInjectedInput) e = e with { Injected = false };
+        // Chrome リモート デスクトップ・Parsec で操作されている間も同じ (#372)。
+        if (e.Injected && (settings.AllowInjectedInput || _remote.Active is not null)) e = e with { Injected = false };
         else if (e.Injected && e.IsDown && !_injectedHintLogged && settings.Mode == InputMode.Keyboard && KeyText.CharFromKey(e.Vk, e.Scan, false) is { } injected && injected > ' ')
         {
             // キー配列を変えるソフト (ULE4JIS: US 配列にする) も、押したキーを別のキーとして送り直すので、ほかのソフトが送ったキーとして届く (issue #250)
@@ -899,6 +902,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         _monitor.Dispose();
         _sessionTimer.Dispose();
         _pollTimer.Dispose();
+        _remote.Dispose();
         _lineTimer?.Dispose();
         _saveTimer.Dispose();
         _flushQueue.CompleteAdding();
