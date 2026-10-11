@@ -16,7 +16,8 @@ internal sealed class RemoteControl : IDisposable
     /// <summary>
     /// 遠隔操作のプロセス。Chrome リモート デスクトップは、接続されると remoting_desktop.exe を起動する
     /// (常駐する remoting_host.exe は待ち受けなので含めない)。Parsec は接続中かどうかをプロセス名では区別できないので、
-    /// parsecd.exe が動いている間は処理する。
+    /// parsecd.exe が動いている間は処理する。既知の問題: そのため、Parsec が動いていれば接続していなくても、
+    /// AutoHotkey などほかのソフトが送ったキーまで変換の対象になる。
     /// </summary>
     internal static readonly string[] SessionProcesses = ["remoting_desktop", "parsecd"];
 
