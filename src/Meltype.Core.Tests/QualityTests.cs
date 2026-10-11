@@ -214,6 +214,9 @@ internal static class Quality
         new("綴り", "la", "ぁ"),
         new("綴り", "mala", "まぁ"),
         new("綴り", "ltu", "っ"),
+        new("綴り", "moraltute", "もらって"),
+        new("綴り", "moraltsute", "もらって"),
+        new("綴り", "kyouhamoraltute", "きょうはもらって"),
         new("綴り", "thi", "てぃ"),
         new("綴り", "fa", "ふぁ"),
         new("綴り", "je", "じぇ"),
@@ -228,6 +231,7 @@ internal static class Quality
         new("大文字", "kaW", "かW"),
         new("大文字", "AInituite", "AIについて"),
         new("大文字", "AIdekiru", "AIできる"),
+        new("大文字", "McAfeeto", "McAfeeと"),
     ];
 
     /// <summary>コードの行のキャレット位置 (コメント・文字列の中か)。</summary>

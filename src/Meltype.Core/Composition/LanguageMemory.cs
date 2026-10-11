@@ -76,6 +76,13 @@ public sealed class LanguageMemory
         return entry.English;
     }
 
+    internal bool? Get(ReadOnlySpan<char> word)
+    {
+        if (!_entries.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(word, out var entry)) return null;
+        if (NeedsTwice(word.ToString(), entry)) return null;
+        return entry.English;
+    }
+
     /// <summary>
     /// ユーザーが英字 / かなに直した語を覚える (2 文字以上の英字だけ)。
     /// explicitChoice は F10 / F6 / Tab ではっきり直したとき (変換の候補から選んだだけなら false)。
@@ -132,6 +139,14 @@ public sealed class LanguageMemory
         _entries.Clear();
         Version++;
         Save();
+    }
+
+    /// <summary>sinceUtc より後に覚えた (直した) 語を忘れる (トレイの「最近の学習を消す」)。忘れた数を返す。</summary>
+    public int ForgetSince(DateTime sinceUtc)
+    {
+        var recent = _entries.Where(e => e.Value.Used >= sinceUtc).Select(e => e.Key).ToList();
+        Remove(recent);
+        return recent.Count;
     }
 
     private void Save()

@@ -132,6 +132,43 @@ internal static class Checks
         File.WriteAllText(output, JsonSerializer.Serialize(results, Json));
     }
 
+    /// <summary>
+    /// 日本語の文の中に英単語を入れて打ち (sorede + alcoholic + wotsukau)、確定した結果が「かな + 英単語 + かな」になるかを数える。
+    /// 英単語は、同梱の英単語の一覧のうち、ローマ字としては読めない (英語としか読めない) 4〜10 文字の語から決まった間隔で選ぶ。
+    /// 前後の日本語は、英単語とくっつきやすい形 (te・ni で終わる、母音で始まる助詞など) を混ぜてある。
+    /// </summary>
+    public static void MixedBench(string output)
+    {
+        CompositionTests.Detector.SpellChecker ??= Detection.BuiltInWordChecker.Shared;
+        var romaji = CompositionTests.Detector.Romaji;
+        // MELTYPE_BENCH_OFFSET で選ぶ語をずらす (調整に使っていない語で確かめる)
+        var offset = int.TryParse(Environment.GetEnvironmentVariable("MELTYPE_BENCH_OFFSET"), out var o) ? o % 97 : 0;
+        string[] prefixes = ["sorede", "kinouha", "chotto", "atode", "kyoumo", "sugoku", "mottekita", "tsukatte", "watashino", "minnani", "zenbu", "korekara"];
+        string[] suffixes = ["wotsukau", "gasuki", "dekensaku", "nitsuite", "toiu", "mademiru", "kamo", "nanode", "ha", "wo", "ga", "ni", "de"];
+        var words = Detection.DictionarySource.ReadEmbedded("english-words.txt").Split('\n').Select(w => w.Trim())
+            .Where(w => w.Length is >= 4 and <= 10 && w.All(char.IsAsciiLetterLower) && !romaji.Analyze(w).IsValid)
+            .Where((_, index) => index % 97 == offset).ToList();
+        var results = new List<object>();
+        var pass = 0;
+        for (var i = 0; i < words.Count; i++)
+        {
+            for (var frame = 0; frame < 2; frame++)
+            {
+                var prefix = prefixes[(i * 2 + frame) % prefixes.Length];
+                var suffix = suffixes[(i * 3 + frame * 5) % suffixes.Length];
+                var typed = prefix + words[i] + suffix;
+                var expected = romaji.ConvertLenient(prefix, final: true) + words[i] + romaji.ConvertLenient(suffix, final: true);
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                var ok = Hiragana(k.Host.Document) == expected;
+                if (ok) pass++;
+                results.Add(new { typed, expected, actual = k.Host.Document, ok });
+            }
+        }
+        File.WriteAllText(output, JsonSerializer.Serialize(new { pass, total = results.Count, cases = results }, Json));
+        Console.WriteLine($"{pass}/{results.Count}");
+    }
+
     /// <summary>カタカナをひらがなに直す (テストの変換エンジンはカタカナにしないため)。</summary>
     private static string Hiragana(string text) =>
         new(text.Select(c => c is >= 'ァ' and <= 'ヶ' ? (char)(c - 0x60) : c).ToArray());
@@ -227,4 +264,70 @@ internal static class Henkan
             candidates,
         }, new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
     }
+}
+
+/// <summary>
+/// 英単語の混じった文の変換を 2 通りで比べる (MELTYPE_MOZC に Mozc の変換ヘルパーの場所が要る)。
+///   今の変換: Meltype キーボードで打って Space で変換した結果 (英単語のところで文を切って、日本語の部分を別々に Mozc に渡す)
+///   丸ごと:   英単語を仮の名詞 (えっくす) に置き換えた読みを、文ごと 1 回で Mozc に渡し、エックス を英単語に戻す
+/// 入力ファイルは 1 行に「打ったもの&lt;Tab&gt;期待」。
+/// </summary>
+internal static class MozcCompare
+{
+    private const string Placeholder = "えっくす";
+    private const string PlaceholderText = "エックス";
+
+    public static void Run(string input, string output)
+    {
+        var helper = Environment.GetEnvironmentVariable("MELTYPE_MOZC");
+        if (helper is null || !File.Exists(helper)) throw new InvalidOperationException("MELTYPE_MOZC に Mozc の変換ヘルパーの場所を入れてください");
+        var profile = Path.Combine(Path.GetTempPath(), $"meltype-mozc-compare-{Environment.ProcessId}");
+        using var mozc = new Composition.MozcConverter(helper, profile);
+        CompositionTests.Detector.SpellChecker ??= Detection.BuiltInWordChecker.Shared;
+        var results = new List<object>();
+        int currentOk = 0, wholeOk = 0;
+        foreach (var line in File.ReadAllLines(input))
+        {
+            var parts = line.Split('\t');
+            if (parts.Length != 2 || parts[0].StartsWith('#')) continue;
+            var (typed, expected) = (parts[0].Trim(), parts[1].Trim());
+
+            // 今の変換
+            var s = Henkan.Keyboard();
+            s.Type(typed + " ");
+            var view = s.Host.View;
+            var current = view is { Converting: true } ? string.Concat(view.Clauses ?? [view.Text]) : s.Host.Document.TrimEnd();
+            Henkan.Reset();
+
+            // 丸ごと: 変換エンジン無しのキーボードで、英語と日本語 (かな) の分かれ方を見る
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed);
+            var shown = k.Showing ?? "";
+            var english = System.Text.RegularExpressions.Regex.Matches(shown, "[A-Za-z0-9][A-Za-z0-9._'+#-]*").Select(m => m.Value).ToList();
+            var reading = System.Text.RegularExpressions.Regex.Replace(shown, "[A-Za-z0-9][A-Za-z0-9._'+#-]*", Placeholder);
+            var clauses = mozc.ConvertClauses(reading) ?? [];
+            var text = string.Concat(clauses.Select(c => c.Text));
+            var placeholders = System.Text.RegularExpressions.Regex.Matches(text, PlaceholderText).Count;
+            string whole;
+            if (placeholders == english.Count)
+            {
+                var index = 0;
+                whole = System.Text.RegularExpressions.Regex.Replace(text, PlaceholderText, _ => english[index++]);
+            }
+            else whole = $"(仮の名詞が {english.Count} 個 → {placeholders} 個) {text}";
+            mozc.ClearCache();
+
+            var ok1 = Normalize(current) == Normalize(expected);
+            var ok2 = Normalize(whole) == Normalize(expected);
+            if (ok1) currentOk++;
+            if (ok2) wholeOk++;
+            results.Add(new { typed, expected, shown, current, whole, wholeClauses = clauses.Select(c => c.Reading + ":" + c.Text), currentOk = ok1, wholeOk = ok2 });
+        }
+        File.WriteAllText(output, JsonSerializer.Serialize(new { currentOk, wholeOk, total = results.Count, cases = results },
+            new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
+        Console.WriteLine($"今の変換 {currentOk}/{results.Count}、丸ごと {wholeOk}/{results.Count}");
+    }
+
+    /// <summary>比べるときは空白と、英字の大文字・小文字を無視する (GitHub と github は同じとみなす)。</summary>
+    private static string Normalize(string text) => new(text.Where(c => !char.IsWhiteSpace(c)).Select(char.ToLowerInvariant).ToArray());
 }
