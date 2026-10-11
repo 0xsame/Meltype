@@ -49,4 +49,14 @@ internal static class WindowsTests
         Assert.True(string.Concat(clauses.Select(c => c.Text)).Contains("天気"), string.Concat(clauses.Select(c => c.Text)));
         Assert.True(ime.Convert(text)?.Contains("天気") == true, "全体の変換も");
     }
+
+    [Test]
+    public static void WebInputClassNames_AreTextInputs()
+    {
+        // #70: Chatwork の検索欄は Group で、クラス名 (sc-kzAZJu ijnNh inputLong) でしか入力欄と分からない
+        foreach (var name in new[] { "sc-kzAZJu ijnNh inputLong", "input", "searchInput", "search-input", "chat_input", "input-field" })
+            Assert.True(Composition.FocusInspector.LooksLikeInputClass(name), name);
+        foreach (var name in new[] { "", "inputs", "input-group", "inputWrapper", "searchInputButton", "sc-kzAZJu ijnNh", "inputtable" })
+            Assert.True(!Composition.FocusInspector.LooksLikeInputClass(name), name);
+    }
 }
