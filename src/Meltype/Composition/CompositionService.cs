@@ -82,6 +82,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         _hybrid = new HybridConverter(options.Engine, _mozc, _converter, reading => _windowsCandidates.Get(reading));
         _resolved = resolved;
         Controller = new CompositionController(Gate, detector, _hybrid, this, resolved);
+        Controller.Corrected += Corrections.Add;
         if (options.Engine() != Config.ConversionEngine.System && _mozc.IsInstalled) _mozc.WarmUp();
         _showIndicator = options.ModeIndicator;
         _placement = options.Placement;
@@ -131,6 +132,9 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
 
     /// <summary>登録した定型文 (トレイの「定型文...」で編集する。;名前 + Space で入れる: issue #290)。</summary>
     public SnippetStore Snippets { get; } = new(Config.AppPaths.SnippetsFile);
+
+    /// <summary>最近自分で直した誤判定 (メモリの中だけ。トレイの「直した誤判定を報告...」: issue #284)。</summary>
+    public CorrectionLog Corrections { get; } = new();
 
     private readonly CompositionDetector _detector;
 
