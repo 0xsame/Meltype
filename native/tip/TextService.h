@@ -119,7 +119,7 @@ private:
     // アプリが確定した打ちかけの文字を、変換中に戻す (戻せなければ確定したことにする)。context が null なら確定したことにする
     void ResumeOrCommit(ITfContext* context);
     void CommitInSession(TfEditCookie ec, ITfContext* context, bool keepAppCaret);
-    void SelectCandidate(int index);
+    void SelectCandidate(int index, bool prediction);
     void Reinject(UINT vk);
     void SurroundingText(TfEditCookie ec, ITfContext* context, std::wstring& before, std::wstring& after);
     bool ContextDisabled(ITfContext* context);

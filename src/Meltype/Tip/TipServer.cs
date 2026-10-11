@@ -20,9 +20,10 @@ namespace Meltype.Tip;
 ///
 /// やり取りは 1 メッセージ 1 JSON (UTF-8)。要求:
 ///   {"op":"key","sid":"…","vk":65,"ch":97,"mods":1,"before":"…","after":"…","process":"notepad","moved":true,"composing":true,"code":true}
-///   {"op":"commit","sid":"…","moved":true} / {"op":"select","sid":"…","index":2} / {"op":"close","sid":"…"} / {"op":"hello","process":"…"}
+///   {"op":"commit","sid":"…","moved":true} / {"op":"select","sid":"…","index":2,"prediction":true} / {"op":"close","sid":"…"} / {"op":"hello","process":"…"}
 ///   {"op":"toggle","sid":"…","process":"…","before":"…","japanese":true} (半角/全角。consumed が true なら、コードの行を日本語にした / 英数に戻した)
 ///   {"op":"mode","sid":"…","process":"…","before":"…","passed":37,"ctrl":true} (キャレットが動いた・文字が変わった。入力モードの表示を合わせる)
+/// select の prediction は、予測変換の候補を選んだこと (付けなければ変換の候補)。
 /// key の code は、DLL が toggle・mode を送ること (付けない古い DLL では、コードの入力欄として扱わない)。
 /// passed は、DLL がアプリに通したキー (0 はキーなしでキャレットが動いた、-1 は文字が変わっただけ)。key・toggle にも、まだ伝えていなければ付ける。
 /// 応答: {"active":true, "consumed":…, "commits":[…], "view":{…}, "code":…, "english":…} (active が false なら DLL は何もせずにキーを通す)
@@ -538,7 +539,7 @@ internal sealed class TipServer : IDisposable
                 result = session.CommitPending();
                 break;
             case "select":
-                result = session.SelectCandidate(Int(root, "index"));
+                result = IsTrue(root, "prediction") ? session.SelectPrediction(Int(root, "index")) : session.SelectCandidate(Int(root, "index"));
                 break;
             default:
                 return Inactive;
