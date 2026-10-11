@@ -68,6 +68,13 @@ internal static class FeedbackTests
             // 大文字の語 + 助詞は今までどおり区切る
             ("Anisiyouka", "Aにしようか"), ("Tokyonisumu", "Tokyoにすむ"),
         })
+    }
+
+    [Test]
+    public static void Issue369_Huihui_StaysEnglish()
+    {
+        // Issue #369: huihui (AI のモデルを出している huihui-ai) が ふいふい (→ 回回) になっていた。ふいふい は日本語の語ではない
+        foreach (var (typed, expected) in new[] { ("huihui", "huihui"), ("huihuino", "huihuiの"), ("fuifui", "ふいふい") })
         {
             var k = new CompositionTests.Keyboard();
             k.Type(typed + "\n");
