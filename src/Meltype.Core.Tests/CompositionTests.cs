@@ -1313,6 +1313,11 @@ internal static class CompositionTests
     {
         var dictionary = CandidateDictionary.Load(null);
         Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    public static void Issue346_FusionStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fusion\n");
+        Assert.Equal("fusion", k.Host.Document);
     }
 
     [Test]

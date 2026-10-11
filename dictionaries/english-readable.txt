@@ -4,6 +4,7 @@
 # 3 文字以上。日本語の語と同じ綴り (tomato, piano) や、日本由来の語 (sake, suzuki) は入れない。
 feature features future futures nature mature figure figures measure measures tenure rename remote remotes
 pedia
+fusion
 see seeyou seeyouagain seeyoulater seeyoutomorrow
 thankyou thankyouverymuch goodafternoon goodevening
 nicetomeetyou howareyou imfine iloveyou takecare
