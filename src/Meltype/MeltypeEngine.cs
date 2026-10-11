@@ -352,7 +352,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             Log.Info("定型文を取り消して、打った名前に戻しました。");
             return true;
         }
-        if (e.Vk is not (VirtualKeys.Space or VirtualKeys.Tab) || IsDown(VirtualKeys.Shift) || !SnippetsEnabled(settings)) return false;
+        // 入力欄にフォーカスがないとき (エクスプローラーのファイル一覧など) は展開しない。名前を消す Backspace が「前のフォルダーに戻る」になってしまう。
+        if (e.Vk is not (VirtualKeys.Space or VirtualKeys.Tab) || IsDown(VirtualKeys.Shift) || !SnippetsEnabled(settings) || !composition.Focus.CanCapture) return false;
         _snippet.Mark = settings.SnippetMark;
         if (_snippet.Expand(composition.Snippets) is not { } expansion) return false;
         lock (_swallowedToggleUps) _swallowedToggleUps.Add(e.Vk);
