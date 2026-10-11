@@ -914,8 +914,10 @@ void TextService::QueryMode(TfEditCookie ec, ITfContext* context, bool selection
     std::wstring before, after;
     SurroundingText(ec, context, before, after);
     // passed: キャレットを動かしたキー (少し前にアプリに通したキー)。無ければ、キャレットが動いたなら 0 (クリックなど)、文字が変わっただけなら -1。
-    // 改行の後の自動のインデントなど、キーに続くアプリの編集でも通知が来るので、通したキーは少しの間覚えておく
-    bool recent = GetTickCount64() - passedTime_ < 500;
+    // 改行の後の自動のインデントなど、キーに続くアプリの編集でも通知が来るので、通したキーは少しの間覚えておく。
+    // ただし、マウスのボタンを押しているあいだに選択が変わったら、キーの直後でもクリックとして伝える
+    bool clicked = selectionChanged && ((GetAsyncKeyState(VK_LBUTTON) | GetAsyncKeyState(VK_RBUTTON)) & 0x8000) != 0;
+    bool recent = !clicked && GetTickCount64() - passedTime_ < 500;
     int passed = recent ? static_cast<int>(passedVk_) : selectionChanged ? 0 : -1;
     passedPending_ = false;
     std::string request = "{\"op\":\"mode\",\"sid\":\"" + sid_ + "\",\"process\":" + JsonString(ProcessName()) +
