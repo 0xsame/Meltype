@@ -166,6 +166,7 @@ public sealed class MeltypeSession
             TranslationCandidates = () => settings.TranslationCandidates,
             TabConversion = () => settings.TabConversion,
             ContinueAfterConversion = () => settings.ContinueAfterConversion,
+            Learning = () => settings.LearningEnabled,
             Meanings = MeaningDictionary.Load(),
             CandidateMeanings = () => settings.ShowCandidateMeanings,
             RomajiTypos = RomajiTypoCorrector.Load(detector.Romaji),

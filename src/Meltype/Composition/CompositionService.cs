@@ -66,6 +66,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             ShowTypedKeys = options.ShowTypedKeys,
             TabConversion = options.TabConversion,
             ContinueAfterConversion = options.ContinueAfterConversion,
+            Learning = options.Learning,
             Meanings = options.Meanings ?? MeaningDictionary.Load(),
             RomajiTypos = options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji),
             CorrectTypos = options.CorrectTypos,
@@ -77,6 +78,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             Predictions = options.Predictions,
         };
         Phrases = resolved.Predictor?.Phrases;
+        TranslationHistory = resolved.TranslationHistory;
         _hybrid = new HybridConverter(options.Engine, _mozc, _converter, reading => _windowsCandidates.Get(reading));
         _resolved = resolved;
         Controller = new CompositionController(Gate, detector, _hybrid, this, resolved);
@@ -117,6 +119,9 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
 
     /// <summary>ユーザーが英字 / かなに直した語の学習 (トレイの「学習データをリセット」で消す)。</summary>
     public LanguageMemory Languages { get; }
+
+    /// <summary>選んだ英訳の記録 (トレイの「学習データをリセット」で消す)。</summary>
+    public TranslationHistory? TranslationHistory { get; }
 
     /// <summary>予測変換のために覚えた、確定した語句。</summary>
     public PhraseHistory? Phrases { get; }
