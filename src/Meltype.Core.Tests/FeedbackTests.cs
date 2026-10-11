@@ -1050,6 +1050,24 @@ internal static class RomajiTypoTests
         finally
         {
             CompositionTests.Detector.SpellChecker = null;
+    }
+
+    [Test]
+    public static void CamelCaseWord_AfterJapanese_SplitsOffJapanese()
+    {
+        foreach (var (typed, expected) in new[]
+        {
+            ("kyouhaGitHubni", "きょうはGitHubに"),
+            ("kyouhaGitHubnipushshita", "きょうはGitHubにpushした"),
+            ("camelCaseName", "camelCaseName"),         // 識別子はそのまま英字
+            ("getElementById", "getElementById"),
+            ("dataSetName", "dataSetName"),
+            ("sakuraTreeNode", "sakuraTreeNode"),       // 助詞で終わらないローマ字の名前も識別子
+        })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
         }
     }
 }
