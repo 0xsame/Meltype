@@ -120,6 +120,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         composition.InputAllowed = () => KeyboardLayoutPolicy.AllowsInput(_settings);
         composition.Focus.TreatsAsTextInput = () => _settings.TreatsAsTextInput(_foreground.Current.ProcessName);
         composition.ShowModeOnFocus = ShowModeOnFocus;
+        composition.Focus.ForegroundProcessName = () => _foreground.Current.ProcessName;
         // 変換ボックスで確定した文字と、Meltype が送り直したキーも、今の行の追いかけに入れる (自分で送ったキーはフックに届かない)。
         composition.Controller.Committed += text =>
         {
@@ -517,7 +518,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         }
         if (!_foreground.Check(settings).Allowed) return false;
         // 文字入力欄 (パスワード以外) にフォーカスがあるときだけ。ショートカットキーやゲームの操作を横取りしない。
-        if (_composition?.Focus.CanCapture != true && _composition?.Focus.CanCaptureWaiting() != true) return false;
+        if (_composition?.Focus.CanCaptureWaiting() != true) return false;
         // コードエディター・ターミナル: コードの中は英数のまま通す (補完もそのまま効く)。コメント・文字列の中は日本語を判定する。
         if (!reconvert && !_keyboardDirect && IsCodeApp(settings))
         {

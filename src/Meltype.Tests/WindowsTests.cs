@@ -3,6 +3,8 @@
 
 using Meltype.Config;
 using Meltype.Input;
+using Meltype.Composition;
+using Meltype.IME;
 
 namespace Meltype.Tests;
 
@@ -26,5 +28,27 @@ internal static class WindowsTests
         Assert.True(!settings.IsGame("r5apex.exe", looksLikeGame: true), "設定で OFF にしたら止めない");
         settings.AppRules.Add(new AppRule { Process = "minecraft.exe", Enabled = true, Profile = AppProfile.Game });
         Assert.True(settings.IsGame("minecraft.exe", looksLikeGame: false), "アプリ別設定で「ゲーム」にしたら止める");
+    }
+
+    [Test]
+    public static void AffinityCandidate_RejectsOtherProductsAndMenus()
+    {
+        Assert.True(FocusInspector.IsAffinityCanvasCandidate("AFFINITY.EXE", UiAutomation.ControlTypePane, "Static"), "大小文字と Pane");
+        Assert.True(!FocusInspector.IsAffinityCanvasCandidate("Photo.exe", UiAutomation.ControlTypeText, "Static"), "旧製品は対象外");
+        Assert.True(!FocusInspector.IsAffinityCanvasCandidate("Affinity.exe", 50009, "Static"), "メニューは対象外");
+    }
+    [Test]
+    public static void AffinityIme_UsesOneDeadlineAndStopsAfterFailure()
+    {
+        double now = 0; var budgets = new List<uint>();
+        var active = Imm32ImeController.HasInputContext(20, (_, remaining) => { budgets.Add(remaining); now += 9.75; return (true, 0); }, () => TimeSpan.FromMilliseconds(now));
+        Assert.True(!active, "ゼロの応答は入力可能としない");
+        Assert.True(string.Join(',', budgets) == "20,10", "残り 10.25ms は 10ms に切り捨て、0.5ms では問い合わせない");
+        foreach (var success in new[] { false, true })
+        {
+            now = 0; var calls = 0;
+            active = Imm32ImeController.HasInputContext(20, (_, _) => { calls++; now = success ? 21 : 0; return (success, 0x19); }, () => TimeSpan.FromMilliseconds(now));
+            Assert.True(!active && calls == 1, "失敗や期限後の肯定結果を採用せず、追加の問い合わせをしない");
+        }
     }
 }
