@@ -12,6 +12,14 @@ namespace Meltype.Tests;
 internal static class WindowsTests
 {
     [Test]
+    public static void Main_RunsOnStaThread()
+    {
+        // クリップボード・UI は STA でないと動かない。Main の前にメソッドを足して、[STAThread] がそちらに付いていた (v1.2.0 の自己診断で失敗)
+        var main = typeof(global::Meltype.Program).GetMethod("Main", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        Assert.True(main.IsDefined(typeof(STAThreadAttribute), false), "Main に [STAThread]");
+    }
+
+    [Test]
     public static void Games_AreDetectedFromInstallFolder()
     {
         Assert.True(ForegroundTracker.LooksLikeGame(@"D:\SteamLibrary\steamapps\common\Apex Legends\r5apex.exe"), "Steam のゲーム");
