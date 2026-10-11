@@ -79,6 +79,31 @@ internal static class FeedbackTests
             var k = new CompositionTests.Keyboard();
             k.Type(typed + "\n");
             Assert.Equal(expected, k.Host.Document, typed);
+    }
+
+    [Test]
+    public static void Issue376_SuruAfterEnglishAndParticle_IsJapanese()
+    {
+        // Issue #376: 英単語 + 助詞 + する の活用 (password|ni|site) を、英単語 + 助詞 + 英単語 (api|no|error) と見て site を英字にしていた
+        CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, expected) in new[]
+            {
+                ("passwordnisite", "passwordにして"), ("passwordwosite", "passwordをして"), ("passwordnisitekudasai", "passwordにしてください"),
+                ("emailwositai", "emailをしたい"),
+                // 英単語 + 助詞 + 英単語 は今までどおり
+                ("apinoerror", "apiのerror"), ("websitewomiru", "websiteをみる"),
+            })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
         }
     }
 

@@ -150,7 +150,7 @@ public sealed partial class CompositionDetector
                     {
                         var rest = raw[end..];
                         if (!rest.StartsWith(particle, StringComparison.Ordinal) ||
-                            !IsKnownEnglishWord(rest[particle.Length..])) continue;
+                            !IsKnownEnglishWord(rest[particle.Length..]) || IsSuruTail(rest[particle.Length..])) continue;
                         return [new CompositionSegment(true, "", word),
                             new CompositionSegment(false, _romaji.ConvertLenient(particle, final: true), particle),
                             new CompositionSegment(true, "", rest[particle.Length..])];
@@ -876,6 +876,12 @@ public sealed partial class CompositionDetector
 
     private static readonly string[] TrailingParticles = ["kara", "made", "yori", "ga", "wo", "ni", "de", "no", "to", "mo", "ha", "wa"];
 
+    /// <summary>
+    /// 英単語 + 助詞 の後ろの、する の活用と読める語 (site = して、sita = した)。英単語 (site) でも日本語の する の活用とみなす
+    /// (password|ni|site → password にして: issue #376)。
+    /// </summary>
+    private bool IsSuruTail(string tail) =>
+        _romaji.AnalyzeFragment(tail.ToLowerInvariant()) is { IsValid: true, Partial: "" } reading && IsSuruForm(reading.Kana);
     private int EnglishBeforeParticleAndEnglishTail(IReadOnlyList<CompositionUnit> units, int start, string pending)
     {
         // api + no + error のように、辞書の英語見出しを助詞と確実な英単語が挟むとき。
@@ -890,7 +896,7 @@ public sealed partial class CompositionDetector
             var whole = head + rest;
             if (Enumerable.Range(head.Length + 1, whole.Length - head.Length).Any(length => IsKnownEnglishWord(whole[..length]))) continue;
             foreach (var particle in TrailingParticles)
-                if (rest.StartsWith(particle, StringComparison.Ordinal) && IsDefinitelyEnglish(rest[particle.Length..])) return end;
+                if (rest.StartsWith(particle, StringComparison.Ordinal) && IsDefinitelyEnglish(rest[particle.Length..]) && !IsSuruTail(rest[particle.Length..])) return end;
         }
         return -1;
     }
