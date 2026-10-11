@@ -108,6 +108,23 @@ public sealed partial class CompositionDetector
     /// </summary>
     public Func<bool>? UseScoredSegmentation { get; set; }
 
+    /// <summary>
+    /// 英字のすぐ後ろの , . も句読点にするか (設定「英字の後ろの , . も句読点にする」、issue #416)。
+    /// null か false なら今までどおり、変換ボックスの中が英字だけなら半角のまま。
+    /// </summary>
+    public Func<bool>? UseJapanesePunctuationAfterEnglish { get; set; }
+
+    /// <summary>
+    /// 英字の後ろの記号 units[i] を、英文の記号 (半角のまま) として扱うか。設定が ON でも、キャレットの前が英語なら英文の続き。
+    /// すぐ後ろに英数字が続く . は、ドメイン・拡張子の区切り (tetr.io、MeltypeTip.dll)。
+    /// </summary>
+    private bool KeepsPunctuationAfterEnglish(IReadOnlyList<CompositionUnit> units, int i, string pending, bool? precedingEnglish)
+    {
+        if (units[i].Raw is not ("," or ".") || precedingEnglish == true || UseJapanesePunctuationAfterEnglish?.Invoke() != true) return true;
+        var next = i + 1 < units.Count ? units[i + 1].Raw : pending;
+        return units[i].Raw == "." && next.Length > 0 && char.IsAsciiLetterOrDigit(next[0]);
+    }
+
     private static readonly bool ScoredByEnvironment = Environment.GetEnvironmentVariable("MELTYPE_SCORED") == "1";
 
     private bool ScoredSegmentation => ScoredByEnvironment || UseScoredSegmentation?.Invoke() == true;
@@ -271,7 +288,8 @@ public sealed partial class CompositionDetector
             if (!kanaInput && level != DetectionLevel.Manual && i > 0 && units[i - 1].Raw == "." && PrecededByEnglish(i) == true) found = DotSuffixEnd(units, i, pending, final);
             // 英文の中の記号 (, . ! ? -) は読点・句点にせず半角のまま。日本語の文の中の英単語の後 (今日はgoogle、) は日本語の記号。
             // (かな入力では 、。 も かなのキーなので対象外)
-            if (!kanaInput && IsAsciiSymbol(units[i]) && PrecededByEnglish(i) == true && segments.All(s => s.IsEnglish || !s.Raw.Any(char.IsAsciiLetter))) found = i + 1;
+            if (!kanaInput && IsAsciiSymbol(units[i]) && PrecededByEnglish(i) == true && segments.All(s => s.IsEnglish || !s.Raw.Any(char.IsAsciiLetter)) &&
+                KeepsPunctuationAfterEnglish(units, i, pending, precedingEnglish)) found = i + 1;
             if (!kanaInput && found < 0) found = UserNameEnd(units, i, pending);
             if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = CapitalizedWordEnd(units, i, pending, final);
             if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = HyphenatedWordEnd(units, i, pending);
