@@ -2021,6 +2021,20 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Keigo_IsOfferedAfterEngineCandidates()
+    {
+        // #352: よく使う動詞の尊敬語・謙譲語も候補に出す。最初の候補 (変換エンジンの結果) は変えない
+        foreach (var (keys, keigo) in new[] { ("iu ", "おっしゃる"), ("iku ", "伺う"), ("taberu ", "召し上がる"), ("miru ", "拝見する"), ("suru ", "いたす") })
+        {
+            var k = new Keyboard();
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            Assert.True(candidates.Contains(keigo), keys + ": " + string.Join(" ", candidates));
+            Assert.True(candidates[0] != keigo, keys + ": 最初の候補は変えない");
+        }
+    }
+
+    [Test]
     public static void WiWe_OfferOldKana()
     {
         var k = new Keyboard();
