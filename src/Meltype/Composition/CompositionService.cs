@@ -67,6 +67,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             TabConversion = options.TabConversion,
             ContinueAfterConversion = options.ContinueAfterConversion,
             Learning = options.Learning,
+            SeparateKeyRoles = options.SeparateKeyRoles,
             Meanings = options.Meanings ?? MeaningDictionary.Load(),
             RomajiTypos = options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji),
             CorrectTypos = options.CorrectTypos,
