@@ -45,6 +45,31 @@ internal static class FeedbackTests
     }
 
     [Test]
+    public static void Issue379_CSpelledEnglishWordThenParticle_StaysEnglish()
+    {
+        // Issue #379: face の後に日本語 (face + ni) が ふぁせに (ファ背に) になっていた。c で綴った英単語 + 助詞 は英単語 + 助詞。
+        // 日本語の途中の c 行の綴り (fucarete・shoucanshi) は今までどおり日本語
+        CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, expected) in new[]
+            {
+                ("faceni", "faceに"), ("facewo", "faceを"), ("faceniutsu", "faceにうつ"), ("placega", "placeが"),
+                ("fucarete", "ふかれて"), ("shoucanshi", "しょうかんし"),
+            })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
+    }
+
+    [Test]
     public static void ShiftedSingleConsonant_StaysUppercase()
     {
         foreach (var c in "WRTYPSDGHKLZXVBNM")
