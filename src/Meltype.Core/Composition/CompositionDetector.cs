@@ -293,6 +293,13 @@ public sealed partial class CompositionDetector
             var found = -1;
             // ドメイン・拡張子の . の後ろは、ローマ字として読めても英字のままにする (tetr.io、Wakatte.TV、MeltypeTip.dll)。
             if (!kanaInput && level != DetectionLevel.Manual && i > 0 && units[i - 1].Raw == "." && PrecededByEnglish(i) == true) found = DotSuffixEnd(units, i, pending, final);
+            // 入力先頭の .gitignore / .env / .dll などドットファイルは英字のまま (issue #431)。
+            // 途中の 3.14desu や「です。」の . には使わない (i == 0 のときだけ)。
+            if (!kanaInput && found < 0 && level != DetectionLevel.Manual && i == 0 && units[i].Raw == ".")
+            {
+                var dotfile = DotSuffixEnd(units, i + 1, pending, final);
+                if (dotfile > i + 1) found = dotfile;
+            }
             // 英文の中の記号 (, . ! ? -) は読点・句点にせず半角のまま。日本語の文の中の英単語の後 (今日はgoogle、) は日本語の記号。
             // (かな入力では 、。 も かなのキーなので対象外)
             if (!kanaInput && IsAsciiSymbol(units[i]) && PrecededByEnglish(i) == true && segments.All(s => s.IsEnglish || !s.Raw.Any(char.IsAsciiLetter)) &&
@@ -569,12 +576,16 @@ public sealed partial class CompositionDetector
 
         var inDictionary = _english.Words.ContainsWord(lower);
         var knownSpelling = IsSpellWord(lower);
+        var readableEnglish = lower.Length >= 3 && ReadableEnglish.Value.ContainsWord(lower);
         // 英語とする根拠が全くない区間では、かなの全解析を繰り返さない。
         // 大文字・1 文字の略記・学習・打ちかけ・読み切れる英単語・-pedia は後の規則へ渡す。
         if (lower.Length >= 2 && !char.IsAsciiLetterUpper(span[0]) && !inDictionary && !knownSpelling &&
             !_proper.Contains(lower) && !ReadableEnglish.Value.ContainsWord(lower) && !IsPediaEnglishWord(lower) &&
             Memory?.Get(lower) is null &&
+            !_proper.Contains(lower) && !readableEnglish && Memory?.Get(lower) is null &&
             !(growing && (_english.IsPrefix(lower) || _proper.HasPrefix(lower)))) return false;
+        // ローマ字として最後まで読めても日本語の語にならない英単語 (english-readable.txt)。助詞誤分割より先に確定する。
+        if (readableEnglish) return true;
         var analysis = _romaji.Analyze(lower);
         RomajiAnalysis? fragment = null;
         RomajiAnalysis Fragment() => fragment ??= _romaji.AnalyzeFragment(lower);
@@ -1024,7 +1035,9 @@ public sealed partial class CompositionDetector
     /// </summary>
     private bool EndsWithParticleAfterUnknownWord(string lower)
     {
-        if (_english.Words.ContainsWord(lower) || _proper.Contains(lower) || Memory?.Get(lower) == true || IsSpellWord(lower)) return false;
+        // english-readable の語 (discode / opencode) は「知らない語 + 助詞」ではない
+        if (_english.Words.ContainsWord(lower) || _proper.Contains(lower) || ReadableEnglish.Value.ContainsWord(lower) ||
+            Memory?.Get(lower) == true || IsSpellWord(lower)) return false;
         foreach (var particle in TrailingParticles)
         {
             if (!lower.EndsWith(particle, StringComparison.Ordinal)) continue;
