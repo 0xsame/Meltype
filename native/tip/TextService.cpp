@@ -823,7 +823,7 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch) {
         }
         ownEdit_ = true;
         std::string request = "{\"op\":\"key\",\"sid\":\"" + sid_ + "\",\"vk\":" + std::to_string(vk) + ",\"ch\":" + std::to_string(ch) +
-                              ",\"mods\":" + std::to_string(mods) + ",\"process\":" + JsonString(ProcessName());
+                              ",\"mods\":" + std::to_string(mods) + ",\"process\":" + JsonString(ProcessName()) + ",\"code\":true";
         // 前に確定してからキャレットが動いた: Meltype.exe に、前の語を確定し直さないように伝える
         if (caretMoved_) request += ",\"moved\":true";
         request += PendingPassed();

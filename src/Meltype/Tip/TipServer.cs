@@ -19,10 +19,11 @@ namespace Meltype.Tip;
 /// DLL からはキーを 1 つずつ受け取って <see cref="SessionResult"/> を JSON で返す。
 ///
 /// やり取りは 1 メッセージ 1 JSON (UTF-8)。要求:
-///   {"op":"key","sid":"…","vk":65,"ch":97,"mods":1,"before":"…","after":"…","process":"notepad","moved":true,"composing":true}
+///   {"op":"key","sid":"…","vk":65,"ch":97,"mods":1,"before":"…","after":"…","process":"notepad","moved":true,"composing":true,"code":true}
 ///   {"op":"commit","sid":"…","moved":true} / {"op":"select","sid":"…","index":2} / {"op":"close","sid":"…"} / {"op":"hello","process":"…"}
 ///   {"op":"toggle","sid":"…","process":"…","before":"…","japanese":true} (半角/全角。consumed が true なら、コードの行を日本語にした / 英数に戻した)
 ///   {"op":"mode","sid":"…","process":"…","before":"…","passed":37,"ctrl":true} (キャレットが動いた・文字が変わった。入力モードの表示を合わせる)
+/// key の code は、DLL が toggle・mode を送ること (付けない古い DLL では、コードの入力欄として扱わない)。
 /// passed は、DLL がアプリに通したキー (0 はキーなしでキャレットが動いた、-1 は文字が変わっただけ)。key・toggle にも、まだ伝えていなければ付ける。
 /// 応答: {"active":true, "consumed":…, "commits":[…], "view":{…}, "code":…, "english":…} (active が false なら DLL は何もせずにキーを通す)
 /// code はコードの入力欄か、english は次に打つキーがコードの行なので英数のまま通るか (DLL はタスクバーに「A」を出す)。
@@ -511,7 +512,10 @@ internal sealed class TipServer : IDisposable
                 var vk = Int(root, "vk");
                 var ch = Int(root, "ch");
                 var mods = Int(root, "mods");
-                var before = UpdateCodeInput(session, String(root, "process"), String(root, "before"));
+                // code を付けない DLL (Meltype を更新する前から動いているアプリが、古い DLL を読み込んだまま) は、toggle・mode を送らず、
+                // キャレットの前も 20 文字しか送らない。コードの入力欄として扱うと、コードの行を日本語にできないので、一般として扱う
+                var process = IsTrue(root, "code") ? String(root, "process") : null;
+                var before = UpdateCodeInput(session, process, String(root, "before"));
                 result = session.HandleKey(vk, ch is > 0 and < 0x10000 ? (char)ch : null,
                     (mods & 1) != 0, (mods & 2) != 0, (mods & 4) != 0, (mods & 8) != 0, before, String(root, "after"));
                 break;
