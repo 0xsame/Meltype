@@ -45,6 +45,26 @@ internal static class FeedbackTests
     }
 
     [Test]
+    public static void Issue378_Memoirs_StaysEnglish()
+    {
+        // Issue #378: memoirs が メモリ絵s になる報告。今の main では memoirs・memories とも英字のまま (戻らないように)
+        CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, expected) in new[] { ("memoirs", "memoirs"), ("memories", "memories"), ("memoirsgaii", "memoirsがいい") })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
+    }
+
+    [Test]
     public static void ShiftedSingleConsonant_StaysUppercase()
     {
         foreach (var c in "WRTYPSDGHKLZXVBNM")
