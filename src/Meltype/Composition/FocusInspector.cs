@@ -14,7 +14,7 @@ public sealed record FocusInfo(bool IsTextInput, bool IsPassword, Rectangle? Bou
 ///     キーを横取りしてはいけないし、パスワード欄の文字を画面に表示してもいけない。
 ///   ・キャレットの直前の確定済みの文字: 英語とも日本語とも読める語 (sushi) を前の文字に合わせるため。
 /// UIA は他プロセスへの問い合わせで時間がかかることがあるため専用スレッドで行い、フックからは
-/// 結果のキャッシュだけを見る。フォーカスが変わってから調べ終わるまでの間は「入力欄ではない」扱い
+/// 結果のキャッシュを見る (Affinity は短い Win32 の読み取りで追加確認)。フォーカスが変わってから調べ終わるまでの間は「入力欄ではない」扱い
 /// (= 横取りしない) にするので、調べ損ねても安全側に倒れる。
 /// </summary>
 public sealed class FocusInspector : IDisposable
@@ -23,7 +23,9 @@ public sealed class FocusInspector : IDisposable
     private readonly Thread _thread;
     private long _focusSequence;
     private long _resolvedSequence = -1;
-    private volatile FocusInfo _info = new(false, false, null, "未確認");
+    private sealed record FocusState(FocusInfo Info, IntPtr AffinityWindow = default);
+    private volatile FocusState _state = new(new FocusInfo(false, false, null, "未確認"));
+    private FocusInfo _info => _state.Info;
     private string? _loggedDescription;
     private (string Description, Rectangle? Bounds)? _lastTextInput;
 
@@ -55,8 +57,7 @@ public sealed class FocusInspector : IDisposable
         get
         {
             if (Interlocked.Read(ref _resolvedSequence) != Interlocked.Read(ref _focusSequence)) return false;
-            var info = _info;
-            return info.IsTextInput && !info.IsPassword;
+            return AllowsCapture(_state);
         }
     }
 
@@ -71,14 +72,37 @@ public sealed class FocusInspector : IDisposable
         // 待つのは、同じウィンドウで直前に調べた所が入力欄だったときだけ (Discord の # の候補)。
         // ゲームなど入力欄の無いウィンドウでは待たない: クリックのたびに調べ直すので、
         // キーを押すたびにフックで最大 waitMs 止まり、ゲームの操作が遅れていた (PSO2 NGS)。
-        var last = _info;
+        var lastState = _state;
+        if (lastState.AffinityWindow != IntPtr.Zero) return AllowsCapture(lastState);
+        var last = lastState.Info;
         if (!last.IsTextInput || last.IsPassword || Native.GetForegroundWindow() != _inspectedForeground) waitMs = 0;
         var deadline = Environment.TickCount64 + waitMs;
         while (Interlocked.Read(ref _resolvedSequence) != Interlocked.Read(ref _focusSequence) && Environment.TickCount64 < deadline) Thread.Sleep(5);
         // 調べ終わらなかったときに直前の結果を使うのは、前面のウィンドウが同じときだけ (別のアプリのパスワード欄などに移った直後は使わない)。
         if (Interlocked.Read(ref _resolvedSequence) != Interlocked.Read(ref _focusSequence) && Native.GetForegroundWindow() != _inspectedForeground) return false;
-        var info = _info;
-        return info.IsTextInput && !info.IsPassword;
+        return AllowsCapture(_state);
+    }
+
+    /// <summary>同じ HWND のまま編集を抜ける Affinity は、打ち始めごとに最大 20ms の読み取りで確認する。</summary>
+    private bool AllowsCapture(FocusState snapshot)
+    {
+        if (snapshot.AffinityWindow == IntPtr.Zero) return snapshot.Info.IsTextInput && !snapshot.Info.IsPassword;
+        var foreground = _inspectedForeground;
+        var sequence = Interlocked.Read(ref _focusSequence);
+        bool Current() => sequence == Interlocked.Read(ref _focusSequence) && Native.GetForegroundWindow() == foreground &&
+            _state.AffinityWindow == snapshot.AffinityWindow && !_info.IsPassword;
+        if (snapshot.Info.IsPassword || !Current()) return false;
+        var active = HasActiveImeContext(foreground, snapshot.AffinityWindow);
+        if (!Current()) return false;
+        if (snapshot.Info.IsTextInput != active)
+        {
+            Enqueue(() =>
+            {
+                if (_info.IsTextInput == active || !Current() || HasActiveImeContext(foreground, snapshot.AffinityWindow) != active || !Current()) return;
+                ApplyFocus(sequence, _info with { IsTextInput = active }, snapshot.AffinityWindow);
+            });
+        }
+        return active && Current();
     }
 
     public FocusInfo Current => _info;
@@ -108,6 +132,9 @@ public sealed class FocusInspector : IDisposable
     /// そのアプリでは、入力欄と判定できなくてもフォーカスのある所を入力欄として扱う (issue #52)。
     /// </summary>
     public Func<bool>? TreatsAsTextInput { get; set; }
+
+    /// <summary>アプリ固有の入力欄判定に使う、前面アプリのプロセス名。このクラスのスレッドから呼ぶ。</summary>
+    public Func<string>? ForegroundProcessName { get; set; }
 
     /// <summary>
     /// 前面のアプリが、フォーカスがウィンドウそのもの (Window・Pane) にあるときも入力欄として扱うアプリか (issue #373: LINE)。
@@ -238,8 +265,13 @@ public sealed class FocusInspector : IDisposable
     {
         // 連続したフォーカス変更は、最新の 1 回だけ調べる。
         if (sequence != Interlocked.Read(ref _focusSequence)) return;
-        var info = Inspect();
-        _info = info;
+        var info = Inspect(out var affinityWindow);
+        ApplyFocus(sequence, info, affinityWindow);
+    }
+
+    private void ApplyFocus(long sequence, FocusInfo info, IntPtr affinityWindow)
+    {
+        _state = new FocusState(info, affinityWindow);
         // 調べている間にまたフォーカスが変わっていたら、この結果は採用しない (次の要求で調べ直す)。
         if (sequence == Interlocked.Read(ref _focusSequence)) Interlocked.Exchange(ref _resolvedSequence, sequence);
 
@@ -292,8 +324,9 @@ public sealed class FocusInspector : IDisposable
     /// <summary>最後に調べたときの前面のウィンドウ。</summary>
     private IntPtr _inspectedForeground;
 
-    private FocusInfo Inspect()
+    private FocusInfo Inspect(out IntPtr affinityWindow)
     {
+        affinityWindow = IntPtr.Zero;
         try
         {
             _inspectedForeground = Native.GetForegroundWindow();
@@ -360,6 +393,19 @@ public sealed class FocusInspector : IDisposable
                 editable = true;
                 description += " (エディターの画面)";
             }
+            // Affinity はキャンバスを照合し、文字編集中の IME 応答で確認する (issue #289)。
+            if (!editable && IsAffinityCanvasCandidate(ForegroundProcessName?.Invoke(), type, element.ClassName))
+            {
+                // 0 は Affinity の追加確認なしを表す。
+                var window = element.NativeWindowHandle;
+                if (window != 0 && Automation()?.IsRenderControl(_inspectedForeground, element, window) == true)
+                {
+                    affinityWindow = new IntPtr(window);
+                    editable = HasActiveImeContext(_inspectedForeground, affinityWindow);
+                    description += " (Affinity のキャンバス)";
+                }
+            }
+
             // LINE: フォーカスがウィンドウそのもの (Window・Pane) なら、入力欄に打っているとみなす (#373)
             if (!editable && type is ControlTypeWindow or ControlTypePane && TreatsWindowAsTextInput?.Invoke() == true)
             {
@@ -368,7 +414,7 @@ public sealed class FocusInspector : IDisposable
             }
             // それでも分からないアプリ (Premiere Pro など、画面を自分で描くアプリ) は、設定「入力欄とみなすアプリ」に
             // 書いてあれば入力欄として扱う。1 文字のショートカットが多いアプリもあるので、既定では何もしない。
-            if (!editable && forced)
+            if (!editable && forced && affinityWindow == IntPtr.Zero)
             {
                 editable = true;
                 description += " (入力欄とみなすアプリ)";
@@ -377,8 +423,20 @@ public sealed class FocusInspector : IDisposable
         }
         catch (Exception ex)
         {
+            affinityWindow = IntPtr.Zero;
             return new FocusInfo(false, false, null, $"確認できない: {ex.GetType().Name}");
         }
+    }
+
+    internal static bool IsAffinityCanvasCandidate(string? processName, int controlType, string? className) =>
+        string.Equals(processName, "Affinity.exe", StringComparison.OrdinalIgnoreCase) &&
+        (controlType is UiAutomation.ControlTypePane or UiAutomation.ControlTypeText) && className == "Static";
+
+    private static bool HasActiveImeContext(IntPtr foreground, IntPtr contextWindow)
+    {
+        bool StillFocused() => contextWindow != IntPtr.Zero && IME.ImeTarget.FromForeground() is { } target &&
+            target.TopLevel == foreground && target.Focus == contextWindow;
+        return StillFocused() && IME.Imm32ImeController.HasInputContext(contextWindow, 20) && StillFocused();
     }
 
     private const int ControlTypeGroup = 50026;
