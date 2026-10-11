@@ -584,12 +584,11 @@ public sealed partial class CompositionDetector
             Memory?.Get(lower) is null &&
             !_proper.Contains(lower) && !readableEnglish && Memory?.Get(lower) is null &&
             !(growing && (_english.IsPrefix(lower) || _proper.HasPrefix(lower)))) return false;
-        // ローマ字として最後まで読めても日本語の語にならない英単語 (english-readable.txt)。助詞誤分割より先に確定する。
-        if (readableEnglish) return true;
         var analysis = _romaji.Analyze(lower);
         RomajiAnalysis? fragment = null;
         RomajiAnalysis Fragment() => fragment ??= _romaji.AnalyzeFragment(lower);
         // 知らない英字の語 + 助詞 (grok|ga、figma|de) は、助詞までを 1 語にしない。語の部分だけの区間はこの後で別に見る
+        // (english-readable の語は EndsWithParticleAfterUnknownWord 側で除外する)
         if (EndsWithParticleAfterUnknownWord(lower)) return false;
         // Windows のスペルチェッカーの英単語 (meeting, name …)。ローマ字の語 (kore, sore) まで含む緩いものなので、
         // ローマ字として読めない語か、前後の文脈で英語と分かるときだけ使う (同梱の辞書の語より弱い)。
@@ -606,6 +605,8 @@ public sealed partial class CompositionDetector
         // 大文字で始まる語の後ろに記号が続く (Ah! Ooh, Wow.) なら、その語で終わっている: スペルチェッカーの語でも英語。
         if (char.IsAsciiLetterUpper(span[0]) && (exact || prefix || atEnd || (spellWord && next is [var symbol, ..] && !char.IsAsciiLetterOrDigit(symbol)))) return true;
         if (level == DetectionLevel.Manual) return false;
+        // ローマ字として最後まで読めても日本語の語にならない英単語 (english-readable.txt)。Manual の後・助詞誤分割除外の後で確定する。
+        if (readableEnglish) return true;
         // ユーザーが英字 / かなに直して覚えた語。ただし短くてローマ字として読める語 (go、no) は、日本語のすぐ後ろ
         // (nihon|go) では使わない (一度 go を英字で確定しただけで、日本語 が にほんgo になっていた)。
         if (Memory?.Get(lower) is { } learned && !(learned && before < 0 && lower.Length <= 3 && Fragment() is { IsValid: true, Partial: "" })) return learned;
