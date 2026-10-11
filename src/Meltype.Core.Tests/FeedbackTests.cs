@@ -75,6 +75,18 @@ internal static class FeedbackTests
     {
         // Issue #369: huihui (AI のモデルを出している huihui-ai) が ふいふい (→ 回回) になっていた。ふいふい は日本語の語ではない
         foreach (var (typed, expected) in new[] { ("huihui", "huihui"), ("huihuino", "huihuiの"), ("fuifui", "ふいふい") })
+    }
+
+    [Test]
+    public static void Issue377_EnglishCompound_StaysEnglish()
+    {
+        // Issue #377: gameover が がめover になっていた (game は がめ と読める)。英単語 2 つの合成語で、後ろの語 (over) が
+        // ローマ字として最後まで読めないなら、前の語も英語。よく使う日本語の語 (sake・made) の後ろは今までどおり
+        foreach (var (typed, expected) in new[]
+        {
+            ("gameover", "gameover"), ("gameoverninaru", "gameoverになる"),
+            ("sakeover", "さけover"), ("madeover", "までover"), ("shabushabu", "しゃぶしゃぶ"), ("commitshitai", "commitしたい"),
+        })
         {
             var k = new CompositionTests.Keyboard();
             k.Type(typed + "\n");
