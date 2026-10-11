@@ -89,6 +89,12 @@ public sealed class FocusInspector : IDisposable
     /// </summary>
     public Func<bool>? TreatsAsTextInput { get; set; }
 
+    /// <summary>
+    /// 前面のアプリが、フォーカスがウィンドウそのもの (Window・Pane) にあるときも入力欄として扱うアプリか (issue #373: LINE)。
+    /// LINE (Qt) は、ウィンドウを切り替えた直後、入力欄をクリックするまで変換ボックスが出なかった。そのときの UI Automation のフォーカスはウィンドウにあると見ている。
+    /// </summary>
+    public Func<bool>? TreatsWindowAsTextInput { get; set; }
+
 
     private Func<UiAutomation.Element, bool>? _selectionMatches;
     private long _selectionSequence;
@@ -334,6 +340,12 @@ public sealed class FocusInspector : IDisposable
                 editable = true;
                 description += " (エディターの画面)";
             }
+            // LINE: フォーカスがウィンドウそのもの (Window・Pane) なら、入力欄に打っているとみなす (#373)
+            if (!editable && type is ControlTypeWindow or ControlTypePane && TreatsWindowAsTextInput?.Invoke() == true)
+            {
+                editable = true;
+                description += " (ウィンドウを入力欄とみなすアプリ)";
+            }
             // それでも分からないアプリ (Premiere Pro など、画面を自分で描くアプリ) は、設定「入力欄とみなすアプリ」に
             // 書いてあれば入力欄として扱う。1 文字のショートカットが多いアプリもあるので、既定では何もしない。
             if (!editable && forced)
@@ -374,6 +386,7 @@ public sealed class FocusInspector : IDisposable
     }
 
     private static readonly string[] NotInputParts = ["group", "wrap", "container", "label", "button", "btn", "icon"];
+    private const int ControlTypeWindow = 50032, ControlTypePane = 50033;
 
     /// <summary>入力欄が UI Automation に出てこない、画面をすべて自分で描くエディターのウィンドウのクラス名。</summary>
     // Zed::Window: Zed (issue #75)
