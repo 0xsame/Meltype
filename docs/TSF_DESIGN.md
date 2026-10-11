@@ -154,7 +154,7 @@ DLL の中で、Direct2D + DirectWrite で描く (絵文字もカラーで出る
   Meltype IME が無かった版から更新した人には、Meltype.exe が起動したときに一度だけ聞き (`TsfOffered`)、「はい」ならインストール先の meltype-ime.ps1 で登録する。
   初めて起動したとき (インストーラーが聞いている)・前に Meltype IME を使っていたとき (`TsfIntroduced`)・前に断ったとき (ImeDeclined) は聞かない。
   ImeDeclined は、UAC で断ったときと、setup.exe で「Meltype IME を登録する」のチェックを外したときに残す
-- 動作モードが Meltype IME なのに登録されていなければ (登録を外した・ほかのユーザーがアンインストールした)、起動したときに Meltype キーボードに戻して保存する
+- 動作モードが Meltype IME なのに、ARM64 の Windows か、登録されていなければ (登録を外した・ほかのユーザーがアンインストールした)、起動したときに Meltype キーボードに戻して保存する
   (入れ直したら、トレイで選び直す)。登録していないか、このユーザーのキーボードの一覧に無ければ、トレイでも設定画面でも Meltype IME は選べない。
   設定の初期値は Meltype IME なので、まだ Meltype IME に切り替えたことがない (`TsfIntroduced` が false) ときは、キーボードの一覧に無いときも起動したときに Meltype キーボードにする
 - 管理者として動かす前に、DLL が配布したときのハッシュ (`MeltypeTip.dll.package.sha256`、無ければ `.sha256`) と合うかを確かめる (壊れた DLL を登録しないため)。

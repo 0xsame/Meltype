@@ -685,12 +685,14 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
     {
         var next = settings.Clone().Normalize();
         var previous = _settings;
-        // 設定画面で Meltype IME を選んだ (「既定値に戻す」を含む) が、登録されていないか、このユーザーのキーボードの一覧に無い:
+        // 設定画面で Meltype IME を選んだ (「既定値に戻す」を含む) が、ARM64 の Windows か、登録されていないか、このユーザーのキーボードの一覧に無い:
         // どこでも何も起きなくなるので選ばせない
-        if (next.Mode == InputMode.Tsf && previous.Mode != InputMode.Tsf && (!Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList))
+        if (next.Mode == InputMode.Tsf && previous.Mode != InputMode.Tsf &&
+            (System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ||
+             !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList))
         {
             next.Mode = previous.Mode;
-            Log.Warn("Meltype IME が登録されていないか、キーボードの一覧に無いので、動作モードは変えません (Install.cmd か Install-Meltype.ps1 で Meltype IME を入れてください)。");
+            Log.Warn("Meltype IME を使えない (ARM64 の Windows・登録されていない・キーボードの一覧に無い) ので、動作モードは変えません。");
         }
         _settings = next;
         if (!next.Enabled || next.Mode != InputMode.Keyboard || !KeyboardLayoutPolicy.AllowsInput(next)) _composition?.Flush();

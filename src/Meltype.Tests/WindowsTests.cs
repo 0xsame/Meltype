@@ -77,6 +77,25 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void Startup_FallsBackToKeyboardWhenMeltypeImeIsUnusable()
+    {
+        // #366: 動作モードの初期値は Meltype IME。使えないときは、起動したときに Meltype キーボードに戻す
+        var x64 = System.Runtime.InteropServices.Architecture.X64;
+        var arm64 = System.Runtime.InteropServices.Architecture.Arm64;
+        var fresh = new Settings();
+        Assert.Equal(InputMode.Tsf, fresh.Mode, "初期値は Meltype IME");
+        Assert.True(!global::Meltype.Program.ShouldFallBackToKeyboard(fresh, knownUnregistered: false, inUserLanguageList: true, x64), "登録済みで一覧にもある");
+        Assert.True(global::Meltype.Program.ShouldFallBackToKeyboard(fresh, knownUnregistered: false, inUserLanguageList: true, arm64), "ARM64 は登録済みで一覧にあっても戻す");
+        Assert.True(global::Meltype.Program.ShouldFallBackToKeyboard(fresh, knownUnregistered: true, inUserLanguageList: false, x64), "登録されていない");
+        Assert.True(global::Meltype.Program.ShouldFallBackToKeyboard(fresh, knownUnregistered: false, inUserLanguageList: false, x64), "まだ切り替えたことがなく、一覧に無い");
+
+        var introduced = new Settings { TsfIntroduced = true };
+        Assert.True(!global::Meltype.Program.ShouldFallBackToKeyboard(introduced, knownUnregistered: false, inUserLanguageList: false, x64), "使っていた人は、一覧に無くても戻さない");
+        Assert.True(global::Meltype.Program.ShouldFallBackToKeyboard(introduced, knownUnregistered: false, inUserLanguageList: true, arm64), "使っていた人も、ARM64 なら戻す");
+        Assert.True(!global::Meltype.Program.ShouldFallBackToKeyboard(new Settings { Mode = InputMode.Keyboard }, knownUnregistered: true, inUserLanguageList: false, arm64), "Meltype キーボードはそのまま");
+    }
+
+    [Test]
     public static void AffinityCandidate_RejectsOtherProductsAndMenus()
     {
         Assert.True(FocusInspector.IsAffinityCanvasCandidate("AFFINITY.EXE", UiAutomation.ControlTypePane, "Static"), "大小文字と Pane");
