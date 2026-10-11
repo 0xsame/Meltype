@@ -2986,4 +2986,17 @@ internal static class CompositionTests
         k.Type("/review");
         Assert.True(k.Gate.IsCaptured, "OFF なら今までどおり変換ボックスに入れる");
     }
+
+    [Test]
+    public static void Issue455_OemNoPasokon()
+    {
+        // Issue #455: oem は 3 文字の略語。oemnopasokonn を おえもの と読まず、oem + の + ぱそこん。
+        // 漢字変換のないランナーでは、打った小文字のまま oemのぱそこん。おえむ (oemu) は日本語のまま。
+        var k = new Keyboard();
+        k.Type("oemnopasokonn\n");
+        Assert.Equal("oemのぱそこん", k.Host.Document);
+        k = new Keyboard();
+        k.Type("oemu\n");
+        Assert.Equal("おえむ", k.Host.Document);
+    }
 }
