@@ -1309,6 +1309,13 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue409_TanomeOffersBirthdaySlang()
+    {
+        var dictionary = CandidateDictionary.Load(null);
+        Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    }
+
+    [Test]
     public static void CandidateMeaning_FromTranslations()
     {
         // 候補で止まったら意味を出す (同音異義語の手がかり)
