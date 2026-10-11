@@ -185,6 +185,7 @@ internal static class Quality
         new("混在", "protopedias", "protopedias"),
         new("混在", "Protopedia", "Protopedia"),
         new("混在", "Protopedias", "Protopedias"),
+        new("混在", "worldpedia", "worldpedia"),
         new("英語", "yahoo", "yahoo"),
 
         // --- 英語の後の短い語 (助詞と同じ形) ---

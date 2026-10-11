@@ -350,11 +350,12 @@ public sealed partial class CompositionDetector
             // (yap|lay → ya|play。スペルチェッカーが yap / lay を知っているとやplay が yaplay になる)。
             // 辞書の英単語そのもの (tomorrow) は分けない。打ちかけの子音 (pending の w) を head に含めないと
             // tomorro になり、Windows のスペルが morrow を知っていると to|morrow → ともっrow になる。
+            // -pedia 複合 (worldpedia) も分けない。wo + rldpedia と助詞「を」に割れる。
             if (found > i && !kanaInput && !IsAsciiSymbol(units[i]))
             {
                 var head = (Raw(units, i, found) + (found == n ? pending : "")).ToLowerInvariant();
                 if (Detection.DictionaryDetector.StartsWithParticle(head) is { } leading && head.Length > leading.Length &&
-                    !IsListedEnglishWord(head))
+                    !IsListedEnglishWord(head) && !IsPediaEnglishWord(head))
                 {
                     var covered = 0;
                     var afterParticle = i;
