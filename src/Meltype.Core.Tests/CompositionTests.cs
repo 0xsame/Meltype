@@ -1285,7 +1285,7 @@ internal static class CompositionTests
         // えーmail、こーおp になっていた
         foreach (var (typed, expected) in new[]
         {
-            ("e-mail", "e-mail"), ("co-op", "co-op"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"),
+            ("e-mail", "e-mail"), ("co-op", "co-op"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"), ("Blu-ray", "Blu-ray"),
             ("e-to", "えーと"), ("su-pa-", "すーぱー"), ("o-bun", "おーぶん"),
         })
         {
@@ -1313,6 +1313,11 @@ internal static class CompositionTests
     {
         var dictionary = CandidateDictionary.Load(null);
         Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    public static void Issue435_BluRayStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("Blu-ray\n");
+        Assert.Equal("Blu-ray", k.Host.Document);
     }
 
     [Test]
