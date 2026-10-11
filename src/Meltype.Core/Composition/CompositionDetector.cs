@@ -448,8 +448,8 @@ public sealed partial class CompositionDetector
     public string? EnglishAutoCorrection(string word)
     {
         if (word.Length < 2 || !word.All(char.IsAsciiLetter)) return null;
-        // -pedia 複合 (conservapedia など) はスペルチェッカーが別綴りに「訂正」してしまうことがあるので触らない。
-        if (word.EndsWith("pedia", StringComparison.OrdinalIgnoreCase) && word.Length >= 5) return null;
+        // -pedia / -pedias 複合はスペルチェッカーが別綴りに「訂正」してしまうことがあるので触らない。
+        if (IsPediaEnglishWord(word.ToLowerInvariant())) return null;
         if (SpellChecker?.AutoCorrection(word.ToLowerInvariant()) is not { } right) return null;
         if (word.All(char.IsAsciiLetterUpper) && word.Length > 1) return right.ToUpperInvariant();
         return char.IsAsciiLetterUpper(word[0]) ? char.ToUpperInvariant(right[0]) + right[1..] : right;
@@ -488,12 +488,17 @@ public sealed partial class CompositionDetector
     }
 
     /// <summary>
-    /// -pedia 複合 (pedia / protopedia …)。ローマ字だと ぺぢあ になり、途中の to が助詞「と」に割れる。
-    /// 接頭が無い pedia か、3 文字以上の接頭 + pedia。
+    /// -pedia / -pedias 複合 (pedia / protopedia / wikipedias …)。
+    /// ローマ字だと ぺぢあ になり、途中の to が助詞「と」に割れる。複数の s が付いても同じ。
+    /// 接頭が無い pedia(s) か、3 文字以上の接頭 + pedia(s)。
     /// </summary>
-    private static bool IsPediaEnglishWord(ReadOnlySpan<char> lower) =>
-        lower.EndsWith("pedia", StringComparison.Ordinal) && lower.Length >= 5 &&
-        (lower.Length == 5 || lower.Length - 5 >= 3);
+    private static bool IsPediaEnglishWord(ReadOnlySpan<char> lower)
+    {
+        var stem = lower.EndsWith("pedias", StringComparison.Ordinal) ? 6
+            : lower.EndsWith("pedia", StringComparison.Ordinal) ? 5 : 0;
+        if (stem == 0 || lower.Length < stem) return false;
+        return lower.Length == stem || lower.Length - stem >= 3;
+    }
 
     /// <summary>よく使う語の読み (readings.txt、3 文字以上)。かな入力で、英単語のキーが日本語の語を打っていないかを見る。</summary>
     private static readonly Lazy<HashSet<string>> Readings = new(() =>

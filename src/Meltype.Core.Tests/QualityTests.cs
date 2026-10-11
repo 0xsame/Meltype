@@ -176,11 +176,13 @@ internal static class Quality
         new("混在", "yastack", "やstack"),
         new("混在", "yaplay", "やplay"),
         new("混在", "yasync", "やsync"),
-        // -pedia (ローマ字だと ぺぢあ。#207)
+        // -pedia / -pedias (ローマ字だと ぺぢあ。#207)
         new("混在", "pedia", "pedia"),
         new("混在", "protopedia", "protopedia"),
         new("混在", "conservapedia", "conservapedia"),
         new("混在", "wikipedia", "wikipedia"),
+        new("混在", "wikipedias", "wikipedias"),
+        new("混在", "protopedias", "protopedias"),
         new("英語", "yahoo", "yahoo"),
 
         // --- 英語の後の短い語 (助詞と同じ形) ---
