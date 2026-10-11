@@ -97,6 +97,13 @@ internal static class FeedbackTests
     public static void Issue376_SuruAfterEnglishAndParticle_IsJapanese()
     {
         // Issue #376: 英単語 + 助詞 + する の活用 (password|ni|site) を、英単語 + 助詞 + 英単語 (api|no|error) と見て site を英字にしていた
+    }
+
+    [Test]
+    public static void Issue379_CSpelledEnglishWordThenParticle_StaysEnglish()
+    {
+        // Issue #379: face の後に日本語 (face + ni) が ふぁせに (ファ背に) になっていた。c で綴った英単語 + 助詞 は英単語 + 助詞。
+        // 日本語の途中の c 行の綴り (fucarete・shoucanshi) は今までどおり日本語
         CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
         try
         {
@@ -106,6 +113,8 @@ internal static class FeedbackTests
                 ("emailwositai", "emailをしたい"),
                 // 英単語 + 助詞 + 英単語 は今までどおり
                 ("apinoerror", "apiのerror"), ("websitewomiru", "websiteをみる"),
+                ("faceni", "faceに"), ("facewo", "faceを"), ("faceniutsu", "faceにうつ"), ("placega", "placeが"),
+                ("fucarete", "ふかれて"), ("shoucanshi", "しょうかんし"),
             })
             {
                 var k = new CompositionTests.Keyboard();
