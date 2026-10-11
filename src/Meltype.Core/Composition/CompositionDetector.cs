@@ -62,6 +62,33 @@ public sealed partial class CompositionDetector
         return list;
     });
 
+    /// <summary>english.txt の「日本語由来で英語としても使われる語」(sushi, anime, tofu …)。</summary>
+    private static readonly Lazy<HashSet<string>> JapaneseOriginWords = new(() =>
+    {
+        var words = new HashSet<string>(StringComparer.Ordinal);
+        var inSection = false;
+        foreach (var line in DictionarySource.ReadEmbedded("english.txt").Split('\n'))
+        {
+            if (line.StartsWith("# ---", StringComparison.Ordinal))
+            {
+                inSection = line.Contains("日本語由来");
+                continue;
+            }
+            if (!inSection || line.StartsWith('#')) continue;
+            // 日本語由来の語の後ろに、同じ段落で続けて技術用語などを並べてあるので、空行までを読む
+            if (line.Trim().Length == 0)
+            {
+                inSection = false;
+                continue;
+            }
+            foreach (var word in line.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) words.Add(word);
+        }
+        return words;
+    });
+
+    /// <summary>日本語由来で英語としても使われる語か (sushi, ramen)。英文の中に出てきても、日本語のつもりのことがある。</summary>
+    public static bool IsJapaneseOriginWord(string lower) => JapaneseOriginWords.Value.Contains(lower);
+
     public RomajiDetector Romaji => _romaji;
 
     /// <summary>普通の英単語の判定に使う Windows のスペルチェッカー。null なら同梱の辞書だけ。</summary>
@@ -104,7 +131,7 @@ public sealed partial class CompositionDetector
         // Structured Latin tokens are opaque; their components are not Japanese readings.
         if (!kanaInput && token.All(c => c is >= '!' and <= '~') &&
             (token.Contains('@') && token.Any(char.IsAsciiLetter) || token.Contains('_') || token.Contains("://", StringComparison.Ordinal) ||
-             System.Text.RegularExpressions.Regex.Matches(token, "[a-z][A-Z][a-z]").Count >= 2))
+             System.Text.RegularExpressions.Regex.Matches(token, "[a-z][A-Z][a-z]").Count >= 2 && !StartsWithJapaneseReading(token) || IsStylizedName(token)))
             return [new CompositionSegment(true, "", token)];
         // A romaji token can cross an English boundary (reflect + sa becomes tsa).
         // Recognize an unambiguous English verb before parsing its Japanese conjugation.
@@ -123,12 +150,22 @@ public sealed partial class CompositionDetector
                     {
                         var rest = raw[end..];
                         if (!rest.StartsWith(particle, StringComparison.Ordinal) ||
-                            !IsKnownEnglishWord(rest[particle.Length..])) continue;
+                            !IsKnownEnglishWord(rest[particle.Length..]) || IsSuruTail(rest[particle.Length..])) continue;
                         return [new CompositionSegment(true, "", word),
                             new CompositionSegment(false, _romaji.ConvertLenient(particle, final: true), particle),
                             new CompositionSegment(true, "", rest[particle.Length..])];
                     }
                 }
+            }
+            // 英単語 2 つの合成語 (game + over): 後ろの語がローマ字として読めない英単語なら、前の語 (がめ と読める game) も英語
+            // (がめover になっていた: issue #377)。前の語がよく使う日本語の語 (sake = さけ) なら、日本語 + 英単語のまま。
+            if (raw.All(char.IsAsciiLetter) && EnglishCompoundEnd(raw) is var compound and > 0)
+            {
+                var rest = raw[compound..];
+                var typed = new CompositionText(this);
+                foreach (var c in rest) typed.Append(c);
+                var tail = rest.Length > 0 ? Segment([.. typed.Units], typed.Pending, true, followingEnglish, level, englishSentence, kanaInput, final) : [];
+                return [new CompositionSegment(true, "", raw[..compound]), .. tail];
             }
             for (var end = raw.Length - 2; end >= 4; end--)
             {
@@ -157,6 +194,43 @@ public sealed partial class CompositionDetector
         return segments;
     }
 
+    /// <summary>
+    /// 記号を混ぜて書く名前・略語か (#303)。英字 1 文字ずつを . で区切った大文字を含む略語 (B.o.B、U.S.A.) と、
+    /// 大文字で始まり、英字のすぐ後ろに $ が入った名前 (Chri$tian、Ke$ha、A$AP)。日本語の打ちかけではない。
+    /// </summary>
+    private static bool IsStylizedName(string token) =>
+        token.Any(char.IsAsciiLetterUpper) && DottedLetters.IsMatch(token) ||
+        token.Length > 0 && char.IsAsciiLetterUpper(token[0]) && DollarName.IsMatch(token);
+
+    private static readonly System.Text.RegularExpressions.Regex DottedLetters = new(@"^(?:[A-Za-z]\.)+[A-Za-z]\.?$");
+    private static readonly System.Text.RegularExpressions.Regex DollarName = new(@"^[A-Za-z]+(?:\$[A-Za-z]*)+$");
+
+    /// <summary>
+    /// 先頭が英単語 2 つの合成語 (game + over) なら、その終わりの位置。無ければ -1。
+    /// 前の語は 4 文字以上の同梱の辞書の英単語で、よく使う日本語の語ではないもの (sake = さけ は除く。sha + bus|ha のような短い語の偶然の一致も避ける)。
+    /// 後ろの語は 3 文字以上の同梱の辞書の英単語で、ローマ字として最後まで読めないもの (over の r)。全体が 1 つの英単語 (homework) なら使わない (今までの判定で英語になる)。
+    /// </summary>
+    private int EnglishCompoundEnd(string raw)
+    {
+        var lower = raw.ToLowerInvariant();
+        if (IsKnownEnglishWord(lower) || IsCommonJapanese?.Invoke(lower) == true) return -1;
+        for (var split = 4; split <= lower.Length - 3; split++)
+        {
+            var head = lower[..split];
+            // 前の語がローマ字として読めない (well の ll) なら、今までの判定で英語になるので見ない
+            if (!_english.Words.ContainsWord(head) || IsCommonJapanese?.Invoke(head) == true || _japanese.Words.ContainsWord(head) ||
+                _romaji.AnalyzeFragment(head) is not { IsValid: true, Partial: "" }) continue;
+            for (var end = lower.Length; end >= split + 3; end--)
+            {
+                var word = lower[split..end];
+                // 合成語は入力の終わりか助詞の前で終わる (commit + shit|ai・commit + sit|e… のように、語の途中で区切らない)
+                if (end < lower.Length && !TrailingParticles.Any(p => lower[end..].StartsWith(p, StringComparison.Ordinal))) continue;
+                if (_english.Words.ContainsWord(word) && _romaji.AnalyzeFragment(word) is not { IsValid: true, Partial: "" or "n" }) return end;
+            }
+        }
+        return -1;
+    }
+
     private List<CompositionSegment>? UnknownWordThenJapanese(IReadOnlyList<CompositionUnit> units, string pending, List<CompositionSegment> segments, DetectionLevel level, string whole)
     {
         // 知らない英字の語 + 助詞で始まる日本語 (grokga、grokniyoruto) を最初から打っているなら、語は英字・後ろは日本語 (grokが)。
@@ -172,7 +246,7 @@ public sealed partial class CompositionDetector
                 var readable = _romaji.Analyze(stem).Tokens.Sum(t => t.Romaji.Length);
                 if (readable >= 2 || _romaji.Analyze(stem[(readable + 1)..]) is { IsValid: true, Partial: "" }) continue;
                 var rest = (Raw(units, k, units.Count) + pending).ToLowerInvariant();
-                if (!TrailingParticles.Any(p => rest.StartsWith(p, StringComparison.Ordinal)) || stem[^1] == rest[0] ||
+                if (!TrailingParticles.Any(p => rest.StartsWith(p, StringComparison.Ordinal)) ||
                     _romaji.Analyze(rest) is not { IsValid: true, Partial: "" or "n" }) continue;
                 return [new CompositionSegment(true, "", Raw(units, 0, k)), Japanese(units, k, units.Count, pending)];
             }
@@ -338,6 +412,19 @@ public sealed partial class CompositionDetector
         lower.Length >= 2 && (Memory?.Get(lower) ?? (_english.Words.ContainsWord(lower) || _proper.Contains(lower)));
 
     /// <summary>
+    /// 最初の大文字の前の小文字が、助詞で終わる日本語として読み切れるか (kyouhaGitHubni の kyouha)。
+    /// camelCaseName・getElementById・sakuraTreeNode のような識別子 (camel・get・sakura) は当たらない。
+    /// </summary>
+    private bool StartsWithJapaneseReading(string token)
+    {
+        var upper = token.AsSpan().IndexOfAnyInRange('A', 'Z');
+        if (upper < 3) return false;
+        var head = token[..upper];
+        return head.All(char.IsAsciiLetterLower) && TrailingParticles.Any(p => head.Length > p.Length && head.EndsWith(p, StringComparison.Ordinal)) &&
+            _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } && !IsKnownEnglishWord(head);
+    }
+
+    /// <summary>
     /// 知っている英単語か (同梱の辞書・固有名詞・ユーザーが英字に直して覚えた語・4 文字以上ならスペルチェッカー)。
     /// python + no の n のように、英単語の最後の n と次の音がくっつくのを防ぐのに使う。
     /// </summary>
@@ -465,6 +552,11 @@ public sealed partial class CompositionDetector
         // 入力全体がその語だけのときは英語。
         if (!(startOfInput && atEnd))
         {
+            // ただし、入力の先頭 (か英語の後ろ) の 4 文字以上の英単語 (同梱の辞書・スペルチェッカー) のすぐ後ろが助詞なら、英単語 + 助詞 (face|ni → faceに。ふぁせに になっていた: issue #379)
+            var englishThenParticle = (inDictionary || knownSpelling) && lower.Length >= 4 && before >= 0 && next is { Length: > 0 } &&
+                Detection.DictionaryDetector.StartsWithParticle(next.ToLowerInvariant()) is not null;
+            // c で綴った語 (face) は、日本語を打つつもりなら k・s を使うので、英単語として扱う
+            if (lower.Contains('c') && englishThenParticle) return true;
             if (lower.Contains('c') && _romaji.Analyze(RomajiDetector.ReadCRow(lower)) is { IsValid: true, Partial: "" or "n" }) return false;
             // v 行 (va = ゔぁ): 辞書の英単語 (video) でなければ日本語 (vanpaia → ゔぁんぱいあ → ヴァンパイア)。
             // スペルチェッカーの 5 文字以上の英単語 (invite、private) は、ゔぃ と読める綴りでも英語 (いんviteしました になっていた: issue #69)。
@@ -496,7 +588,7 @@ public sealed partial class CompositionDetector
         {
             return true;
         }
-        if (growing && lower.Length >= 4 && !conservative && !smallKanaSpelling && _proper.HasPrefix(lower) && !_japanese.IsPrefix(lower)) return true;
+        if (growing && before >= 0 && lower.Length >= 4 && !conservative && !smallKanaSpelling && _proper.HasPrefix(lower) && !_japanese.IsPrefix(lower)) return true;
 
         // 英単語で、ローマ字として読めない英字を含む (zoom + でかいぎ → m が読めない)。日本語の文の途中でも英語。
         // 日本語の後ろで、助詞 + 読めない英字 (の + ts: jissainotsyu) は、英単語 (not) ではなく 助詞 + 英字。
@@ -575,7 +667,8 @@ public sealed partial class CompositionDetector
         var prefix = atEnd && !final && level == DetectionLevel.Aggressive && lower.Length >= 4 && _english.IsPrefix(lower);
 
         // Shift を押して打った大文字で始まる語は英語 (手動でも)。
-        if (char.IsAsciiLetterUpper(span[0]) && (word || prefix || atEnd)) return true;
+        // ただし Shift を押した 1 文字の後ろにかなが続くなら、ゅ・ょ などを打つ Shift が前後のキーに重なった打ち間違い (Iゅうりょく: issue #135)
+        if (char.IsAsciiLetterUpper(span[0]) && ((word || prefix) && span.Length >= 2 || atEnd)) return true;
         if (level == DetectionLevel.Manual) return false;
         if (Memory?.Get(lower) is { } learned) return learned;
         if (!(word || prefix) || lower.Length < 2) return false;
@@ -630,6 +723,11 @@ public sealed partial class CompositionDetector
             // 大文字 1 文字 + 助詞で始まるローマ字 (A|nisiyouka → Aにしようか、B|noan → Bの案)。
             // 名前 (Tanaka、Hanako) を区切らないよう、後ろが助詞で始まるときだけ。
             if (head.Length == 1 && char.IsAsciiLetterUpper(head[0]) && Detection.DictionaryDetector.StartsWithParticle(rest.Replace("-", "")) is not null) return k;
+            // 大文字の子音 1 文字 + 最後まで読めるローマ字で、合わせると頭から読めない (T|shatsu → Tシャツ: issue #351)。
+            // 名前 (Tanaka) は頭から読めるので区切らない。英単語 (Grape・Spike) を区切らないよう、後ろがよく使う日本語の語 (しゃつ) のときだけ
+            if (head.Length == 1 && char.IsAsciiLetterUpper(head[0]) && head[0] is not ('A' or 'I' or 'U' or 'E' or 'O' or 'N') &&
+                _romaji.Analyze(rest.Replace("-", "")) is { IsValid: true, Partial: "" or "n" } restReading && !_romaji.AnalyzeFragment(whole.ToLowerInvariant()).IsValid &&
+                restReading.Kana.Length >= 3 && (IsCommonJapanese?.Invoke(rest) == true || ContainsJapaneseReading(restReading.Kana))) return k;
         }
         // 後ろに大文字で始まる語が続く (Japanese|to|English…) と、後ろが小文字だけにならず上では区切れない。
         // 次の大文字の前までを見て、知っている語 + 助詞で始まるローマ字 (Japanese|to) なら区切る。
@@ -671,7 +769,7 @@ public sealed partial class CompositionDetector
     private static readonly HashSet<string> HyphenPrefixes = ["e", "x", "re", "co", "ex", "non", "anti", "semi", "multi", "pre", "sub", "post", "mid", "self", "well"];
 
     // 接頭辞の規則では拾えない、- の入ったよく使う英単語 (後ろが 2 文字以下など)
-    private static readonly HashSet<string> HyphenatedWords = ["co-op", "re-do", "x-ray", "t-shirt", "wi-fi", "hi-fi", "e-book", "e-sports", "k-pop", "j-pop", "j-rock", "j-core", "p-hub", "talk-admin", "r-18", "sub-6", "gpt-6.7", "a-z", "u-turn", "check-in", "log-in", "sign-in", "add-on", "plug-in", "built-in", "follow-up", "set-up", "pop-up", "drop-down"];
+    private static readonly HashSet<string> HyphenatedWords = ["co-op", "re-do", "x-ray", "t-shirt", "wi-fi", "hi-fi", "lo-fi", "sci-fi", "e-book", "e-sports", "k-pop", "j-pop", "j-rock", "j-core", "p-hub", "talk-admin", "r-18", "sub-6", "gpt-6.7", "a-z", "u-turn", "check-in", "log-in", "sign-in", "add-on", "plug-in", "built-in", "follow-up", "set-up", "pop-up", "drop-down"];
     // 日本語のローマ字の途中を英語の接頭辞と誤認しないよう、日本語に続けて拾うのは明示した英数字表記だけ。
     private static readonly HashSet<string> NumericHyphenatedWords = ["r-18", "sub-6", "gpt-6.7"];
 
@@ -824,6 +922,12 @@ public sealed partial class CompositionDetector
 
     private static readonly string[] TrailingParticles = ["kara", "made", "yori", "ga", "wo", "ni", "de", "no", "to", "mo", "ha", "wa"];
 
+    /// <summary>
+    /// 英単語 + 助詞 の後ろの、する の活用と読める語 (site = して、sita = した)。英単語 (site) でも日本語の する の活用とみなす
+    /// (password|ni|site → password にして: issue #376)。
+    /// </summary>
+    private bool IsSuruTail(string tail) =>
+        _romaji.AnalyzeFragment(tail.ToLowerInvariant()) is { IsValid: true, Partial: "" } reading && IsSuruForm(reading.Kana);
     private int EnglishBeforeParticleAndEnglishTail(IReadOnlyList<CompositionUnit> units, int start, string pending)
     {
         // api + no + error のように、辞書の英語見出しを助詞と確実な英単語が挟むとき。
@@ -838,7 +942,7 @@ public sealed partial class CompositionDetector
             var whole = head + rest;
             if (Enumerable.Range(head.Length + 1, whole.Length - head.Length).Any(length => IsKnownEnglishWord(whole[..length]))) continue;
             foreach (var particle in TrailingParticles)
-                if (rest.StartsWith(particle, StringComparison.Ordinal) && IsDefinitelyEnglish(rest[particle.Length..])) return end;
+                if (rest.StartsWith(particle, StringComparison.Ordinal) && IsDefinitelyEnglish(rest[particle.Length..]) && !IsSuruTail(rest[particle.Length..])) return end;
         }
         return -1;
     }

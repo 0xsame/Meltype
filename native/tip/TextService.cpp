@@ -77,6 +77,12 @@ bool IsHankakuZenkaku(UINT vk) { return vk == VK_KANJI || vk == 0xF3 || vk == 0x
 
 bool KeyDown(int vk) { return (GetKeyState(vk) & 0x8000) != 0; }
 
+// 変換中に Meltype.exe が受け持つ Ctrl+英字 (CompositionController.ControlShortcut と合わせる)。Alt・Windows キーと一緒なら違う
+bool IsCompositionShortcut(UINT vk) {
+    if (!KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) return false;
+    return vk == 'H' || vk == 'U' || vk == 'I' || vk == 'O' || vk == 'P';
+}
+
 // そのキーで入力される文字 (無ければ 0)
 wchar_t CharOf(UINT vk, LPARAM lParam) {
     BYTE state[256] = {};
@@ -673,7 +679,8 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, wchar_t& ch, bool test)
         // Ctrl・Alt・Windows キーとの組み合わせ (Ctrl + S など): Meltype.exe も確定してアプリに渡すだけなので、ここで確定して
         // 受け取らずに通す (受け取ってから送り直すと、送り直しが届かないアプリでキーが消える)。
         // ここで確定できなければ受け取り、キーの処理の中で確定してから送り直す (キーが先に届いて、確定が後になるのを防ぐ)
-        if ((KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) && CommitNow()) return false;
+        // ただし変換ボックスの中で使う Ctrl+英字 (Ctrl+U/I/O/P はかな・英字の切り替え、Ctrl+H は BackSpace) は、確定せずに Meltype.exe に送る
+        if ((KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) && !IsCompositionShortcut(vk) && CommitNow()) return false;
         return true;  // 変換中はほかのキーを全部受け取る (つながらなければ確定して通す)
     }
     // 半角/全角: 日本語 ⇔ 英数 (IME の ON/OFF は IME 自身が切り替える)。Meltype.exe が使えないときも受け取る
@@ -689,7 +696,9 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, wchar_t& ch, bool test)
     if (KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) return pass(L"Ctrl・Alt・Windows キーを押している");
     if (ContextDisabled(context)) return pass(L"この入力欄では使わない");
     ch = CharOf(vk, 0);
-    bool starts = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'!' && ch <= L'~');
+    // Shift+Space は全角スペース (Microsoft IME と同じ。Meltype.exe が入れる: issue #246)
+    bool starts = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'!' && ch <= L'~') ||
+                  (vk == VK_SPACE && KeyDown(VK_SHIFT));
     if (!starts) return false;
     if (!ServerReady()) return pass(L"Meltype.exe が使えない");
     // パスワード欄か。OnTestKeyDown で読んだ結果は、続く同じキー・同じ入力欄の OnKeyDown で 1 回だけ使う (ほかのキー・入力欄には使わない)

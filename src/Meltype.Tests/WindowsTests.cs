@@ -31,6 +31,52 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void MsIme_LongReading_IsSplitBeforeTheEngineLimit()
+    {
+        // #221: Microsoft IME の変換エンジンは 100 文字を超える読みを受け付けない (E_LARGEINPUT)。区切って渡す
+        var sentence = "きょうはいいてんきですね、あしたもはれるといいですね。";
+        var text = string.Concat(Enumerable.Repeat(sentence, 6)); // 162 文字
+        var parts = Composition.MsImeKanjiConverter.SplitForEngine(text, 90);
+        Assert.Equal(text, string.Concat(parts));
+        Assert.True(parts.All(p => p.Length <= 90), string.Join(" / ", parts.Select(p => p.Length)));
+        Assert.True(parts[0].EndsWith('。'), "文の切れ目で区切る: " + parts[0]);
+        // 区切りの文字が無ければ上限で切る
+        Assert.Equal("100,50", string.Join(",", Composition.MsImeKanjiConverter.SplitForEngine(new string('ー', 150), 100).Select(p => p.Length)));
+
+        using var ime = new Composition.MsImeKanjiConverter();
+        if (ime.Convert("てすと") is null) return; // Microsoft IME が無い環境
+        var clauses = ime.ConvertClauses(text, "わたしは");
+        Assert.True(clauses is { Count: > 0 }, "長い読みも文節に区切って変換できる");
+        Assert.Equal(text, string.Concat(clauses!.Select(c => c.Reading)));
+        Assert.True(string.Concat(clauses.Select(c => c.Text)).Contains("天気"), string.Concat(clauses.Select(c => c.Text)));
+        Assert.True(ime.Convert(text)?.Contains("天気") == true, "全体の変換も");
+    }
+
+    [Test]
+    public static void WebInputClassNames_AreTextInputs()
+    {
+        // #70: Chatwork の検索欄は Group で、クラス名 (sc-kzAZJu ijnNh inputLong) でしか入力欄と分からない
+        foreach (var name in new[] { "sc-kzAZJu ijnNh inputLong", "input", "searchInput", "search-input", "chat_input", "input-field" })
+            Assert.True(Composition.FocusInspector.LooksLikeInputClass(name), name);
+        foreach (var name in new[] { "", "inputs", "input-group", "inputWrapper", "searchInputButton", "sc-kzAZJu ijnNh", "inputtable" })
+            Assert.True(!Composition.FocusInspector.LooksLikeInputClass(name), name);
+    }
+
+    [Test]
+    public static void StartupTask_IsLogonTriggerWithoutDelayAndAdmin()
+    {
+        // #283: サインインしたらすぐ起動するタスク。& などを含むユーザー名・パスでも XML として読める
+        var xml = Startup.TaskXml(@"PC\R&D <user>", @"C:\Users\R&D\AppData\Local\Programs\Meltype\Meltype.exe");
+        var document = System.Xml.Linq.XDocument.Parse(xml);
+        System.Xml.Linq.XNamespace ns = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+        Assert.Equal(@"PC\R&D <user>", document.Descendants(ns + "LogonTrigger").Single().Element(ns + "UserId")!.Value);
+        Assert.Equal("LeastPrivilege", document.Descendants(ns + "RunLevel").Single().Value, "管理者権限なし");
+        Assert.True(!document.Descendants(ns + "Delay").Any(), "遅らせない");
+        Assert.Equal(@"C:\Users\R&D\AppData\Local\Programs\Meltype\Meltype.exe", document.Descendants(ns + "Command").Single().Value);
+        Assert.Equal(@"C:\Users\R&D\AppData\Local\Programs\Meltype", document.Descendants(ns + "WorkingDirectory").Single().Value);
+    }
+
+    [Test]
     public static void AffinityCandidate_RejectsOtherProductsAndMenus()
     {
         Assert.True(FocusInspector.IsAffinityCanvasCandidate("AFFINITY.EXE", UiAutomation.ControlTypePane, "Static"), "大小文字と Pane");
