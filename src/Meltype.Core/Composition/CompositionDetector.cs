@@ -130,6 +130,16 @@ public sealed partial class CompositionDetector
                     }
                 }
             }
+            // 英単語 2 つの合成語 (game + over): 後ろの語がローマ字として読めない英単語なら、前の語 (がめ と読める game) も英語
+            // (がめover になっていた: issue #377)。前の語がよく使う日本語の語 (sake = さけ) なら、日本語 + 英単語のまま。
+            if (raw.All(char.IsAsciiLetter) && EnglishCompoundEnd(raw) is var compound and > 0)
+            {
+                var rest = raw[compound..];
+                var typed = new CompositionText(this);
+                foreach (var c in rest) typed.Append(c);
+                var tail = rest.Length > 0 ? Segment([.. typed.Units], typed.Pending, true, followingEnglish, level, englishSentence, kanaInput, final) : [];
+                return [new CompositionSegment(true, "", raw[..compound]), .. tail];
+            }
             for (var end = raw.Length - 2; end >= 4; end--)
             {
                 var word = raw[..end];
@@ -155,6 +165,32 @@ public sealed partial class CompositionDetector
             return [new CompositionSegment(true, "", whole)];
         }
         return segments;
+    }
+
+    /// <summary>
+    /// 先頭が英単語 2 つの合成語 (game + over) なら、その終わりの位置。無ければ -1。
+    /// 前の語は 4 文字以上の同梱の辞書の英単語で、よく使う日本語の語ではないもの (sake = さけ は除く。sha + bus|ha のような短い語の偶然の一致も避ける)。
+    /// 後ろの語は 3 文字以上の同梱の辞書の英単語で、ローマ字として最後まで読めないもの (over の r)。全体が 1 つの英単語 (homework) なら使わない (今までの判定で英語になる)。
+    /// </summary>
+    private int EnglishCompoundEnd(string raw)
+    {
+        var lower = raw.ToLowerInvariant();
+        if (IsKnownEnglishWord(lower) || IsCommonJapanese?.Invoke(lower) == true) return -1;
+        for (var split = 4; split <= lower.Length - 3; split++)
+        {
+            var head = lower[..split];
+            // 前の語がローマ字として読めない (well の ll) なら、今までの判定で英語になるので見ない
+            if (!_english.Words.ContainsWord(head) || IsCommonJapanese?.Invoke(head) == true || _japanese.Words.ContainsWord(head) ||
+                _romaji.AnalyzeFragment(head) is not { IsValid: true, Partial: "" }) continue;
+            for (var end = lower.Length; end >= split + 3; end--)
+            {
+                var word = lower[split..end];
+                // 合成語は入力の終わりか助詞の前で終わる (commit + shit|ai・commit + sit|e… のように、語の途中で区切らない)
+                if (end < lower.Length && !TrailingParticles.Any(p => lower[end..].StartsWith(p, StringComparison.Ordinal))) continue;
+                if (_english.Words.ContainsWord(word) && _romaji.AnalyzeFragment(word) is not { IsValid: true, Partial: "" or "n" }) return end;
+            }
+        }
+        return -1;
     }
 
     private List<CompositionSegment>? UnknownWordThenJapanese(IReadOnlyList<CompositionUnit> units, string pending, List<CompositionSegment> segments, DetectionLevel level, string whole)
