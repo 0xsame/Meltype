@@ -45,6 +45,24 @@ internal static class FeedbackTests
     }
 
     [Test]
+    public static void Issue351_CapitalLetterThenJapaneseWord_IsSplit()
+    {
+        // Issue #351: やばいTシャツ屋さん (yabaiTshatuyasann) が やばいTshatuyasann になっていた。
+        // 大文字の子音 1 文字 + よく使う日本語の語 (しゃつ) で、合わせると頭から読めない (tsh) なら、大文字 1 文字 + 日本語
+        foreach (var (typed, expected) in new[]
+        {
+            ("yabaiTshatuyasann", "やばいTしゃつやさん"), ("yabaiTshatsuyasan", "やばいTしゃつやさん"), ("Tshatsuwokau", "Tしゃつをかう"),
+            // 名前・英単語は今までどおり
+            ("Tanaka", "Tanaka"), ("Grape", "Grape"), ("Spike", "Spike"), ("Krita", "Krita"), ("Snake", "Snake"),
+        })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
+
+    [Test]
     public static void ShiftedSingleConsonant_StaysUppercase()
     {
         foreach (var c in "WRTYPSDGHKLZXVBNM")
