@@ -68,6 +68,11 @@ internal static class FeedbackTests
             // 大文字の語 + 助詞は今までどおり区切る
             ("Anisiyouka", "Aにしようか"), ("Tokyonisumu", "Tokyoにすむ"),
         })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
     }
 
     [Test]
@@ -75,6 +80,11 @@ internal static class FeedbackTests
     {
         // Issue #369: huihui (AI のモデルを出している huihui-ai) が ふいふい (→ 回回) になっていた。ふいふい は日本語の語ではない
         foreach (var (typed, expected) in new[] { ("huihui", "huihui"), ("huihuino", "huihuiの"), ("fuifui", "ふいふい") })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
     }
 
     [Test]
@@ -86,6 +96,12 @@ internal static class FeedbackTests
         {
             ("gameover", "gameover"), ("gameoverninaru", "gameoverになる"),
             ("sakeover", "さけover"), ("madeover", "までover"), ("shabushabu", "しゃぶしゃぶ"), ("commitshitai", "commitしたい"),
+        })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
     }
 
     [Test]
@@ -103,12 +119,33 @@ internal static class FeedbackTests
             var k = new CompositionTests.Keyboard();
             k.Type(typed + "\n");
             Assert.Equal(expected, k.Host.Document, typed);
+        }
     }
 
     [Test]
     public static void Issue376_SuruAfterEnglishAndParticle_IsJapanese()
     {
         // Issue #376: 英単語 + 助詞 + する の活用 (password|ni|site) を、英単語 + 助詞 + 英単語 (api|no|error) と見て site を英字にしていた
+        CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, expected) in new[]
+            {
+                ("passwordnisite", "passwordにして"), ("passwordwosite", "passwordをして"), ("passwordnisitekudasai", "passwordにしてください"),
+                ("emailwositai", "emailをしたい"),
+                // 英単語 + 助詞 + 英単語 は今までどおり
+                ("apinoerror", "apiのerror"), ("websitewomiru", "websiteをみる"),
+            })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
     }
 
     [Test]
@@ -121,13 +158,19 @@ internal static class FeedbackTests
         {
             foreach (var (typed, expected) in new[]
             {
-                ("passwordnisite", "passwordにして"), ("passwordwosite", "passwordをして"), ("passwordnisitekudasai", "passwordにしてください"),
-                ("emailwositai", "emailをしたい"),
-                // 英単語 + 助詞 + 英単語 は今までどおり
-                ("apinoerror", "apiのerror"), ("websitewomiru", "websiteをみる"),
                 ("faceni", "faceに"), ("facewo", "faceを"), ("faceniutsu", "faceにうつ"), ("placega", "placeが"),
                 ("fucarete", "ふかれて"), ("shoucanshi", "しょうかんし"),
             })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
     }
 
     [Test]
@@ -138,6 +181,16 @@ internal static class FeedbackTests
         try
         {
             foreach (var (typed, expected) in new[] { ("handanwodelegatesuru", "はんだんをdelegateする"), ("delegate", "delegate"), ("delegatewotsukau", "delegateをつかう") })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
     }
 
     [Test]
@@ -1180,6 +1233,7 @@ internal static class RomajiTypoTests
         finally
         {
             CompositionTests.Detector.SpellChecker = null;
+        }
     }
 
     [Test]
