@@ -120,7 +120,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         _composition = composition;
         composition.PasteCommit = () => PastePolicy.ShouldPaste(_settings, _foreground.Current.ProcessName, IsQt(_foreground.Current.Window));
         composition.InputAllowed = () => KeyboardLayoutPolicy.AllowsInput(_settings);
-        composition.Focus.TreatsAsTextInput = () => _settings.TreatsAsTextInput(_foreground.Current.ProcessName);
+        composition.Focus.TreatsAsTextInput = () => _settings.TreatsAsTextInput(_foreground.Current.ProcessName)
+            || LineContext.TerminalProcesses.Contains(_foreground.Current.ProcessName);
         composition.Focus.TreatsWindowAsTextInput = () => WindowInputApps.Contains(_foreground.Current.ProcessName);
         composition.ShowModeOnFocus = ShowModeOnFocus;
         composition.Focus.ForegroundProcessName = () => _foreground.Current.ProcessName;
