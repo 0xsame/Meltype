@@ -9,7 +9,6 @@ namespace Meltype;
 
 internal static class Program
 {
-    [STAThread]
     /// <summary>
     /// 語ごとの自動の判定 (学習は使わない)。今の版の判定にも同じものを使う (<see cref="Updater.PreviewChanges"/>)。
     /// </summary>
@@ -34,6 +33,7 @@ internal static class Program
         }
     }
 
+    [STAThread]
     private static int Main(string[] args)
     {
         // Meltype.exe --selftest [結果ファイル]: キーボードフックを掛けずに、主な機能が動くかだけを確かめる。
