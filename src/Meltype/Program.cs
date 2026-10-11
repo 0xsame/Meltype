@@ -36,6 +36,12 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // Meltype.exe --version: 版だけを出して終わる (フック・UI は起動しない)。
+        if (args.FirstOrDefault() == "--version")
+        {
+            Console.WriteLine($"Meltype {AppInfo.Version}");
+            return 0;
+        }
         // Meltype.exe --selftest [結果ファイル]: キーボードフックを掛けずに、主な機能が動くかだけを確かめる。
         if (args.FirstOrDefault() == "--selftest") return SelfTest.Run(args.ElementAtOrDefault(1));
         // Meltype.exe --exit: 動いている Meltype を終了させる (インストール・アンインストール用。管理者として動いていても止められる)。
