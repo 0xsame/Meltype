@@ -1354,7 +1354,8 @@ public sealed class CompositionController
             {
                 if (i < kana.Length && keep[i] == keep[start]) continue;
                 var run = kana[start..i];
-                if (keep[start]) result.Add(new Clause(run, false, Distinct([run, .. _options.Candidates?.Lookup(run) ?? [], CompositionText.ToFullWidth(run)])));
+                // ユーザー辞書に英字のまま登録した読み (zh → ←) はここでも引く
+                if (keep[start]) result.Add(new Clause(run, false, Distinct([.. _options.UserDictionary?.Lookup(run) ?? [], run, .. _options.Candidates?.Lookup(run) ?? [], CompositionText.ToFullWidth(run)])));
                 else result.AddRange(ConvertJapanese(run));
                 start = i;
             }
