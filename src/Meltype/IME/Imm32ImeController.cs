@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Yukishiro
 
+using System.Diagnostics;
+
 namespace Meltype.IME;
 
 /// <summary>
@@ -34,20 +36,22 @@ public sealed class Imm32ImeController : IImeBackend
     internal static bool HasInputContext(IntPtr window, uint timeoutMs)
     {
         var ime = Native.ImmGetDefaultIMEWnd(window);
+        var started = Stopwatch.GetTimestamp();
         return ime != IntPtr.Zero && HasInputContext(timeoutMs, (command, remaining) =>
         {
             var ok = TrySend(ime, command, IntPtr.Zero, remaining, out var value);
             return (ok, unchecked((int)value.ToInt64()));
-        }, () => Environment.TickCount64);
+        }, () => Stopwatch.GetElapsedTime(started));
     }
 
-    internal static bool HasInputContext(uint timeoutMs, Func<int, uint, (bool Success, int Value)> read, Func<long> clock)
+    internal static bool HasInputContext(uint timeoutMs, Func<int, uint, (bool Success, int Value)> read, Func<TimeSpan> clock)
     {
-        var deadline = clock() + timeoutMs;
+        var deadline = clock() + TimeSpan.FromMilliseconds(timeoutMs);
         foreach (var command in new[] { IMC_GETCONVERSIONMODE, IMC_GETSENTENCEMODE, IMC_GETOPENSTATUS })
         {
-            var remaining = deadline - clock();
-            if (remaining <= 0) return false;
+            var remaining = (deadline - clock()).TotalMilliseconds;
+            // 整数 ms に切り捨てて残りの予算を超えないようにし、0ms では問い合わせない。
+            if (remaining < 1) return false;
             var result = read(command, (uint)remaining);
             if (!result.Success || result.Value < 0 || clock() > deadline) return false;
             if (command == IMC_GETOPENSTATUS ? result.Value == 1 : result.Value > 0) return true;

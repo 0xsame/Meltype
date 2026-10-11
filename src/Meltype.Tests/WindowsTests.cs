@@ -40,14 +40,14 @@ internal static class WindowsTests
     [Test]
     public static void AffinityIme_UsesOneDeadlineAndStopsAfterFailure()
     {
-        long now = 0; var budgets = new List<uint>();
-        var active = Imm32ImeController.HasInputContext(20, (_, remaining) => { budgets.Add(remaining); now += 5; return (true, 0); }, () => now);
+        double now = 0; var budgets = new List<uint>();
+        var active = Imm32ImeController.HasInputContext(20, (_, remaining) => { budgets.Add(remaining); now += 9.75; return (true, 0); }, () => TimeSpan.FromMilliseconds(now));
         Assert.True(!active, "ゼロの応答は入力可能としない");
-        Assert.True(string.Join(',', budgets) == "20,15,10", "問い合わせ全体で期限を共有する");
+        Assert.True(string.Join(',', budgets) == "20,10", "残り 10.25ms は 10ms に切り捨て、0.5ms では問い合わせない");
         foreach (var success in new[] { false, true })
         {
             now = 0; var calls = 0;
-            active = Imm32ImeController.HasInputContext(20, (_, _) => { calls++; now = success ? 21 : 0; return (success, 0x19); }, () => now);
+            active = Imm32ImeController.HasInputContext(20, (_, _) => { calls++; now = success ? 21 : 0; return (success, 0x19); }, () => TimeSpan.FromMilliseconds(now));
             Assert.True(!active && calls == 1, "失敗や期限後の肯定結果を採用せず、追加の問い合わせをしない");
         }
     }
