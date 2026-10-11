@@ -115,6 +115,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _profileItem.DropDownOpening += (_, _) => FillProfiles();
         menu.Items.Add(_profileItem);
         var startup = new ToolStripMenuItem("Windows の起動時に起動", null, (_, _) => ToggleStartup());
+        startup.ToolTipText = "サインインしたらすぐ起動するよう、タスク スケジューラに「Meltype」というタスクを登録します (OFF にすると消します)。";
         menu.Items.Add(startup);
         menu.Items.Add("使い方...", null, (_, _) => ShowWelcome());
         menu.Items.Add("設定...", null, (_, _) => ShowSettings());
