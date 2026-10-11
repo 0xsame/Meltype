@@ -149,6 +149,7 @@ public sealed class MeltypeSession
         var languages = new LanguageMemory(AppPaths.LanguageMemoryFile);
         detector.Memory = languages;
         detector.UseScoredSegmentation = () => settings.ScoredSegmentation;
+        detector.UseJapanesePunctuationAfterEnglish = () => settings.JapanesePunctuationAfterEnglish;
         var options = new CompositionOptions
         {
             LiveConversion = () => settings.LiveConversion,

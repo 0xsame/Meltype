@@ -1393,6 +1393,41 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Punctuation_AfterEnglish_FollowsSetting()
+    {
+        // #416: 英字のすぐ後ろの , . も句読点にする設定。OFF なら今までどおり半角
+        string Type(string keys, bool on, bool scored = false, string? before = null, Meltype.Config.PunctuationStyle style = default)
+        {
+            Detector.UseJapanesePunctuationAfterEnglish = () => on;
+            Detector.UseScoredSegmentation = () => scored;
+            try
+            {
+                var k = new Keyboard { Punctuation = style };
+                k.Host.PrecedingText = before;
+                k.Type(keys);
+                return k.Host.Document;
+            }
+            finally
+            {
+                Detector.UseJapanesePunctuationAfterEnglish = null;
+                Detector.UseScoredSegmentation = null;
+            }
+        }
+        // 略語 (IME) は区切りを点数で選ぶ (α版) では い + ME になる (別の問題) ので、通常の判定だけで確かめる
+        Assert.Equal("IME。", Type("IME.\n", on: true), "略語の後ろも句点");
+        foreach (var scored in new[] { false, true })
+        {
+            var mode = scored ? " (点数で選ぶ)" : "";
+            Assert.Equal("Google.", Type("Google.\n", on: false, scored), "OFF は半角のまま" + mode);
+            Assert.Equal("Google。", Type("Google.\n", on: true, scored), "ON は句点" + mode);
+            Assert.Equal("Google、", Type("Google,\n", on: true, scored), "ON は読点" + mode);
+            Assert.Equal("Google．", Type("Google.\n", on: true, scored, style: Meltype.Config.PunctuationStyle.FullWidthCommaPeriod), "設定「句読点」の形" + mode);
+            Assert.Equal("world.", Type("world.\n", on: true, scored, before: "Hello "), "キャレットの前が英語 (Hello ) なら英文の続き" + mode);
+            Assert.Equal("tetr.io", Type("tetr.io\n", on: true, scored), "英単語の中の . は半角" + mode);
+        }
+    }
+
+    [Test]
     public static void Punctuation_IsSavedAsName()
     {
         // 設定ファイルにはほかの選択肢と同じく名前で保存する
