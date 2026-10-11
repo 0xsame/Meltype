@@ -2804,6 +2804,8 @@ internal static class CompositionTests
             ("website", "website"),
             ("websitewomiru", "websiteをみる"),
             ("tetsudou", "てつどう"),
+            // #422: declutter が辞書に無いと、助詞 de + clutter に割れて「むだをでclutterする」になる
+            ("mudawodecluttersuru", "むだをdeclutterする"),
         })
         {
             // 実際と同じく、辞書にない英単語 (website) はスペルチェッカーで見る
