@@ -202,11 +202,18 @@ public sealed partial class CompositionDetector
         // 辞書にない英単語 (stackoverflow など) を最初から打っているなら全体を英語にする。
         // 途中の区間 (… flow) だけを英語にすると「sたcこvえrflow」のようになってしまう。
         // ただし先頭が辞書の英単語として区切れている (github に push) ならその区切りを使う。
+        // 助詞 + 既知の英単語 (ya|python) も FindSpans の区切りを優先する (やpython が yapython になるのを防ぐ)。
         var whole = Raw(units, 0, units.Count) + pending;
         if (UnknownWordThenJapanese(units, pending, segments, level, whole) is { } split) return split;
         if (level != DetectionLevel.Manual && !segments[0].IsEnglish && Memory?.Get(whole.ToLowerInvariant()) != false && IsUnknownEnglishWord(whole))
         {
-            return [new CompositionSegment(true, "", whole)];
+            var lowerWhole = whole.ToLowerInvariant();
+            if (Detection.DictionaryDetector.StartsWithParticle(lowerWhole) is not { } leading ||
+                lowerWhole.Length - leading.Length < 3 ||
+                !IsKnownEnglishWord(lowerWhole[leading.Length..]))
+            {
+                return [new CompositionSegment(true, "", whole)];
+            }
         }
         return segments;
     }
@@ -339,6 +346,27 @@ public sealed partial class CompositionDetector
                     }
                 }
             }
+            // 短い英単語 (yap) が助詞 (ya) + 後ろの英単語 (play) の頭を食っているなら、助詞側を優先する
+            // (yap|lay → ya|play。スペルチェッカーが yap / lay を知っているとやplay が yaplay になる)。
+            // 辞書の英単語そのもの (tomorrow) は分けない。打ちかけの子音 (pending の w) を head に含めないと
+            // tomorro になり、Windows のスペルが morrow を知っていると to|morrow → ともっrow になる。
+            // -pedia 複合 (worldpedia) も分けない。wo + rldpedia と助詞「を」に割れる。
+            if (found > i && !kanaInput && !IsAsciiSymbol(units[i]))
+            {
+                var head = (Raw(units, i, found) + (found == n ? pending : "")).ToLowerInvariant();
+                if (Detection.DictionaryDetector.StartsWithParticle(head) is { } leading && head.Length > leading.Length &&
+                    !IsListedEnglishWord(head) && !IsPediaEnglishWord(head))
+                {
+                    var covered = 0;
+                    var afterParticle = i;
+                    while (afterParticle < found && covered < leading.Length) covered += units[afterParticle++].Raw.Length;
+                    if (covered == leading.Length)
+                    {
+                        var rest = Raw(units, afterParticle, n) + pending;
+                        if (rest.Length >= 3 && IsKnownEnglishWord(rest)) found = -1;
+                    }
+                }
+            }
             if (found < 0)
             {
                 i++;
@@ -420,7 +448,10 @@ public sealed partial class CompositionDetector
     /// <summary>よくある英語の打ち間違いなら正しい綴り (teh → the)。大文字で始まる語は大文字で始める。</summary>
     public string? EnglishAutoCorrection(string word)
     {
-        if (word.Length < 2 || !word.All(char.IsAsciiLetter) || SpellChecker?.AutoCorrection(word.ToLowerInvariant()) is not { } right) return null;
+        if (word.Length < 2 || !word.All(char.IsAsciiLetter)) return null;
+        // -pedia / -pedias 複合はスペルチェッカーが別綴りに「訂正」してしまうことがあるので触らない。
+        if (IsPediaEnglishWord(word.ToLowerInvariant())) return null;
+        if (SpellChecker?.AutoCorrection(word.ToLowerInvariant()) is not { } right) return null;
         if (word.All(char.IsAsciiLetterUpper) && word.Length > 1) return right.ToUpperInvariant();
         return char.IsAsciiLetterUpper(word[0]) ? char.ToUpperInvariant(right[0]) + right[1..] : right;
     }
@@ -451,7 +482,23 @@ public sealed partial class CompositionDetector
         var lower = word.ToLowerInvariant();
         if (lower.Length < 3 || !lower.All(char.IsAsciiLetterLower)) return false;
         if (Memory?.Get(lower) is { } learned) return learned;
-        return _english.Words.ContainsWord(lower) || _proper.Contains(lower) || (lower.Length >= 4 && IsSpellWord(lower));
+        if (_english.Words.ContainsWord(lower) || _proper.Contains(lower) || (lower.Length >= 4 && IsSpellWord(lower))) return true;
+        // english-readable.txt / -pedia (IsEnglishSpan と同じ根拠)。打ち間違い直しが英字の語を崩さないようにする。
+        if (lower.Length >= 4 && ReadableEnglish.Value.ContainsWord(lower)) return true;
+        return IsPediaEnglishWord(lower);
+    }
+
+    /// <summary>
+    /// -pedia / -pedias 複合 (pedia / protopedia / wikipedias …)。
+    /// ローマ字だと ぺぢあ になり、途中の to が助詞「と」に割れる。複数の s が付いても同じ。
+    /// 接頭が無い pedia(s) か、3 文字以上の接頭 + pedia(s)。
+    /// </summary>
+    private static bool IsPediaEnglishWord(ReadOnlySpan<char> lower)
+    {
+        var stem = lower.EndsWith("pedias", StringComparison.Ordinal) ? 6
+            : lower.EndsWith("pedia", StringComparison.Ordinal) ? 5 : 0;
+        if (stem == 0 || lower.Length < stem) return false;
+        return lower.Length == stem || lower.Length - stem >= 3;
     }
 
     /// <summary>よく使う語の読み (readings.txt、3 文字以上)。かな入力で、英単語のキーが日本語の語を打っていないかを見る。</summary>
@@ -523,9 +570,10 @@ public sealed partial class CompositionDetector
         var inDictionary = _english.Words.ContainsWord(lower);
         var knownSpelling = IsSpellWord(lower);
         // 英語とする根拠が全くない区間では、かなの全解析を繰り返さない。
-        // 大文字・1 文字の略記・学習・打ちかけ・読み切れる英単語は後の規則へ渡す。
+        // 大文字・1 文字の略記・学習・打ちかけ・読み切れる英単語・-pedia は後の規則へ渡す。
         if (lower.Length >= 2 && !char.IsAsciiLetterUpper(span[0]) && !inDictionary && !knownSpelling &&
-            !_proper.Contains(lower) && !ReadableEnglish.Value.ContainsWord(lower) && Memory?.Get(lower) is null &&
+            !_proper.Contains(lower) && !ReadableEnglish.Value.ContainsWord(lower) && !IsPediaEnglishWord(lower) &&
+            Memory?.Get(lower) is null &&
             !(growing && (_english.IsPrefix(lower) || _proper.HasPrefix(lower)))) return false;
         var analysis = _romaji.Analyze(lower);
         RomajiAnalysis? fragment = null;
@@ -566,6 +614,10 @@ public sealed partial class CompositionDetector
         // ローマ字として最後まで読めても、日本語の語にならない英単語 (feature = ふぇあつれ、remote = れもて。dictionaries/english-readable.txt、#12)。
         // 日本語の語の始まりにもならない語だけを入れているので、後ろに日本語が続いても (feature|wo) 英語。
         if (lower.Length >= 3 && ReadableEnglish.Value.ContainsWord(lower)) return true;
+        // -pedia (pedia / protopedia …)。ローマ字だと ぺぢあ になり、途中の to が助詞「と」に割れる (pro|to|pedia)。
+        // wikipedia はスペルチェッカーで足りるが、pedia 単体や未登録の複合はここですくう。
+        // CanBeEnglishSpan / 上の早期 return でも同じ IsPediaEnglishWord を通す (通さないとここへ届かない)。
+        if (IsPediaEnglishWord(lower) && IsCommonJapanese?.Invoke(lower) != true) return true;
         // c 行の綴りで読める語 (care = かれ、can = かん) が日本語の途中にあるなら、日本語を打っている (fucarete → ふかれて、shoucanshi → しょうかんし)。
         // 入力全体がその語だけのときは英語。
         if (!(startOfInput && atEnd))
@@ -719,7 +771,8 @@ public sealed partial class CompositionDetector
         var lowerStart = whole.Length >= 2 && char.IsAsciiLetterLower(whole[0]) && char.IsAsciiLetterUpper(whole[1]);
         if (whole.Length == 0 || !char.IsAsciiLetterUpper(whole[0]) && !lowerStart) return -1;
         // 全体が英単語・固有名詞 (Tokyo, Github) なら区切らない。
-        if (IsKnownCapitalizedWord(whole)) return -1;
+        // -pedia 複合 (Protopedia) も。Pro|to|pedia と助詞「と」に割らない。
+        if (IsKnownCapitalizedWord(whole) || IsPediaEnglishWord(whole.ToLowerInvariant())) return -1;
         for (var k = n - 1; k > start; k--)
         {
             var head = Raw(units, start, k);
@@ -938,7 +991,7 @@ public sealed partial class CompositionDetector
         return !_romaji.Analyze(lower).IsValid;
     }
 
-    private static readonly string[] TrailingParticles = ["kara", "made", "yori", "ga", "wo", "ni", "de", "no", "to", "mo", "ha", "wa"];
+    private static readonly string[] TrailingParticles = ["kara", "made", "yori", "ga", "wo", "ni", "de", "no", "to", "mo", "ha", "wa", "ya"];
 
     /// <summary>
     /// 英単語 + 助詞 の後ろの、する の活用と読める語 (site = して、sita = した)。英単語 (site) でも日本語の する の活用とみなす
@@ -1074,6 +1127,7 @@ public sealed partial class CompositionDetector
         if (length <= 6 && next is [var digit, ..] && char.IsAsciiDigit(digit)) return true;
         var lower = _preparedRaw.AsSpan(from, length); // 大文字を除外済みなので小文字。
         if (_english.Words.ContainsWord(lower) || _proper.Contains(lower) || ReadableEnglish.Value.ContainsWord(lower) ||
+            IsPediaEnglishWord(lower) ||
             growing && (_english.Words.HasPrefix(lower) || _proper.HasPrefix(lower))) return true;
         if (Memory?.Get(lower) is not null) return true;
         return SpellChecker switch { null => false, BuiltInWordChecker builtIn => builtIn.IsWord(lower), _ => true };
