@@ -63,6 +63,11 @@ internal sealed class TipServer : IDisposable
     /// <summary>Meltype IME (native/tip の DLL) が Windows に登録されているか。</summary>
     public static bool IsRegistered => Registration() == true;
 
+    /// <summary>動作モードに Meltype IME を選べるか (ARM64 の Windows でなく、登録されていて、このユーザーのキーボードの一覧にある)。</summary>
+    public static bool IsUsable =>
+        System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.Arm64 &&
+        IsRegistered && IsInUserLanguageList;
+
     // 登録されているか。レジストリを読めなければ null
     private static bool? Registration()
     {
