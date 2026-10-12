@@ -53,6 +53,8 @@ public interface ICompositionHost
         CommitText(text);
     }
 
+    void RecordDirectReplay(char c) { }
+
     /// <summary>
     /// 入力欄の確定済みの文字を消せるか。消せない入力欄 (Linux で周りの文字の削除に対応していないアプリ) では、
     /// 確定し直すと元の文字が残ったまま書き足されてしまう (api → apiあぴ) ので、確定し直さない。
@@ -107,6 +109,8 @@ public sealed record CompositionOptions
 
     /// <summary>英数状態での判定結果を知らせる (true: 日本語だったので日本語入力に戻った / false: 英語だった)。</summary>
     public Action<bool>? DirectDecided { get; init; }
+
+    public Action? DirectHoldCleared { get; init; }
 
     /// <summary>同音異義語などの補助候補。</summary>
     public CandidateDictionary? Candidates { get; init; }
@@ -374,6 +378,12 @@ public sealed class CompositionController
         if (_heldLetters.Length == 0 || nowMs - _heldLastKeyTime < DirectHoldIdleMs) return;
         DecideHeld(final: true);
         Pump();
+    }
+
+    public void AbandonDirectHold()
+    {
+        ClearHeld();
+        _replayedDown.Clear();
     }
 
     /// <summary>変換中の文節の候補を番号で選ぶ (Mac の候補ウィンドウをクリックしたときなど)。</summary>
@@ -989,6 +999,7 @@ public sealed class CompositionController
     private void SendHeld(KeyEvent e)
     {
         _host.Replay(e);
+        if (_host.CharFromKey(e, _swallowedShift.Count > 0) is { } c) _host.RecordDirectReplay(c);
         _replayedDown.Add(e.Vk);
         _heldSent++;
     }
@@ -1024,9 +1035,9 @@ public sealed class CompositionController
     {
         var letters = _heldLetters.ToString();
         var sent = _heldSent;
-        ClearHeld();
         // 判定を待たずに送っていた英字を消して、変換ボックスに入れ直す。
         _host.DeleteBackward(sent);
+        ClearHeld();
         _options.DirectDecided?.Invoke(true);
         BeginComposition();
         foreach (var c in letters)
@@ -1060,6 +1071,7 @@ public sealed class CompositionController
     {
         _heldLetters.Clear();
         _heldSent = 0;
+        _options.DirectHoldCleared?.Invoke();
     }
 
     // ---- 変換 (文節) ----
