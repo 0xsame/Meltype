@@ -249,12 +249,12 @@ General Public License for more details.
 
 [GitHub Sponsors](https://github.com/sponsors/yksr-melt) で応援してくださった方々です。開発を続ける力になっています、本当にありがとうございます！
 
-<!-- 寄付してくださった方は、下の <p> の中に 1 人ずつ足す (載せてよいか本人に確かめてから):
-  <a href="https://github.com/ユーザー名"><img src="https://github.com/ユーザー名.png?size=120" width="60" alt="@ユーザー名"></a>
--->
+<!-- sponsors:start -->
 <p align="center">
   <sub>まだいません。最初の 1 人を募集中です！ → <a href="https://github.com/sponsors/yksr-melt">GitHub Sponsors</a></sub>
 </p>
+<!-- sponsors:end -->
+<sub>名前を公開にして応援してくださった方を、毎日自動で載せています (.github/workflows/sponsors.yml)。</sub>
 
 <a name="テスト版で協力してくださった方々"></a>
 <img src="docs/images/headings/readme/s05.svg" alt="テスト版で協力してくださった方々" height="40">
