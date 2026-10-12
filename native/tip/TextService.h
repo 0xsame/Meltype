@@ -82,7 +82,7 @@ private:
     ~TextService();
 
     // test: OnTestKeyDown から (入力欄の種類を読んだ結果を、続く OnKeyDown で使うために覚える)
-    bool WouldEat(ITfContext* context, UINT vk, wchar_t& ch, bool test);
+    bool WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t& ch, bool test);
     void ForgetSecretField();
     bool IsReinjected(UINT vk);
     bool ServerReady();
