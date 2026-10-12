@@ -237,6 +237,10 @@ internal static class Quality
 
         // --- #406 ---
         new("英語", "overcute", "overcute"),
+        // --- #434 数字挟み略語 ---
+        new("英語", "i18n", "i18n"),
+        new("英語", "l10n", "l10n"),
+        new("英語", "h2o", "h2o"),
     ];
 
     /// <summary>コードの行のキャレット位置 (コメント・文字列の中か)。</summary>
