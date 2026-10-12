@@ -366,9 +366,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _reportDialog.Activate();
             return;
         }
-        _reportDialog = new ReportDialog(_engine.Settings);
-        _reportDialog.FormClosed += (_, _) => _reportDialog = null;
-        _reportDialog.ShowDialog();
+        using var dialog = new ReportDialog(_engine.Settings);
+        _reportDialog = dialog;
+        dialog.FormClosed += (_, _) => _reportDialog = null;
+        dialog.ShowDialog();
     }
 
     private static void ToggleStartup()
