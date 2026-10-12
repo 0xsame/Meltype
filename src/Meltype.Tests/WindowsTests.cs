@@ -235,6 +235,48 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void ClipboardSequence_ChangesOnlyWhenContentChanges()
+    {
+        // 貼り付けのあとに番号が変わっていたら戻さない。Ctrl+V を受けたアプリやクリップボードの履歴が読んだだけで変わると、戻らなくなる
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                CheckClipboardSequence();
+                return;
+            }
+            catch (Exception) when (attempt < 5)
+            {
+                Thread.Sleep(500);
+            }
+        }
+    }
+
+    private static void CheckClipboardSequence()
+    {
+        var before = CompositionService.CopyClipboard();
+        try
+        {
+            Clipboard.SetDataObject(CompositionService.PasteData("貼り付けた文字"), copy: true);
+            var pasted = Native.GetClipboardSequenceNumber();
+            Assert.True(pasted != 0, "番号を読めた");
+            Assert.Equal("貼り付けた文字", Clipboard.GetText(), "文字");
+            Clipboard.GetText(TextDataFormat.Text); // ANSI の文字 (Windows が作る形式)
+            Clipboard.GetDataObject()?.GetData("CanIncludeInClipboardHistory");
+            CompositionService.CopyClipboard();
+            Assert.Equal(pasted, Native.GetClipboardSequenceNumber(), "読むだけでは変わらない");
+
+            Clipboard.SetDataObject(new DataObject(DataFormats.UnicodeText, "ユーザーがコピーした文字"), copy: true);
+            Assert.True(Native.GetClipboardSequenceNumber() != pasted, "ほかの中身を入れたら変わる");
+        }
+        finally
+        {
+            if (before is not null) Clipboard.SetDataObject(before, copy: true);
+            else Clipboard.Clear();
+        }
+    }
+
+    [Test]
     public static void SettingsToolTip_BreaksLinesForReading()
     {
         Assert.Equal("ひとつめ。\nふたつめ。", UI.SettingsForm.WrapToolTip("ひとつめ。ふたつめ。"), "文ごとに改行する");

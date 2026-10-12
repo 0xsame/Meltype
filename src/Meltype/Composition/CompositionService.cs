@@ -343,6 +343,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
 
     private DataObject? _savedClipboard;
     private System.Windows.Forms.Timer? _restoreClipboard;
+    /// <summary>貼る文字を入れた直後のクリップボードの番号。戻すときに変わっていたら、ほかのアプリかユーザーが入れたものなので戻さない</summary>
+    private uint _pastedSequence;
 
     /// <summary>Windows のクリップボード履歴に保持しない</summary>
     private static readonly string[] ClipboardHistoryExclusions =
@@ -357,9 +359,11 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         if (text.Length == 0) return true;
         try
         {
-            if (_restoreClipboard is null) _savedClipboard = CopyClipboard();
-            else _restoreClipboard.Stop();
+            // 前の貼り付けのあとにユーザーがコピーしていたら、戻す中身をそれに取り直す
+            if (_restoreClipboard is null || Native.GetClipboardSequenceNumber() != _pastedSequence) _savedClipboard = CopyClipboard();
+            _restoreClipboard?.Stop();
             Clipboard.SetDataObject(PasteData(text), copy: true);
+            _pastedSequence = Native.GetClipboardSequenceNumber();
             KeyInjector.SendShortcut(VirtualKeys.Control, 0x56); // Ctrl+V
             _restoreClipboard ??= new System.Windows.Forms.Timer { Interval = 500 };
             _restoreClipboard.Tick -= RestoreClipboard;
@@ -376,7 +380,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         }
     }
 
-    private static DataObject PasteData(string text)
+    internal static DataObject PasteData(string text)
     {
         var data = new DataObject();
         data.SetText(text);
@@ -412,7 +416,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         timer?.Dispose();
         try
         {
-            if (_savedClipboard is { } saved) Clipboard.SetDataObject(saved, copy: true);
+            if (Native.GetClipboardSequenceNumber() != _pastedSequence) Diagnostics.Log.Info("貼り付けのあとにクリップボードが変わったので、元の中身に戻しません。");
+            else if (_savedClipboard is { } saved) Clipboard.SetDataObject(saved, copy: true);
             else Clipboard.Clear();
         }
         catch (ExternalException ex)
