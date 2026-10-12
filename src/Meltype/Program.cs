@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Yukishiro
 
+using System.Diagnostics;
 using Meltype.Config;
 using Meltype.Diagnostics;
 using Meltype.UI;
