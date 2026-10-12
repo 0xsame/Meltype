@@ -151,6 +151,24 @@ internal static class WindowsTests
     [Test]
     public static void CopyClipboard_KeepsContentAfterClipboardChanges()
     {
+        // ほかのアプリ (クリップボードの履歴など) が同時にクリップボードを開いたり読んだりすると、入れられなかったり、
+        // テストで入れた Stream を先に読み進められて中身が 0 になったりするので、何回か試す
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                CheckCopyClipboard();
+                return;
+            }
+            catch (Exception) when (attempt < 5)
+            {
+                Thread.Sleep(500);
+            }
+        }
+    }
+
+    private static void CheckCopyClipboard()
+    {
         // 貼り付けで確定したあと、元のクリップボードに戻す。GetDataObject() のまま戻すと、そのときの中身 (貼った文字) を読んで元の中身が消えていた
         var before = CompositionService.CopyClipboard();
         try
