@@ -172,4 +172,14 @@ internal static class WindowsTests
             }
         }
     }
+
+    [Test]
+    public static void UpdateReadyMessage_FollowsAutoUpdateSetting()
+    {
+        // 自動更新が OFF だと次のサインインでは更新しない (Updater.ApplyStagedAtStartup) ので、そう案内しない
+        Assert.True(UI.TrayApplicationContext.UpdateReadyMessage("1.2.3", autoUpdate: true).Contains("次に Windows にサインインしたときに更新します"), "ON はサインイン時に更新する");
+        var off = UI.TrayApplicationContext.UpdateReadyMessage("1.2.3", autoUpdate: false);
+        Assert.True(!off.Contains("サインイン"), "OFF はサインイン時に更新しない");
+        Assert.True(off.Contains("「Meltype 1.2.3 に更新して再起動」"), "OFF はトレイのメニューの項目名で案内する");
+    }
 }
