@@ -262,7 +262,7 @@ public sealed class Settings
     public bool ShowCandidateMeanings { get; set; } = true;
 
     [Category("1. 全般"), DisplayName("打ったキーを表示"),
-     Description("変換ボックスの文字の下に、打ったキー (ローマ字: kyouhagoogle) を小さく出します。打ち間違いに気づきやすくなります。Meltype キーボード (変換ボックス) のときだけ。")]
+     Description("打ったキー (ローマ字: kyouhagoogle) を小さく出します。Meltype キーボードでは変換ボックスの文字の下に、Meltype IME では候補の一覧の上に出します。打ち間違いに気づきやすくなります。")]
     public bool ShowTypedKeys { get; set; } = true;
 
     [Category("1. 全般"), DisplayName("打ち間違いを直す"),

@@ -74,6 +74,10 @@ public sealed record SessionResult(bool Consumed, IReadOnlyList<TextEdit> Commit
         builder.Append(",\"predictions\":");
         AppendArray(builder, view.Predictions ?? []);
         builder.Append(",\"selectedPrediction\":").Append(view.SelectedPrediction);
+        // 打ったキー (設定「打ったキーを表示」が OFF なら null)
+        builder.Append(",\"typed\":");
+        if (view.Typed is { } typed) AppendString(builder, typed);
+        else builder.Append("null");
         builder.Append("}}");
         return builder.ToString();
     }
