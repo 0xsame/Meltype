@@ -83,6 +83,8 @@ jobs:
         with:
           app-id: ${{ vars.BOT_APP_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+      - name: Test related-issue candidate logic
+        run: node --test .github/bot/tests/issue-relation-candidates.test.mjs
       - id: parse
         run: node .github/bot/meltype-bot.mjs parse
         env:

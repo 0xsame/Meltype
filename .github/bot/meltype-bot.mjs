@@ -7,6 +7,7 @@
 // Issue の本文・コメントは誰でも書けるので、コマンドとして実行しない (値として次の job に渡すだけ)。
 import fs from 'node:fs';
 import path from 'node:path';
+import { findRelatedIssues, formatRelatedIssueComment } from './issue-relation-candidates.mjs';
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
@@ -71,6 +72,28 @@ async function upsertComment(issue, kind, text) {
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
+}
+
+
+async function searchIssues(query) {
+  const response = await fetch(api + '/search/issues?q=' + encodeURIComponent(query) + '&per_page=100&page=1', {
+    headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'User-Agent': 'meltype-bot' },
+  });
+  if (!response.ok) throw new Error('Issue search failed: ' + response.status);
+  return response.json();
+}
+async function updateRelatedIssues(issue) {
+  try {
+    const candidates = await findRelatedIssues(issue, {
+      repo,
+      search: searchIssues,
+      getIssue: async number => gh('GET', '/issues/' + number),
+    });
+    await upsertComment(issue.number, 'related-issues', formatRelatedIssueComment(issue, candidates, repo));
+  } catch (error) {
+    // Keep the last successful comment when GitHub search is rate-limited or unavailable.
+    console.warn('Related-issue search failed; existing comment was left unchanged (' + (error?.message ?? 'unknown error') + ').');
+  }
 }
 
 async function react(content) {
@@ -186,6 +209,8 @@ async function parse() {
 
   if (!event.comment) {
     if (event.action !== 'opened' && event.action !== 'edited') return output({ action: 'none' });
+    if (isPr) return output({ action: 'none' });
+    await updateRelatedIssues(event.issue);
     const form = parseForm(event.issue.body);
     const labels = new Set(event.issue.labels.map(l => l.name));
     const add = new Set(osLabels(field(form, 'OS')));
