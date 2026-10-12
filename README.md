@@ -252,6 +252,8 @@ General Public License for more details.
 <!-- sponsors:start -->
 <p align="center">
   <a href="https://github.com/cpthgli"><img src="https://github.com/cpthgli.png?size=120" width="60" alt="@cpthgli" title="@cpthgli"></a>
+  <a href="https://github.com/MuNeNiCK"><img src="https://github.com/MuNeNiCK.png?size=120" width="60" alt="@MuNeNiCK" title="@MuNeNiCK"></a>
+  <a href="https://github.com/whitewater-png"><img src="https://github.com/whitewater-png.png?size=120" width="60" alt="@whitewater-png" title="@whitewater-png"></a>
 </p>
 <!-- sponsors:end -->
 <sub>名前を公開にして応援してくださった方を、毎日自動で載せています (.github/workflows/sponsors.yml)。</sub>
