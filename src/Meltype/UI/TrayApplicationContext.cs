@@ -294,12 +294,30 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _updateItem.Visible = true;
     }
 
-    private void ApplyUpdate()
+    private bool _applyingUpdate;
+
+    private async void ApplyUpdate()
     {
-        // 更新の前に、あなたの打ち方で変わる語があれば見せる (issue #285)
-        if (Updater.Staged() is { } staged && !UpdateChangesDialog.Confirm(_composition.Languages, staged.Version, _engine.Settings)) return;
-        // install.ps1 が Meltype を終了させてから入れ替え、新しい版を起動する。
-        if (!Updater.Apply()) MessageBox.Show("更新を始められませんでした。ログを確認してください。", "Meltype", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        // 新しい版の判定を待っている間に、メニューや通知からもう一度押されても始めない
+        if (_applyingUpdate) return;
+        _applyingUpdate = true;
+        try
+        {
+            // 更新の前に、あなたの打ち方で変わる語があれば見せる (issue #285)。
+            // 判定は新しい版の Meltype.exe を起動して待つので、UI スレッドの外で行う (待つ間も Meltype IME に応答するため)
+            if (Updater.Staged() is { } staged)
+            {
+                var words = _composition.Languages.Entries().Select(e => e.Word).ToList();
+                var preview = await Task.Run(() => Updater.PreviewChanges(words));
+                if (!UpdateChangesDialog.Confirm(_composition.Languages, staged.Version, _engine.Settings, preview)) return;
+            }
+            // install.ps1 が Meltype を終了させてから入れ替え、新しい版を起動する。
+            if (!Updater.Apply()) MessageBox.Show("更新を始められませんでした。ログを確認してください。", "Meltype", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _applyingUpdate = false;
+        }
     }
 
     private async void CheckForUpdate()
