@@ -1872,13 +1872,14 @@ internal static class CompositionTests
     [Test]
     public static void ReadableToolNames_StayEnglish()
     {
-        // 報告 (#145 / #301): discoで・おぺんこで に割れず、ツール名のまま英字にする
+        // 報告 (#301 / #457): おぺんこで・tむx に割れず、ツール名のまま英字にする
+        // discode は固有名詞でないので discoで (#145 メンテナー判断)
         Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
         try
         {
             var cases = new Dictionary<string, string>
             {
-                ["discode"] = "discode",
+                ["discode"] = "discoで",
                 ["opencode"] = "opencode",
                 ["tmux"] = "tmux",
             };
