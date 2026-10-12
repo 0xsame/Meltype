@@ -182,6 +182,8 @@ public sealed partial class CompositionDetector
                     if (_romaji.Analyze(left.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
                     if (_romaji.Analyze(right.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
                     if (IsKnownEnglishWord(left + "to")) continue;
+                    // 左が英単語でなく、to までで日本語の語 (chotto の っと) になるか、to が英単語の途中 (stories・symptom) なら助詞ではない
+                    if (!IsKnownEnglishWord(left) && (EndsWithJapaneseWord(raw.ToLowerInvariant()[..(end + 2)]) || ToInsideEnglishWord(raw.ToLowerInvariant(), end))) continue;
                     return [new CompositionSegment(true, "", left),
                         new CompositionSegment(false, _romaji.ConvertLenient("to", final: true), "to"),
                         new CompositionSegment(true, "", right)];
@@ -221,7 +223,8 @@ public sealed partial class CompositionDetector
         if (level != DetectionLevel.Manual && !segments[0].IsEnglish && Memory?.Get(whole.ToLowerInvariant()) != false && IsUnknownEnglishWord(whole))
         {
             var lowerWhole = whole.ToLowerInvariant();
-            if (Detection.DictionaryDetector.StartsWithParticle(lowerWhole) is not { } leading ||
+            // 全体で 1 語の英単語 (delight・morally) は、助詞 + 英単語 (de|light) に分けない
+            if (IsKnownEnglishWord(lowerWhole) || Detection.DictionaryDetector.StartsWithParticle(lowerWhole) is not { } leading ||
                 lowerWhole.Length - leading.Length < 3 ||
                 !IsKnownEnglishWord(lowerWhole[leading.Length..]))
             {
@@ -379,7 +382,8 @@ public sealed partial class CompositionDetector
                     if (covered == leading.Length)
                     {
                         var rest = Raw(units, afterParticle, n) + pending;
-                        if (rest.Length >= 3 && IsKnownEnglishWord(rest)) found = -1;
+                        // ただし入力の頭からの全体が 1 語の英単語 (devote) なら、de + vote に分けない
+                        if (rest.Length >= 3 && IsKnownEnglishWord(rest) && !(i == 0 && IsKnownEnglishWord(Raw(units, 0, n) + pending))) found = -1;
                     }
                 }
             }
@@ -458,6 +462,8 @@ public sealed partial class CompositionDetector
         return _english.Words.ContainsWord(lower) || IsSpellWord(lower);
     }
 
+    internal bool IsJapaneseWordOrPrefix(string kana) => _kana?.IsJapaneseWordOrPrefix(kana) == true;
+
     /// <summary>スペルチェッカーが正しいと言う英単語か、よくある打ち間違い (teh、recieve) か。</summary>
     internal bool IsSpellWord(string lower) => SpellChecker is { } checker && (checker.IsWord(lower) || checker.AutoCorrection(lower) is not null);
 
@@ -470,6 +476,29 @@ public sealed partial class CompositionDetector
         if (SpellChecker?.AutoCorrection(word.ToLowerInvariant()) is not { } right) return null;
         if (word.All(char.IsAsciiLetterUpper) && word.Length > 1) return right.ToUpperInvariant();
         return char.IsAsciiLetterUpper(word[0]) ? char.ToUpperInvariant(right[0]) + right[1..] : right;
+    }
+
+    /// <summary>末尾が日本語の辞書の語か (chotto)。語の前は空か、助詞で終わる読み切れるローマ字 (kyouha) に限る (uikit + to は当たらない)。</summary>
+    private bool EndsWithJapaneseWord(string lower)
+    {
+        for (var start = 0; start <= lower.Length - 4; start++)
+        {
+            if (start > 0 && !(TrailingParticles.Any(p => lower.AsSpan(0, start).EndsWith(p, StringComparison.Ordinal)) && _romaji.Analyze(lower[..start]) is { IsValid: true, Partial: "" })) continue;
+            if (_japanese.Words.ContainsWord(lower[start..])) return true;
+        }
+        return false;
+    }
+
+    /// <summary>at の to が、その前から始まる英単語の途中か (korekara + stories)。英単語の前は空か、読み切れるローマ字に限る。</summary>
+    private bool ToInsideEnglishWord(string lower, int at)
+    {
+        for (var start = Math.Max(0, at - 12); start < at; start++)
+        {
+            if (start > 0 && _romaji.Analyze(lower[..start]) is not { IsValid: true, Partial: "" }) continue;
+            for (var end = at + 2; end <= Math.Min(lower.Length, start + 16); end++)
+                if (end - start >= 4 && (IsListedEnglishWord(lower[start..end]) || end - start >= 5 && IsSpellWord(lower[start..end]))) return true;
+        }
+        return false;
     }
 
     /// <summary>同梱の英単語の辞書・固有名詞にある語か、ユーザーが英字に直して覚えた語か (ok、github)。スペルチェッカーは使わない。</summary>
