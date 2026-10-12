@@ -712,4 +712,31 @@ internal static class SessionFacadeTests
         session.Direct = false;
         Assert.True(Type(session, "@", before: "")[0].Consumed, "taro と打った後の @ は変換ボックスへ");
     }
+
+    [Test]
+    public static void PrivateField_RemembersNothing()
+    {
+        // #511: 入力を覚えないように求める入力欄 (ブラウザーのシークレット / InPrivate ウィンドウ) では、選び直した変換を覚えない
+        var history = new ConversionHistory(null);
+        MeltypeSession Session() => new(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions { History = history, Candidates = CandidateDictionary.Load(null) }, () => new Settings { LiveConversion = false });
+        void ChooseHashi(MeltypeSession session)
+        {
+            var view = Type(session, "hashiwo ")[^1].View!;
+            var index = view.Candidates.ToList().IndexOf("箸を");
+            Assert.True(index > 0, string.Join(",", view.Candidates));
+            for (var i = 0; i < index; i++) Type(session, " ");
+            Assert.Equal("箸を", Type(session, "\n")[^1].Commits.Single().Text);
+        }
+
+        var session = Session();
+        session.Private = true;
+        ChooseHashi(session);
+        Assert.True(history.Get("はしを") is null, "プライベートの入力欄では覚えない");
+
+        // ふつうの入力欄に戻れば覚える
+        session.Private = false;
+        ChooseHashi(session);
+        Assert.Equal("箸を", history.Get("はしを"));
+    }
 }
