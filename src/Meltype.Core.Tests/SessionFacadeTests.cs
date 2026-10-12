@@ -91,6 +91,115 @@ internal static class SessionFacadeTests
     }
 
     [Test]
+    public static void TsfDirectMode_RomajiDetectionSwitchesToJapaneseWithoutReplayingLastKey()
+    {
+        var settings = new Settings { DirectModeAutoDetect = true };
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions { ClassifyDirect = (letters, _) => letters.Length >= 2 ? Detection.Verdict.Japanese : Detection.Verdict.Undecided },
+            () => settings, directModeDetection: true)
+        {
+            Direct = true,
+        };
+
+        var results = Type(session, "ka");
+
+        Assert.True(!results[0].Consumed, "判定中の1文字目は英数のまま入力欄へ渡す");
+        Assert.True(results[1].Consumed, "日本語と判定したキーはローマ字として再送しない");
+        Assert.Equal(1, results[1].Commits.Single().DeleteBefore, "入力欄にすでに届いた1文字目だけ消す");
+        Assert.Equal("k", results[1].Commits.Single().Expect, "TSFが削除できるよう実際に届いた文字を照合する");
+        Assert.Equal("か", results[1].View?.Text, "ローマ字を変換中のかなにする");
+        Assert.True(!session.Direct, "英数状態を日本語入力に切り替える");
+    }
+
+    [Test]
+    public static void TsfDirectMode_RomajiDetectionCanBeDisabled()
+    {
+        var settings = new Settings { DirectModeAutoDetect = false };
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions { ClassifyDirect = (_, _) => Detection.Verdict.Japanese },
+            () => settings, directModeDetection: true)
+        {
+            Direct = true,
+        };
+
+        var results = Type(session, "ka");
+
+        Assert.True(results.All(result => !result.Consumed && result.View is null && result.Commits.Count == 0),
+            "設定 OFF ならローマ字判定や文字の置換をしない");
+        Assert.True(session.Direct, "英数状態を維持する");
+    }
+
+    [Test]
+    public static void TsfDirectMode_ManualJapaneseToggleResumesNormalComposition()
+    {
+        var settings = new Settings { DirectModeAutoDetect = true };
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions
+            {
+                ClassifyDirect = (_, _) => Detection.Verdict.English,
+            },
+            () => settings, directModeDetection: true)
+        {
+            Direct = true,
+        };
+
+        var english = Type(session, "hello");
+        Assert.True(english.All(result => !result.Consumed), "英数中の英語はそのままアプリへ渡す");
+
+        session.Direct = false;
+        var japanese = Type(session, "ka");
+
+        Assert.True(japanese.All(result => result.Consumed), "手動で日本語に戻した後は通常のローマ字入力として扱う");
+        Assert.Equal("か", japanese[^1].View?.Text, "英数検知の判定結果に関係なく日本語入力を開始する");
+    }
+
+    [Test]
+    public static void TsfDirectMode_ResumesDetectionAfterUnsentEnglishWordBoundary()
+    {
+        var settings = new Settings { DirectModeAutoDetect = true };
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions
+            {
+                ClassifyDirect = (letters, _) => letters.Equals("ka", StringComparison.OrdinalIgnoreCase) ? Detection.Verdict.Japanese
+                    : letters.Length >= 3 ? Detection.Verdict.English
+                    : Detection.Verdict.Undecided,
+            },
+            () => settings, directModeDetection: true)
+        {
+            Direct = true,
+        };
+
+        var english = Type(session, "hello");
+        Assert.True(english.All(result => !result.Consumed && result.View is null && result.Commits.Count == 0),
+            "英語と分かった語の続きはそのまま入力する");
+        Assert.True(session.Direct, "英語の語では英数状態を維持する");
+
+        // TSFは普通の空白をMeltypeに送らずアプリへ直接渡す。次のキーでキャレット前の空白を見て検知を再開する。
+        var japanese = Type(session, "ka", "hello ");
+        Assert.True(japanese[1].Consumed, "区切りの後の語は日本語判定され、アプリへ素通ししない");
+        Assert.True(!session.Direct, "ローマ字の語は日本語入力に切り替える");
+    }
+
+    [Test]
+    public static void TsfDirectMode_StopsCheckingAfterIdleTimeout()
+    {
+        var settings = new Settings { DirectModeAutoDetect = true };
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions { ClassifyDirect = (_, _) => Detection.Verdict.Undecided },
+            () => settings, directModeDetection: true)
+        {
+            Direct = true,
+        };
+
+        var first = Type(session, "k")[0];
+        Thread.Sleep(750);
+        var second = Type(session, "a")[0];
+
+        Assert.True(!first.Consumed && !second.Consumed, "無入力 0.7 秒後は英数のまま続ける");
+        Assert.True(session.Direct, "英数状態を維持する");
+    }
+
+    [Test]
     public static void KeysOutsideComposition_GoToTheApp()
     {
         var session = Create();

@@ -618,6 +618,7 @@ void TextService::Hello() {
     lastHello_ = GetTickCount64();
     JsonValue reply;
     serverActive_ = Request("{\"op\":\"hello\",\"process\":" + JsonString(ProcessName()) + "}", reply) && reply[L"active"].Bool();
+    directDetection_ = serverActive_ && reply[L"directDetection"].Bool();
     // コードエディター・ターミナルのアプリなら、キャレットが動くたびに入力モードの表示を合わせる (QueryMode)
     codeApp_ = serverActive_ && reply[L"code"].Bool();
     TipLog(L"Meltype.exe: %s", serverActive_ ? L"つながりました" : L"使えません (動いていない・モードが Meltype IME でない)");
@@ -692,7 +693,9 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, wchar_t& ch, bool test)
         passReason_ = reason;
         return false;
     };
-    if (!open_) return pass(L"英数");
+    // 設定が変わった場合も、英数状態での次の打鍵時に検知の有効/無効を更新する。
+    if (!open_ && !directDetection_ && GetTickCount64() - lastHello_ > 2000) Hello();
+    if (!open_ && !directDetection_) return pass(L"英数");
     if (KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) return pass(L"Ctrl・Alt・Windows キーを押している");
     if (ContextDisabled(context)) return pass(L"この入力欄では使わない");
     ch = CharOf(vk, 0);
@@ -812,6 +815,7 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch) {
     keyFailed_ = false;
     consumed_ = true;
     bool insertedOnFailure = false;
+    bool switchToJapanese = false;
     HRESULT hr = RunEditSession(context, clientId_, TF_ES_SYNC | TF_ES_READWRITE, [&](TfEditCookie ec) {
         // キーを受け取る前に入力欄の種類を読めなかった: ここで確かめ、パスワード欄なら Meltype.exe に送らずにアプリへ返す
         // (変換中なら、変換中の文字を確定してから。変換中にパスワード欄になったのに、受け取る前に確定できなかったときも)
@@ -823,7 +827,8 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch) {
         }
         ownEdit_ = true;
         std::string request = "{\"op\":\"key\",\"sid\":\"" + sid_ + "\",\"vk\":" + std::to_string(vk) + ",\"ch\":" + std::to_string(ch) +
-                              ",\"mods\":" + std::to_string(mods) + ",\"process\":" + JsonString(ProcessName()) + ",\"code\":true";
+                              ",\"mods\":" + std::to_string(mods) + ",\"process\":" + JsonString(ProcessName()) + ",\"code\":true" +
+                              std::string(",\"direct\":") + (!open_ ? "true" : "false");
         // 前に確定してからキャレットが動いた: Meltype.exe に、前の語を確定し直さないように伝える
         if (caretMoved_) request += ",\"moved\":true";
         request += PendingPassed();
@@ -857,6 +862,8 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch) {
             return S_OK;
         }
         serverActive_ = reply[L"active"].Bool();
+        directDetection_ = serverActive_ && reply[L"directDetection"].Bool();
+        switchToJapanese = reply[L"switchToJapanese"].Bool();
         consumed_ = reply[L"consumed"].Bool();
         ApplyMode(reply);
         // 入力の続きが無いので受け持たなかっただけ (つなぎ直した) かもしれない: 次のキーで、すぐに問い合わせ直す
@@ -866,6 +873,7 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch) {
     });
     // 同期の編集セッションの終わりの通知 (OnEndEdit) はもう来ている。何も変えなかったときに印が残らないように戻す
     ownEdit_ = false;
+    if (SUCCEEDED(hr) && switchToJapanese && !open_) SetOpen(true);
     if (FAILED(hr)) {
         TipLog(L"編集セッションを始められません: 0x%08X", hr);
         keyFailed_ = true;

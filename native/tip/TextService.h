@@ -149,6 +149,7 @@ private:
     PipeClient pipe_;
     std::string sid_;
     bool serverActive_ = false;
+    bool directDetection_ = false; // 英数状態でもローマ字検知が有効 (Meltype.exe の応答)
     ULONGLONG lastHello_ = 0;
     bool open_ = true;
     bool codeApp_ = false;         // コードエディター・ターミナル (Meltype.exe の応答の code)

@@ -122,12 +122,29 @@ public sealed class MeltypeSession
     private readonly Host _host = new();
     private readonly Func<Settings> _settings;
     private readonly SigilWord _sigil = new();
+    private readonly bool _directModeDetection;
+    private bool _directEnglishWord;
+    private bool _direct;
 
-    public MeltypeSession(CompositionDetector detector, IKanjiConverter converter, CompositionOptions options, Func<Settings> settings)
+    public MeltypeSession(CompositionDetector detector, IKanjiConverter converter, CompositionOptions options, Func<Settings> settings, bool directModeDetection = false)
     {
         _settings = settings;
+        _directModeDetection = directModeDetection;
         _gate = new CaptureGate(() => { });
-        _controller = new CompositionController(_gate, detector, converter, _host, options);
+        var controllerOptions = directModeDetection
+            ? options with
+            {
+                DirectMode = () => Direct,
+                DirectDecided = japanese =>
+                {
+                    Direct = !japanese;
+                    _directEnglishWord = !japanese;
+                    _host.ResetDirectReplay();
+                },
+            }
+            : options;
+        _host.DeferCurrentReplayOnDelete = directModeDetection;
+        _controller = new CompositionController(_gate, detector, converter, _host, controllerOptions);
     }
 
     /// <summary>
@@ -183,7 +200,15 @@ public sealed class MeltypeSession
     }
 
     /// <summary>英数 (直接入力) か。true の間はキーをすべてアプリに渡す (Mac の「英数」キー、「かな」キーで戻す)。</summary>
-    public bool Direct { get; set; }
+    public bool Direct
+    {
+        get => _direct;
+        set
+        {
+            _direct = value;
+            if (!value) _directEnglishWord = false;
+        }
+    }
 
     /// <summary>コードの入力欄ではコメント・文字列以外を直接入力する。</summary>
     private bool _codeInput;
@@ -298,9 +323,14 @@ public sealed class MeltypeSession
         }
         _host.Begin(ch, shift, before, after);
         var down = new KeyEvent(vk, ch ?? 0, false, false, false, Environment.TickCount64);
+        if (_directModeDetection) _controller.Tick(down.TimeMs);
         // Ctrl・Option・Command と一緒のキーは、変換ボックスが空ならアプリの操作 (コピーなど) なので触らない。
         var modifier = control || alt || command;
-        if (Direct || !_settings().Enabled)
+        var settings = _settings();
+        if (Direct && _directModeDetection && _directEnglishWord && before is { Length: > 0 } &&
+            !char.IsAsciiLetterOrDigit(before[^1]) && before[^1] is not ('@' or '_'))
+            _directEnglishWord = false;
+        if ((Direct && (!_directModeDetection || !settings.DirectModeAutoDetect || _directEnglishWord)) || !settings.Enabled)
         {
             return Track(_host.Result(consumed: false), vk, ch, modifier);
         }
@@ -460,12 +490,15 @@ public sealed class MeltypeSession
         private int _pendingDelete;
         // このセッションで続けて確定した文字の終わりの部分 (確定し直しで消す文字を、DLL などで確かめられるように)
         private readonly StringBuilder _committed = new();
+        private readonly StringBuilder _directReplay = new();
         private const int MaxCommitted = 256;
         private char? _char;
         private bool _shift;
         private string? _before, _after;
         private CompositionView? _view;
         private bool _hidden;
+        public bool DeferCurrentReplayOnDelete { get; set; }
+        private string? _pendingExpectOverride;
 
         public bool ReplayedCurrent { get; private set; }
 
@@ -500,7 +533,13 @@ public sealed class MeltypeSession
             string? expect = null;
             if (_pendingDelete > 0)
             {
-                if (_committed.Length >= _pendingDelete)
+                if (_pendingExpectOverride is { } expected)
+                {
+                    expect = expected;
+                    _pendingExpectOverride = null;
+                    _committed.Clear();
+                }
+                else if (_committed.Length >= _pendingDelete)
                 {
                     expect = _committed.ToString(_committed.Length - _pendingDelete, _pendingDelete);
                     _committed.Length -= _pendingDelete;
@@ -513,13 +552,30 @@ public sealed class MeltypeSession
             if (_committed.Length > MaxCommitted) _committed.Remove(0, _committed.Length - MaxCommitted);
         }
 
-        public void DeleteBackward(int count) => _pendingDelete += count;
+        public void DeleteBackward(int count)
+        {
+            if (DeferCurrentReplayOnDelete && ReplayedCurrent)
+            {
+                count--;
+                ReplayedCurrent = false;
+                if (count > 0 && _directReplay.Length >= count)
+                    _pendingExpectOverride = _directReplay.ToString(0, count);
+                _directReplay.Clear();
+            }
+            _pendingDelete += Math.Max(0, count);
+        }
 
         public void Replay(KeyEvent e)
         {
             // 送り直すのは「今処理しているキー」(押したとき)。修飾キーやキーを離したことは、OS がアプリに渡すので何もしない。
-            if (e.IsDown && !VirtualKeys.IsModifier(e.Vk)) ReplayedCurrent = true;
+            if (e.IsDown && !VirtualKeys.IsModifier(e.Vk))
+            {
+                ReplayedCurrent = true;
+                if (DeferCurrentReplayOnDelete && _char is { } c && char.IsAsciiLetter(c)) _directReplay.Append(c);
+            }
         }
+
+        public void ResetDirectReplay() => _directReplay.Clear();
 
         public void Replay(MouseButtonEvent e)
         {
