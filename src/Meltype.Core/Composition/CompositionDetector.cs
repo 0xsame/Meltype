@@ -921,7 +921,7 @@ public sealed partial class CompositionDetector
     /// <summary>
     /// ローマ字として読める英字のすぐ後ろに、読めない拡張子が続くとき (llama.cpp → っぁま。cpp)。
     /// 語の先頭から拡張子までを 1 つの英語区間にする。大文字や既に英語と分かる語 (Meltype.amr) は、拡張子を別区間のままにする。
-    /// 数字の前 (3.14desu) と最後まで読める語 (Meltype.desu) は対象外。
+    /// 数字の前 (3.14desu)・小数 (soudesu.1.5)・最後まで読める語 (Meltype.desu) は対象外。
     /// </summary>
     private int ReadableStemDotSuffixEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, bool final, DetectionLevel level)
     {
@@ -934,7 +934,11 @@ public sealed partial class CompositionDetector
         var stem = Raw(units, start, dot);
         if (IsEnglishSpan(stem, atEnd: false, 0, false, start == 0, level, final, next: ".")) return -1;
         var suffix = DotSuffixEnd(units, dot + 1, pending, final);
-        return suffix > dot + 1 ? suffix : -1;
+        if (suffix <= dot + 1) return -1;
+        // 1.5 のような小数は拡張子ではない (soudesu.1.5 → そうです。1.5)。cpp のような英字の拡張子だけをまとめる。
+        var suffixRaw = Raw(units, dot + 1, Math.Min(suffix, units.Count));
+        if (suffixRaw.Length > 0 && char.IsAsciiDigit(suffixRaw[0])) return -1;
+        return suffix;
     }
 
     /// <summary>
