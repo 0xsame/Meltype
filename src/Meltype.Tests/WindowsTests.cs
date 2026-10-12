@@ -61,6 +61,33 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void Mozc_DoesNotRestartAfterDispose()
+    {
+        // 確定のあと裏で覚えさせる処理・起動直後の WarmUp が、終了 (Dispose) のあとで動くことがある。ヘルパーを起動し直さない
+        var helper = Environment.GetEnvironmentVariable("MELTYPE_MOZC") is { Length: > 0 } path ? path
+            : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "native", "mozc", "bin", "meltype_mozc_helper.exe"));
+        if (!File.Exists(helper)) return; // Mozc の変換ヘルパーが無い環境
+        var profile = Path.Combine(Path.GetTempPath(), $"meltype-mozc-dispose-{Environment.ProcessId}");
+        static int Helpers() => System.Diagnostics.Process.GetProcessesByName("meltype_mozc_helper").Length;
+        var mozc = new MozcConverter(helper, profile);
+        try
+        {
+            if (mozc.Convert("てすと") is null) return; // 起動できない環境
+            mozc.Dispose();
+            var before = Helpers();
+            mozc.Learn("", [new ConversionClause("てすと", "テスト")]);
+            Assert.Equal(before, Helpers(), "Dispose のあとで覚えさせても、ヘルパーを起動しない");
+            Assert.True(mozc.Convert("てすと") is null, "Dispose のあとは変換しない");
+            Assert.Equal(before, Helpers(), "Dispose のあとで変換しても、ヘルパーを起動しない");
+        }
+        finally
+        {
+            mozc.Dispose();
+            try { Directory.Delete(profile, recursive: true); } catch { }
+        }
+    }
+
+    [Test]
     public static void Line_RechecksStaleFocusOnKey()
     {
         // 起動直後の LINE は、入力欄の通知が来ず「入力欄ではない」のままキーが素通しになる。打った時点で調べ直す。
