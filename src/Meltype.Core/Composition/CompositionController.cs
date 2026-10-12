@@ -499,7 +499,13 @@ public sealed class CompositionController
     {
         // クリックで別の場所に移る前に、今の位置へ確定しておく。
         CommitPending();
-        // 送らずにいた Ctrl は、クリックと一緒に送る (Ctrl+クリック)。
+        // 送らずにいた Shift / Ctrl は、クリックと一緒に送る (Shift+クリックの範囲選択、Ctrl+クリック)。
+        foreach (var shift in _swallowedShift)
+        {
+            _host.Replay(new KeyEvent(shift, 0, false, false, false, 0));
+            _replayedDown.Add(shift);
+        }
+        _swallowedShift.Clear();
         foreach (var control in _swallowedControl)
         {
             _host.Replay(new KeyEvent(control, 0, false, false, false, 0));

@@ -885,6 +885,21 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void ShiftClick_CommitsThenSendsShiftWithClick()
+    {
+        // Shift を押したままクリック (範囲選択): 確定してから、Shift とクリックを送る
+        var k = new Keyboard();
+        k.Type("kana");
+        k.Key(VirtualKeys.LShift);
+        k.Gate.OnMouseButton(new MouseButtonEvent(0x201, 10, 20, 0));
+        k.Controller.Pump();
+        var events = string.Join("|", k.Host.Events);
+        Assert.True(events.StartsWith("text:かな|down:A0|mouse:201"), events);
+        k.Key(VirtualKeys.LShift, up: true);
+        Assert.True(k.Host.Events.Count(e => e.Contains(":A0")) == 2, "Shift の上げ下げがそろう: " + string.Join("|", k.Host.Events));
+    }
+
+    [Test]
     public static void CtrlOtherShortcut_CommitsThenPasses()
     {
         var k = new Keyboard();
