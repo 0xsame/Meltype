@@ -194,7 +194,7 @@ internal sealed class Updater : IDisposable
             if (line.StartsWith("ready ", StringComparison.Ordinal))
             {
                 var version = line[6..];
-                Log.Info($"Meltype {version} をダウンロードしました。次の起動時に更新します。");
+                Log.Info(_enabled() ? $"Meltype {version} をダウンロードしました。次の起動時に更新します。" : $"Meltype {version} をダウンロードしました。トレイの「更新」→「Meltype {version} に更新して再起動」で更新できます。");
                 Ready?.Invoke(version);
                 return $"Meltype {version} をダウンロードしました。";
             }

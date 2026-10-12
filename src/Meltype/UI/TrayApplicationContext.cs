@@ -277,9 +277,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (!_engine.Settings.ShowNotifications) return;
             _tray.BalloonTipClicked -= OnUpdateBalloonClicked;
             _tray.BalloonTipClicked += OnUpdateBalloonClicked;
-            _tray.ShowBalloonTip(5000, "Meltype の更新", $"Meltype {version} を準備しました。次に Windows にサインインしたときに更新します。ここをクリックすると今すぐ更新します。", ToolTipIcon.Info);
+            _tray.ShowBalloonTip(5000, "Meltype の更新", UpdateReadyMessage(version, _engine.Settings.AutoUpdate), ToolTipIcon.Info);
         });
     }
+
+    /// <summary>自動更新が OFF なら、次のサインインでは更新しない (Updater.ApplyStagedAtStartup)。トレイのメニューから更新できると案内する。</summary>
+    internal static string UpdateReadyMessage(string version, bool autoUpdate) => autoUpdate
+        ? $"Meltype {version} を準備しました。次に Windows にサインインしたときに更新します。ここをクリックすると今すぐ更新します。"
+        : $"Meltype {version} を準備しました。トレイの「更新」→「Meltype {version} に更新して再起動」で更新できます。ここをクリックすると今すぐ更新します。";
 
     private void OnUpdateBalloonClicked(object? sender, EventArgs e)
     {
