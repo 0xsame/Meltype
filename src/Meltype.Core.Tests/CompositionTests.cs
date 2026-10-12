@@ -3089,5 +3089,11 @@ internal static class CompositionTests
             k.Type(typed + "\n");
             Assert.Equal(expected, k.Host.Document, typed);
         }
+    public static void Issue154_AbcToDef()
+    {
+        // Issue #154: 英字のあいだの「と」は助詞。全体を 1 つの英単語にしない。
+        var k = new Keyboard();
+        k.Type("abctodef\n");
+        Assert.Equal("abcとdef", k.Host.Document);
     }
 }
