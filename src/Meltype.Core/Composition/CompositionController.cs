@@ -1916,26 +1916,37 @@ public sealed class CompositionController
     /// </summary>
     private void Resize(int delta)
     {
-        if (_clauses[_selectedClause].IsEnglish && !ReadAsJapanese(_selectedClause)) return;
         var current = _clauses[_selectedClause];
         var next = _selectedClause + 1 < _clauses.Count ? _clauses[_selectedClause + 1] : null;
+        // 区切りを動かせないときは、英語の文節を読み直さずにそのままにする
+        if (current.IsEnglish && !CanReadAsJapanese(current)) return;
+        if (delta > 0 && (next is null || next.IsEnglish && !CanReadAsJapanese(next))) return;
+        if (delta < 0 && (current.IsEnglish ? current.Kana! : current.Reading).Length <= 1) return;
+
+        if (current.IsEnglish)
+        {
+            ReadAsJapanese(_selectedClause);
+            current = _clauses[_selectedClause];
+        }
         if (next is { IsEnglish: true })
         {
             if (delta < 0) next = null;
-            else next = ReadAsJapanese(_selectedClause + 1) ? _clauses[_selectedClause + 1] : null;
+            else
+            {
+                ReadAsJapanese(_selectedClause + 1);
+                next = _clauses[_selectedClause + 1];
+            }
         }
 
         if (delta > 0)
         {
-            if (next is null) return;
-            current.Reading += next.Reading[0];
+            current.Reading += next!.Reading[0];
             next.Reading = next.Reading[1..];
             if (next.Reading.Length == 0) _clauses.Remove(next);
             else Reconvert(next);
         }
         else
         {
-            if (current.Reading.Length <= 1) return;
             var moved = current.Reading[^1];
             current.Reading = current.Reading[..^1];
             if (next is null)
@@ -1952,12 +1963,14 @@ public sealed class CompositionController
     /// <summary>英語の文節を、打ったローマ字のかなを読みにした日本語の文節に置き換える。かなに読めない英字だけ (xyz) なら置き換えずに false。</summary>
     private bool ReadAsJapanese(int index)
     {
-        if (_clauses[index] is not { IsEnglish: true, Kana: { } kana } || !kana.Any(IsKana)) return false;
-        var clause = new Clause(kana, false, []);
+        if (!CanReadAsJapanese(_clauses[index])) return false;
+        var clause = new Clause(_clauses[index].Kana!, false, []);
         Reconvert(clause);
         _clauses[index] = clause;
         return true;
     }
+
+    private static bool CanReadAsJapanese(Clause clause) => clause is { IsEnglish: true, Kana: { } kana } && kana.Any(IsKana);
 
     private void Reconvert(Clause clause)
     {
