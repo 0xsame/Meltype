@@ -182,8 +182,12 @@ internal sealed class Updater : IDisposable
                 start.ArgumentList.Add(arg);
             }
             using var process = Process.Start(start)!;
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            if (!process.WaitForExit(15 * 60 * 1000)) process.Kill();
+            var output = ReadOutput(process, 15 * 60 * 1000)?.Trim();
+            if (output is null)
+            {
+                Log.Warn("更新の確認が時間内に終わりませんでした。");
+                return null;
+            }
             var line = output.Split('\n').LastOrDefault()?.Trim() ?? "";
             if (line.StartsWith("ready ", StringComparison.Ordinal))
             {
@@ -205,6 +209,19 @@ internal sealed class Updater : IDisposable
         {
             Volatile.Write(ref _running, 0);
         }
+    }
+
+    /// <summary>標準出力を読みながら終わるのを待つ。時間内に終わらなければ子プロセスごと終了させて null。</summary>
+    internal static string? ReadOutput(Process process, int timeout)
+    {
+        // 先に ReadToEnd すると、PowerShell が止まったときに戻らず、時間で区切れない
+        var output = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(timeout))
+        {
+            process.Kill(entireProcessTree: true);
+            return null;
+        }
+        return output.Result;
     }
 
     private static bool IsNewer(string version) =>

@@ -5,6 +5,7 @@ using Meltype.Config;
 using Meltype.Input;
 using Meltype.Composition;
 using Meltype.IME;
+using System.Diagnostics;
 
 namespace Meltype.Tests;
 
@@ -244,6 +245,28 @@ internal static class WindowsTests
                 Assert.True(line.Sum(c => c < 0x80 ? 1 : 2) <= 80, $"長すぎる行: {line}");
                 Assert.True(line.Length > 0 && !")）」』]、。,.・".Contains(line[0]) && !"(（「『[".Contains(line[^1]), $"括弧・句読点の位置: {line}");
             }
+        }
+    }
+
+    [Test]
+    public static void Updater_StopsScriptThatDoesNotFinish()
+    {
+        static Process Start(string command)
+        {
+            var start = new ProcessStartInfo(Updater.PowerShell) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+            foreach (var arg in new[] { "-NoProfile", "-Command", command }) start.ArgumentList.Add(arg);
+            return Process.Start(start)!;
+        }
+        using (var process = Start("Write-Output 'ready 9.9.9'"))
+            Assert.Equal("ready 9.9.9", Updater.ReadOutput(process, 30_000)?.Trim(), "終わったら出力を返す");
+
+        // 出力の途中で止まった PowerShell を、ReadToEnd で待ち続けずに時間で終了させる
+        using (var process = Start("Write-Output 'start'; Start-Sleep 30; Write-Output 'none'"))
+        {
+            var watch = Stopwatch.StartNew();
+            Assert.Equal(null, Updater.ReadOutput(process, 2_000), "時間切れなら null");
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"時間で区切る: {watch.Elapsed}");
+            Assert.True(process.WaitForExit(5_000), "PowerShell を終了させる");
         }
     }
 }
