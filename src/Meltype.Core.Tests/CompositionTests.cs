@@ -1313,6 +1313,9 @@ internal static class CompositionTests
     {
         var dictionary = CandidateDictionary.Load(null);
         Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    }
+
+    [Test]
     public static void Issue435_BluRayStaysEnglish()
     {
         var k = new Keyboard();
