@@ -1,13 +1,19 @@
-# 性能の計測
+<a name="性能の計測"></a>
+<img src="../../docs/images/headings/performance/title.svg" alt="性能の計測" height="80">
+
 
 Meltype の性能を測る仕組みは 2 つあります。
 
 - **変換エンジンの計測 (`--perf`)**: Mozc を使って例文を打ち、遅延・段階ごとの時間・候補の数・控えの使い回し・メモリ・正解率を測ります。変換の精度を上げる機能を足す前と後の比較に使います (#279)
-- **打鍵の処理の計測 (`benchmark-composition.py`)**: 変換エンジンを外して (候補を返さない偽物にして)、1 キーごとの処理だけを NativeAOT で測ります。下の [Composition performance check](#composition-performance-check)
+- **打鍵の処理の計測 (`benchmark-composition.py`)**: 変換エンジンを外して (候補を返さない偽物にして)、1 キーごとの処理だけを NativeAOT で測ります。下の [打鍵の処理の計測](#打鍵の処理の計測-benchmark-compositionpy)
 
 どちらもアプリ本体には組み込みません。ふだんの入力では何も測らず、何もログに残しません。
 
-## 変換エンジンの計測 (`--perf`)
+<br>
+
+<a name="変換エンジンの計測---perf"></a>
+<img src="../../docs/images/headings/performance/01.svg" alt="変換エンジンの計測 (--perf)" height="53"><br>
+
 
 ```powershell
 $env:MELTYPE_MOZC = "$PWD\native\mozc\bin\meltype_mozc_helper.exe"
@@ -22,7 +28,9 @@ MELTYPE_MOZC=/path/to/meltype_mozc_helper dotnet run -c Release --project src/Me
 `MELTYPE_MOZC` が無いと判定だけ (漢字にしない) で測るので、時間は Mozc ありのものと比べられません。
 必ず `-c Release` で動かしてください (結果の `meta.configuration` に残ります)。
 
-### 前と後を比べる
+<a name="前と後を比べる"></a>
+<img src="../../docs/images/headings/performance/s01.svg" alt="前と後を比べる" height="40">
+
 
 ```powershell
 git worktree add ..\meltype-base main
@@ -43,7 +51,9 @@ dotnet run -c Release --project src/Meltype.Core.Tests -- --perf-compare $env:TE
 - 回数を増やす (`--perf perf.json tools/mozc-compare-cases.tsv 20`) と p99 が安定する
 - 回数・控えの使い回し率・候補の数・正解率はばらつかないので、変わっていればそれは変更のせいです
 
-### 測るもの
+<a name="測るもの"></a>
+<img src="../../docs/images/headings/performance/s02.svg" alt="測るもの" height="40">
+
 
 1 つの例文を、変換の控えを捨ててから打つ (**cold**) のと、すぐにもう一度打つ (**warm**、控えが残っている) のを交互に繰り返します。最初の 1 周は JIT と変換ヘルパーの起動を済ませるためだけに打ち、数えません。
 時間はミリ秒で、p50 / p95 / p99 は小さい方から 50% / 95% / 99% の位置の値 (nearest-rank 法) です。
@@ -63,39 +73,51 @@ dotnet run -c Release --project src/Meltype.Core.Tests -- --perf-compare $env:TE
 
 変換の控えの回数とヘルパーとのやり取りの時間は、`MozcConverter.Statistics()` で読みます。控えを引くときに回数を足しているだけなので、ふだんの入力は遅くなりません (アプリはこれを読みません)。
 
-### 入力した文字について
+<a name="入力した文字について"></a>
+<img src="../../docs/images/headings/performance/s03.svg" alt="入力した文字について" height="40">
+
 
 結果の JSON には、例文のファイルにある文と、それを打った結果だけが入ります。
 例文のファイルには、自分が実際に打った文 (メール・チャットなど) を入れないでください。足すときは、作った文か、公開されている文にしてください。
 
-### 測らないもの
+<a name="測らないもの"></a>
+<img src="../../docs/images/headings/performance/s04.svg" alt="測らないもの" height="40">
+
 
 Windows のキーボードフック・TSF・IMK・IBus とのやり取りと、画面に描くまでの時間は含みません (`Meltype.Core` の中だけ)。
 Microsoft IME で変換するときの時間も測りません (Mozc が無いときは判定だけで測ります)。
 
-## Composition performance check
+<br>
+
+<a name="打鍵の処理の計測-benchmark-compositionpy"></a>
+<a name="composition-performance-check"></a>
+<img src="../../docs/images/headings/performance/02.svg" alt="打鍵の処理の計測 (benchmark-composition.py)" height="53"><br>
+
+変換エンジンを外して、1 キーごとの処理 (判定・ローマ字・表示の組み立て) だけを NativeAOT で測ります。
 
 ```sh
 python3 tools/benchmark-composition.py /path/to/baseline-checkout \
   --output /path/to/results
 ```
 
-Use the original v1.0.0 commit `467255bfe3e36b803a3fd3f5a1480fe35d5058c9`
-for the PR's baseline. The command builds both versions with the same C# harness,
-SDK and NativeAOT settings, then alternates which version runs first by scenario.
-Each scenario uses 64, 128 and 256 keys, three warmups and 15 measured repetitions.
-Use an otherwise idle machine. `--common-dictionaries` embeds the current
-repository's dictionaries in both versions as a control for dictionary changes.
-`--jit` runs release JIT code instead and disables tiered compilation.
+比べる元 (baseline) には、v1.0.0 のコミット `467255bfe3e36b803a3fd3f5a1480fe35d5058c9` を使います。
+コマンドは、両方の版を同じ C# の計測用プログラム・同じ SDK・同じ NativeAOT の設定でビルドし、場面ごとにどちらの版を先に動かすかを入れ替えます。
+場面ごとに 64・128・256 キーを打ち、3 回の慣らしの後に 15 回測ります。ほかに重い処理が動いていない PC で測ってください。
 
-The timer covers `HandleKey`, result JSON serialization and Enter commit. It
-excludes dictionary loading, startup and session creation. Both versions have the built-in spelling checker and the same empty language
-memory enabled. The converter is a stub returning no candidates. It records total time, thread allocations, per-key
-p50/p95/max and the committed output SHA-256. Non-URL output must match the
-baseline. The URL intentionally changes to preserve the raw token.
+- `--common-dictionaries`: 今のリポジトリの辞書を両方の版に入れます (辞書の変更の影響を除いて比べるため)
+- `--jit`: NativeAOT ではなく、Release の JIT のコードで動かします (段階的なコンパイルは切ります)
 
-`report.json` contains raw samples, medians, ratios, dictionary/program hashes,
-SDK and machine information. The command fails if the current median total time
-exceeds 50% of the baseline or unchanged-output checks fail. This is a local
-synthetic performance gate; it does not measure IMK/IBus/Windows GUI latency or
-conversion-engine time. NativeAOT build diagnostics are saved separately.
+<a name="測る範囲"></a>
+<img src="../../docs/images/headings/performance/s05.svg" alt="測る範囲" height="40">
+
+時間に入るのは、`HandleKey`、結果の JSON への書き出し、Enter での確定です。辞書の読み込み・起動・セッションを作る時間は入りません。
+両方の版とも、同梱のスペルチェッカーと、空の言語の学習を使います。変換エンジンは、候補を何も返さない偽物です。
+記録するのは、合計の時間・スレッドが確保したメモリ・1 キーごとの p50 / p95 / max・確定した文字列の SHA-256 です。
+URL 以外の確定した文字列は、baseline と同じでなければなりません (URL は打ったまま残すように変えたので、わざと違います)。
+
+<a name="結果"></a>
+<img src="../../docs/images/headings/performance/s06.svg" alt="結果" height="40">
+
+`report.json` には、生の計測値・中央値・倍率・辞書とプログラムのハッシュ・SDK と PC の情報が入ります。
+今の版の合計の時間の中央値が baseline の 50% を超えるか、変わってはいけない確定の文字列が変わると、コマンドは失敗します。
+これは手元で動かす合成の性能の確認です。IMK・IBus・Windows の画面とのやり取りの遅延や、変換エンジンの時間は測りません。NativeAOT のビルドの診断は別に保存します。
