@@ -37,6 +37,9 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
     // 要る DLL が無くて起動できない (Visual C++ のランタイムが無いなど)。起動し直しても同じなので、もう試さない
     private bool _missingDependency;
 
+    // 終了した。終了のあとで裏の処理 (覚えさせる・WarmUp) が動いても、ヘルパーを起動し直さない (_gate の中で読み書きする)
+    private bool _disposed;
+
     // Windows: 子プロセスを起動するあいだ、DLL が見つからないときのエラーの画面を出さない (子プロセスはこの設定を引き継ぐ)。
     // 子プロセスが引き継ぐのはプロセス全体の設定だけなので、SetThreadErrorMode では効かない。起動したらすぐ戻す
     private const uint SEM_FAILCRITICALERRORS = 0x0001;
@@ -98,6 +101,7 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
         var records = string.Join(RecordSeparator, clauses.Select(c => Clean(c.Reading).Replace(UnitSeparator, ' ') + UnitSeparator + Clean(c.Text).Replace(UnitSeparator, ' ')));
         lock (_gate)
         {
+            if (_disposed) return;
             // 覚えさせると候補の順番が変わるので、候補の控えを捨てる。
             _candidates.Clear();
             _conversions.Clear();
@@ -143,6 +147,7 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
         reading = Clean(reading);
         lock (_gate)
         {
+            if (_disposed) return null;
             // ライブ変換は 1 キーごとに同じ読みを何度も変換し直すので、同じ頼み方の結果は使い回す (覚えさせたら捨てる)。
             var key = context + "\t" + reading;
             if (_conversions.TryGetValue(key, out var known))
