@@ -2999,4 +2999,27 @@ internal static class CompositionTests
         k.Type("oemu\n");
         Assert.Equal("おえむ", k.Host.Document);
     }
+
+    [Test]
+    public static void Issue455_KatakanaExpectIgnoresAsciiCase()
+    {
+        var tsv = Path.Combine(Path.GetTempPath(), $"meltype-expect-455-{Guid.NewGuid():N}.tsv");
+        var json = Path.Combine(Path.GetTempPath(), $"meltype-expect-455-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(tsv, "oemnopasokonn\tOEMのパソコン\noemnopasokonn\tCPUのパソコン\n");
+            Checks.Expect(tsv, json);
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(json));
+            var rows = doc.RootElement.EnumerateArray().ToArray();
+            Assert.Equal(2, rows.Length);
+            Assert.True(rows[0].GetProperty("ok").GetBoolean(), "OEMのパソコン は oemのぱそこん と一致する");
+            Assert.Equal("oemのぱそこん", rows[0].GetProperty("actual").GetString());
+            Assert.Equal(false, rows[1].GetProperty("ok").GetBoolean());
+        }
+        finally
+        {
+            if (File.Exists(tsv)) File.Delete(tsv);
+            if (File.Exists(json)) File.Delete(json);
+        }
+    }
 }
