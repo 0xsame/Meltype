@@ -254,6 +254,12 @@ General Public License for more details.
   <a href="https://github.com/cpthgli"><img src="https://github.com/cpthgli.png?size=120" width="60" alt="@cpthgli" title="@cpthgli"></a>
   <a href="https://github.com/MuNeNiCK"><img src="https://github.com/MuNeNiCK.png?size=120" width="60" alt="@MuNeNiCK" title="@MuNeNiCK"></a>
   <a href="https://github.com/whitewater-png"><img src="https://github.com/whitewater-png.png?size=120" width="60" alt="@whitewater-png" title="@whitewater-png"></a>
+  <a href="https://github.com/kumapuni"><img src="https://github.com/kumapuni.png?size=120" width="60" alt="@kumapuni" title="@kumapuni"></a>
+  <a href="https://github.com/Maguro-Tsukiji"><img src="https://github.com/Maguro-Tsukiji.png?size=120" width="60" alt="@Maguro-Tsukiji" title="@Maguro-Tsukiji"></a>
+  <a href="https://github.com/aokuraiauau"><img src="https://github.com/aokuraiauau.png?size=120" width="60" alt="@aokuraiauau" title="@aokuraiauau"></a>
+  <a href="https://github.com/daddydaddy"><img src="https://github.com/daddydaddy.png?size=120" width="60" alt="@daddydaddy" title="@daddydaddy"></a>
+  <a href="https://github.com/Kuraido1018"><img src="https://github.com/Kuraido1018.png?size=120" width="60" alt="@Kuraido1018" title="@Kuraido1018"></a>
+  <a href="https://github.com/overdozer1124"><img src="https://github.com/overdozer1124.png?size=120" width="60" alt="@overdozer1124" title="@overdozer1124"></a>
 </p>
 <!-- sponsors:end -->
 <sub>名前を公開にして応援してくださった方を、毎日自動で載せています (.github/workflows/sponsors.yml)。</sub>
