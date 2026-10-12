@@ -27,11 +27,23 @@ async function graphql(query, variables) {
 
 /** 名前を公開にしてくださった方 (古い順。同じ方は 1 回だけ)。 */
 async function publicSponsors() {
+  try {
+    return await querySponsors(true);
+  } catch (error) {
+    // 団体 (Organization) の名前を読むには read:org が要る。トークンが read:user だけなら、個人の方だけを読む
+    if (!String(error.message).includes('INSUFFICIENT_SCOPES')) throw error;
+    console.log('トークンに read:org が無いので、団体のスポンサーは読まずに個人の方だけを載せます');
+    return await querySponsors(false);
+  }
+}
+
+async function querySponsors(includeOrganizations) {
+  const entity = includeOrganizations ? '... on User { login } ... on Organization { login }' : '... on User { login }';
   const query = `query($login: String!, $after: String) {
     user(login: $login) {
       sponsorshipsAsMaintainer(first: 100, after: $after, activeOnly: false, includePrivate: false, orderBy: {field: CREATED_AT, direction: ASC}) {
         pageInfo { hasNextPage endCursor }
-        nodes { privacyLevel sponsorEntity { ... on User { login } ... on Organization { login } } }
+        nodes { privacyLevel sponsorEntity { ${entity} } }
       }
     }
   }`;

@@ -4,8 +4,8 @@ name: sponsors
 # 名前を公開にしてくださった方だけを載せる (.github/bot/sponsors.mjs)。main には直接 push しない。
 #
 # 一覧を読むトークン: 秘密 SPONSORS_TOKEN があればそれを使う (yksr-melt のトークン。classic なら read:user、
-# fine-grained なら「Account permissions → GitHub Sponsors: read」)。無ければ github.token で試す
-# (公開のスポンサーだけなら読めることがあるが、読めなければ失敗する)。
+# fine-grained なら「Account permissions → GitHub Sponsors: read」)。団体のスポンサーも載せるなら classic で read:org も要る
+# (無ければ個人の方だけを載せる)。SPONSORS_TOKEN が無ければ github.token で試す (読めなければ失敗する)。
 # Pull Request を出すトークン: bot の GitHub App (vars.BOT_APP_ID) があればそれ (CI も流れる)、無ければ github.token。
 on:
   schedule:
