@@ -361,6 +361,14 @@ internal sealed class SettingsForm : Form, IMessageFilter
                 s => text.Text = (string?)property.GetValue(s) ?? "",
                 s => property.SetValue(s, text.Text.Trim()));
         }
+        if (type == typeof(string))
+        {
+            // 入力モードの表示の色・定型文を出す記号など
+            var box = new TextBox { Width = 120, Anchor = AnchorStyles.Left };
+            return new Binding(property, box,
+                s => box.Text = (string?)property.GetValue(s) ?? "",
+                s => property.SetValue(s, box.Text));
+        }
         if (type == typeof(int))
         {
             var number = new NumericUpDown { Minimum = 0, Maximum = 60000, Width = 120, Anchor = AnchorStyles.Left };
