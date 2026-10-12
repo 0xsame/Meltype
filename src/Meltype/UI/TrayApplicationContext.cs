@@ -526,10 +526,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private async void RegisterSelectedWord()
     {
         string? word = null;
-        IDataObject? saved = null;
+        DataObject? saved = null;
         try
         {
-            saved = Clipboard.GetDataObject();
+            saved = Composition.CompositionService.CopyClipboard();
             Clipboard.Clear();
             Input.KeyInjector.SendShortcut(0x11, 0x43); // Ctrl+C
             for (var i = 0; i < 10 && !Clipboard.ContainsText(); i++) await Task.Delay(30);

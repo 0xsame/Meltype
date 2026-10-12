@@ -341,7 +341,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         Native.SendAll(array, "確定文字列の入力");
     }
 
-    private IDataObject? _savedClipboard;
+    private DataObject? _savedClipboard;
     private System.Windows.Forms.Timer? _restoreClipboard;
 
     /// <summary>Windows のクリップボード履歴に保持しない</summary>
@@ -357,7 +357,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         if (text.Length == 0) return true;
         try
         {
-            if (_restoreClipboard is null) _savedClipboard = Clipboard.GetDataObject();
+            if (_restoreClipboard is null) _savedClipboard = CopyClipboard();
             else _restoreClipboard.Stop();
             Clipboard.SetDataObject(PasteData(text), copy: true);
             KeyInjector.SendShortcut(VirtualKeys.Control, 0x56); // Ctrl+V
@@ -370,6 +370,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         catch (Exception ex) when (ex is ExternalException or System.Threading.ThreadStateException)
         {
             Diagnostics.Log.Warn($"クリップボードを使えないので、1 文字ずつ送ります: {ex.Message}");
+            // 前の貼り付けで止めた復元を動かし直す (止めたままだと元の中身に戻らない)
+            _restoreClipboard?.Start();
             return false;
         }
     }
@@ -383,6 +385,24 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             data.SetData(format, autoConvert: false, new MemoryStream([0, 0, 0, 0]));
         }
         return data;
+    }
+
+    /// <summary>
+    /// 今のクリップボードの中身を、形式ごとに取り出して写す (戻すときに使う)。
+    /// Clipboard.GetDataObject() は中身のコピーではなく、そのときのクリップボードを読みに行くものを返すので、
+    /// 別の中身を入れたあとにそれで戻しても元に戻らない。取り出せない形式は戻さない。中身が無ければ null。
+    /// </summary>
+    internal static DataObject? CopyClipboard()
+    {
+        if (Clipboard.GetDataObject() is not { } current) return null;
+        var copy = new DataObject();
+        foreach (var format in current.GetFormats(autoConvert: false))
+        {
+            // 画像 (Bitmap) は autoConvert: false だと取り出せない
+            try { if ((current.GetData(format, autoConvert: false) ?? current.GetData(format, autoConvert: true)) is { } data) copy.SetData(format, autoConvert: false, data); }
+            catch { }
+        }
+        return copy.GetFormats(autoConvert: false).Length > 0 ? copy : null;
     }
 
     private void RestoreClipboard(object? sender, EventArgs e)
