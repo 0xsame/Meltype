@@ -70,6 +70,10 @@ public sealed record SessionResult(bool Consumed, IReadOnlyList<TextEdit> Commit
             else builder.Append("null");
         }
         builder.Append(']');
+        // 予測変換の候補 (変換していないときだけ) と、Tab で選んでいる候補 (選んでいなければ -1)
+        builder.Append(",\"predictions\":");
+        AppendArray(builder, view.Predictions ?? []);
+        builder.Append(",\"selectedPrediction\":").Append(view.SelectedPrediction);
         builder.Append("}}");
         return builder.ToString();
     }
@@ -434,6 +438,14 @@ public sealed class MeltypeSession
     {
         _host.Begin(null, false, null, null);
         _controller.SelectCandidate(index);
+        return _host.Result(consumed: true);
+    }
+
+    /// <summary>候補の一覧で予測変換の候補をクリックしたとき。その候補を確定する。</summary>
+    public SessionResult SelectPrediction(int index)
+    {
+        _host.Begin(null, false, null, null);
+        _controller.CommitPredictionAt(index);
         return _host.Result(consumed: true);
     }
 

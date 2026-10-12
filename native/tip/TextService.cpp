@@ -271,7 +271,7 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* threadMgr, TfClientId clientI
     }
     open_ = !disabled_;
 
-    candidates_ = std::make_unique<CandidateWindow>([this](int index) { SelectCandidate(index); });
+    candidates_ = std::make_unique<CandidateWindow>([this](int index, bool prediction) { SelectCandidate(index, prediction); });
 
     if (!disabled_) {
         langBar_ = new LangBarButton(this);
@@ -1456,17 +1456,19 @@ void TextService::CommitInSession(TfEditCookie ec, ITfContext* context, bool kee
     if (candidates_) candidates_->Hide();
 }
 
-void TextService::SelectCandidate(int index) {
+void TextService::SelectCandidate(int index, bool prediction) {
     if (compositionContext_ == nullptr) return;
     Microsoft::WRL::ComPtr<ITfContext> context = compositionContext_;
     Microsoft::WRL::ComPtr<ITfComposition> target = composition_;
     Microsoft::WRL::ComPtr<TextService> self = this;
-    RunEditSession(context.Get(), clientId_, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, [self, context, target, index](TfEditCookie ec) {
+    RunEditSession(context.Get(), clientId_, TF_ES_ASYNCDONTCARE | TF_ES_READWRITE, [self, context, target, index, prediction](TfEditCookie ec) {
         // 動くまでに変換中の文字が変わっていたら選ばない
         if (self->composition_ != target.Get() || self->compositionContext_ != context.Get()) return S_OK;
         self->ownEdit_ = true;
         JsonValue reply;
-        if (self->Request("{\"op\":\"select\",\"sid\":\"" + self->sid_ + "\",\"index\":" + std::to_string(index) + "}", reply)) {
+        if (self->Request("{\"op\":\"select\",\"sid\":\"" + self->sid_ + "\",\"index\":" + std::to_string(index) +
+                              (prediction ? ",\"prediction\":true" : "") + "}",
+                          reply)) {
             self->Apply(ec, context.Get(), reply);
         }
         return S_OK;
@@ -1484,15 +1486,19 @@ void TextService::ShowCandidates(TfEditCookie ec, ITfContext* context, const Jso
     data.suggestion = view[L"suggestion"].Str();
     data.meaning = view[L"meaning"].Str();
     bool converting = view[L"converting"].Bool();
-    if (!((converting && data.candidates.size() > 1) || !data.suggestion.empty())) {
+    const auto& predictions = view[L"predictions"].array;
+    if (!((converting && data.candidates.size() > 1) || !data.suggestion.empty() || (!converting && !predictions.empty()))) {
         candidates_->Hide();
         return;
     }
     if (!converting) {
+        // 変換していないときは、予測変換の候補を出す (Tab で選ぶ。無ければ「もしかして」だけ)
         data.candidates.clear();
+        for (const JsonValue& item : predictions) data.candidates.push_back(item.Str());
         data.notes.clear();
-        data.selected = -1;
+        data.selected = predictions.empty() ? -1 : view[L"selectedPrediction"].Int();
         data.meaning.clear();
+        data.prediction = !predictions.empty();
     }
 
     // 選んでいる文節の画面上の位置
