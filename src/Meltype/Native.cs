@@ -72,6 +72,8 @@ internal static class Native
     [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandle(string? moduleName);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    /// <summary>親プロセスのコンソールにつなぐ (WinExe の --version など)。ATTACH_PARENT_PROCESS = 0xFFFFFFFF。</summary>
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool AttachConsole(uint processId);
 
     [DllImport("user32.dll")] public static extern int GetMessage(out MSG msg, IntPtr hwnd, uint min, uint max);
     [DllImport("user32.dll")] public static extern bool TranslateMessage(ref MSG msg);

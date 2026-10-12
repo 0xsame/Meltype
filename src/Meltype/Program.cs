@@ -37,9 +37,12 @@ internal static class Program
     private static int Main(string[] args)
     {
         // Meltype.exe --version: 版だけを出して終わる (フック・UI は起動しない)。
+        // WinExe はコンソールを持たないので、親ターミナル (cmd / PowerShell) に付け直してから書く。
         if (args.FirstOrDefault() == "--version")
         {
-            Console.WriteLine($"Meltype {AppInfo.Version}");
+            Native.AttachConsole(0xFFFFFFFF);
+            using var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            writer.WriteLine($"Meltype {AppInfo.Version}");
             return 0;
         }
         // Meltype.exe --selftest [結果ファイル]: キーボードフックを掛けずに、主な機能が動くかだけを確かめる。
