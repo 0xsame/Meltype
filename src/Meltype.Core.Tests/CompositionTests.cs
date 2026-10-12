@@ -3044,6 +3044,10 @@ internal static class CompositionTests
         {
             if (File.Exists(tsv)) File.Delete(tsv);
             if (File.Exists(json)) File.Delete(json);
+        }
+    }
+
+    [Test]
     public static void Issue407_TsuideNiFetch()
     {
         // Issue #407: ついでに の途中の ide を英単語にしない。見出しが先頭の ideにfetch は英字のまま。
