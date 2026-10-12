@@ -1321,21 +1321,33 @@ internal static class CompositionTests
         var k = new Keyboard();
         k.Type("Gemma4\n");
         Assert.Equal("Gemma4", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue346_FusionStaysEnglish()
     {
         var k = new Keyboard();
         k.Type("fusion\n");
         Assert.Equal("fusion", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue421_DefineStaysEnglish()
     {
         var k = new Keyboard();
         k.Type("kachiwodefinesuru\n");
         Assert.Equal("かちをdefineする", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue419_DefuseStaysEnglish()
     {
         var k = new Keyboard();
         k.Type("mondaiwodefusesuru\n");
         Assert.Equal("もんだいをdefuseする", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue435_BluRayStaysEnglish()
     {
         var k = new Keyboard();
@@ -3140,6 +3152,9 @@ internal static class CompositionTests
             k.Type(typed + "\n");
             Assert.Equal(expected, k.Host.Document, typed);
         }
+    }
+
+    [Test]
     public static void Issue154_AbcToDef()
     {
         // Issue #154: 英字のあいだの「と」は助詞。全体を 1 つの英単語にしない。
