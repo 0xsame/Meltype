@@ -3010,4 +3010,40 @@ internal static class CompositionTests
         k.Type("/review");
         Assert.True(k.Gate.IsCaptured, "OFF なら今までどおり変換ボックスに入れる");
     }
+
+    [Test]
+    public static void Issue455_OemNoPasokon()
+    {
+        // Issue #455: oem は 3 文字の略語。oemnopasokonn を おえもの と読まず、oem + の + ぱそこん。
+        // 漢字変換のないランナーでは、打った小文字のまま oemのぱそこん。おえむ (oemu) は日本語のまま。
+        var k = new Keyboard();
+        k.Type("oemnopasokonn\n");
+        Assert.Equal("oemのぱそこん", k.Host.Document);
+        k = new Keyboard();
+        k.Type("oemu\n");
+        Assert.Equal("おえむ", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue455_KatakanaExpectIgnoresAsciiCase()
+    {
+        var tsv = Path.Combine(Path.GetTempPath(), $"meltype-expect-455-{Guid.NewGuid():N}.tsv");
+        var json = Path.Combine(Path.GetTempPath(), $"meltype-expect-455-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(tsv, "oemnopasokonn\tOEMのパソコン\noemnopasokonn\tCPUのパソコン\n");
+            Checks.Expect(tsv, json);
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(json));
+            var rows = doc.RootElement.EnumerateArray().ToArray();
+            Assert.Equal(2, rows.Length);
+            Assert.True(rows[0].GetProperty("ok").GetBoolean(), "OEMのパソコン は oemのぱそこん と一致する");
+            Assert.Equal("oemのぱそこん", rows[0].GetProperty("actual").GetString());
+            Assert.Equal(false, rows[1].GetProperty("ok").GetBoolean());
+        }
+        finally
+        {
+            if (File.Exists(tsv)) File.Delete(tsv);
+            if (File.Exists(json)) File.Delete(json);
+        }
+    }
 }
