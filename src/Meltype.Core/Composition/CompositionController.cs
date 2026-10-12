@@ -1371,16 +1371,16 @@ public sealed class CompositionController
             }
             return result;
         }
-        if (_options.UserDictionary?.Split(kana) is not { } pieces) return ConvertWithEngine(kana);
-        pieces = AlignUserWords(kana, pieces);
-        if (pieces.All(p => p.Word is null)) return ConvertWithEngine(kana);
+        if (_options.UserDictionary?.Split(kana) is not { } split) return ConvertWithEngine(kana);
+        var pieces = AlignUserWords(kana, split);
+        if (pieces.All(p => p.Word is null && p.Engine is null)) return ConvertWithEngine(kana);
         var clauses = new List<Clause>();
         var registered = new List<Clause>();
-        foreach (var (reading, word) in pieces)
+        foreach (var (reading, word, engine) in pieces)
         {
             if (word is null)
             {
-                clauses.AddRange(ConvertWithEngine(reading));
+                clauses.AddRange(ConvertWithEngine(reading, engine));
                 continue;
             }
             var clause = new Clause(reading, false, JapaneseCandidates(reading, word));
@@ -1402,31 +1402,66 @@ public sealed class CompositionController
     /// ユーザーが登録した語の読みが、変換エンジンの文節の途中から始まるなら、その語では区切らない (issue #374)。
     /// しの → 紫乃 を登録すると、わたしのことがすき の途中の しの で区切って ワタ紫乃ことが好き になっていた
     /// (変換エンジンは わたしの|ことが|すき と区切るので、しの は文節の途中から始まる)。文節の頭から始まる語 (しのがきた の しの) は今までどおり。
-    /// 同梱の語句 (phrases.txt) は、変換エンジンが区切りを間違える語句を補うものなので、そのまま使う。
+    /// 同梱の語句 (phrases.txt) は、変換エンジンが区切りを間違える語句を補うものなので、文節の途中から始まっても使う。
+    ///
+    /// 語の始まりが変換エンジンの文節の境目に合い、そこからの文節の文字が語で始まる (変換エンジンが文の中でその語にできている) なら、
+    /// その語では区切らず、語から後ろは文全体を変換したときの変換エンジンの文節をそのまま使う (Engine)。
+    /// 語で区切ると、残りのかなを単独で変換することになり崩れる (あげあしとら → 揚げ足取ら で区切ると、ないで が 内で になる)。
+    /// 語より前は今までどおり別に変換する (文全体の変換エンジンの結果にすると、これほんあか が コレ本垢 になる)。
+    /// 始まりが文節の途中の語は、どの文字が語の読みに当たるか分からないので、今までどおり語で区切る。
     /// </summary>
-    private List<(string Reading, string? Word)> AlignUserWords(string kana, List<(string Reading, string? Word)> pieces)
+    private List<(string Reading, string? Word, IReadOnlyList<ConversionClause>? Engine)> AlignUserWords(string kana, List<(string Reading, string? Word)> pieces)
     {
-        if (_options.UserDictionary is not { } dictionary || !pieces.Any(p => p.Word is not null && dictionary.IsUserReading(p.Reading))) return pieces;
+        var unchanged = pieces.Select(p => (p.Reading, p.Word, (IReadOnlyList<ConversionClause>?)null)).ToList();
+        if (_options.UserDictionary is not { } dictionary) return unchanged;
         var engine = ConversionContext() is { } context ? ConvertWithContext(kana, context) : _converter.ConvertClauses(kana);
-        if (engine is null || string.Concat(engine.Select(c => c.Reading)) != kana) return pieces;
+        if (engine is null || string.Concat(engine.Select(c => c.Reading)) != kana) return unchanged;
         var starts = new HashSet<int>();
         for (int i = 0, offset = 0; i < engine.Count; offset += engine[i].Reading.Length, i++) starts.Add(offset);
-        var aligned = new List<(string Reading, string? Word)>();
+        var aligned = new List<(string Reading, string? Word, IReadOnlyList<ConversionClause>? Engine)>();
         var position = 0;
-        foreach (var (reading, word) in pieces)
+        for (var p = 0; p < pieces.Count; p++)
         {
-            var keep = word is null || !dictionary.IsUserReading(reading) || starts.Contains(position);
-            if (!keep) Diagnostics.Log.Info($"ユーザー辞書の語は、変換エンジンの文節の途中から始まるので使いません: {Diagnostics.Log.Text(reading)}");
-            // 使わない語の読みは、前後の変換エンジンに渡す部分とつなげる
-            if (!keep || word is null)
+            var (reading, word) = pieces[p];
+            var midStart = word is not null && dictionary.IsUserReading(reading) && !starts.Contains(position);
+            if (midStart) Diagnostics.Log.Info($"ユーザー辞書の語は、変換エンジンの文節の途中から始まるので使いません: {Diagnostics.Log.Text(reading)}");
+            if (word is not null && !midStart && starts.Contains(position) && EngineStartsWith(position, word))
             {
-                if (aligned.Count > 0 && aligned[^1].Word is null) aligned[^1] = (aligned[^1].Reading + reading, null);
-                else aligned.Add((reading, null));
+                // 次に文節の境目から始まる語の手前までを、変換エンジンの文節にする
+                var next = p + 1;
+                var stop = position + reading.Length;
+                for (; next < pieces.Count && !(pieces[next].Word is not null && starts.Contains(stop)); next++) stop += pieces[next].Reading.Length;
+                var span = new List<ConversionClause>();
+                for (int i = 0, offset = 0; i < engine.Count; offset += engine[i].Reading.Length, i++)
+                    if (offset >= position && offset < stop) span.Add(engine[i]);
+                // 変換エンジンの文節が次の語にまたがるときは、変換エンジンの結果を使わない
+                if (string.Concat(span.Select(c => c.Reading)) == kana[position..stop])
+                {
+                    aligned.Add((kana[position..stop], null, span));
+                    position = stop;
+                    p = next - 1;
+                    continue;
+                }
             }
-            else aligned.Add((reading, word));
+            // 使わない語の読みは、前後の変換エンジンに渡す部分とつなげる
+            if (word is null || midStart)
+            {
+                if (aligned.Count > 0 && aligned[^1] is { Word: null, Engine: null } last) aligned[^1] = (last.Reading + reading, null, null);
+                else aligned.Add((reading, null, null));
+            }
+            else aligned.Add((reading, word, null));
             position += reading.Length;
         }
         return aligned;
+
+        // start から始まる変換エンジンの文節の文字が、語で始まるか
+        bool EngineStartsWith(int start, string word)
+        {
+            var text = new StringBuilder();
+            for (int i = 0, offset = 0; i < engine.Count && text.Length < word.Length; offset += engine[i].Reading.Length, i++)
+                if (offset >= start) text.Append(engine[i].Text);
+            return text.ToString().StartsWith(word, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>
@@ -1434,16 +1469,17 @@ public sealed class CompositionController
     ///   1. 文脈の手がかり辞書 (前後に 気温 があれば あつい → 暑い)
     ///   2. ユーザーが前に選び直した変換 (学習)
     ///   3. 変換エンジンの結果 (入力欄のキャレットの前の文字を文脈として渡している)
+    /// engine を渡したときは、変換エンジンに頼まずにその文節を使う (文全体を変換したときの一部: AlignUserWords)。
     /// </summary>
-    private List<Clause> ConvertWithEngine(string kana)
+    private List<Clause> ConvertWithEngine(string kana, IReadOnlyList<ConversionClause>? engine = null)
     {
         // 文脈が無いまま「に」で始まる読みを変換すると、変換エンジンは「に」を語の頭と読む (になってしまう → 担ってしまう)。
         // 前の文脈が取れないときは、仮の文脈「これ」を付けて助詞として読ませる (これ + になってしまう → になってしまう)。
         // 「は」「で」なども助詞になりうるが、仮の文脈を付けると はしる → は知る のように崩れるので「に」だけ。
         var context = ConversionContext();
-        var parts = context is not null
+        var parts = engine ?? (context is not null
             ? ConvertWithContext(kana, context)
-            : _converter.ConvertClauses(kana, kana.Length >= 3 && kana[0] == 'に' ? "これ" : null);
+            : _converter.ConvertClauses(kana, kana.Length >= 3 && kana[0] == 'に' ? "これ" : null));
         parts ??= [new ConversionClause(kana, _converter.Convert(kana) ?? kana)];
         // 読み全体が補助辞書・絵文字の辞書の語 (かんがえるかお → 🤔) なら、文節に分けずに 1 つの文節にして候補を出す。
         if (parts.Count > 1 && _options.Candidates?.Contains(kana) == true)

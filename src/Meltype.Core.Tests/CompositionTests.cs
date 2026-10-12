@@ -2266,6 +2266,49 @@ internal static class CompositionTests
         Assert.True(!k.Showing!.Contains("紫乃"), "ライブ変換でも割り込まない: " + k.Showing);
     }
 
+    private sealed class AgeashiConverter : IKanjiConverter
+    {
+        public string? Convert(string hiragana) => ConvertClauses(hiragana) is { } clauses ? string.Concat(clauses.Select(c => c.Text)) : null;
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) => hiragana switch
+        {
+            "あげあしとらないで" => [new("あげあし", "揚げ足"), new("とらないで", "取らないで")],
+            "ないで" => [new("ないで", "内で")],
+            "かいしょうないひと" => [new("かいしょう", "解消"), new("ないひと", "ない人")],
+            "ひと" => [new("ひと", "人")],
+            "これほんあかだね" => [new("これ", "コレ"), new("ほんあかだね", "本垢だね")],
+            "これ" => [new("これ", "これ")],
+            "きょうはやないのだね" => [new("きょうはや", "教派や"), new("ないのだね", "ないのだね")],
+            "きょうは" => [new("きょうは", "今日は")],
+            "だね" => [new("だね", "だね")],
+            _ => null,
+        };
+    }
+
+    [Test]
+    public static void Phrase_EngineAlreadyConvertsIt_IsNotSplitOut()
+    {
+        // 同梱の語句 あげあしとら → 揚げ足取ら で区切ると、残りの ないで を単独で変換して 内で になっていた。
+        // 変換エンジンが文の中で同じ文字 (揚げ足取らないで) にできているなら、語句では区切らない
+        var k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("ageashitoranaide ");
+        Assert.Equal("揚げ足取らないで", string.Concat(k.Host.View!.Clauses!));
+
+        // 変換エンジンが間違える語句 (解消ない人) は、今までどおり語句で区切る
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("kaishounaihito ");
+        Assert.Equal("甲斐性ない人", string.Concat(k.Host.View!.Clauses!));
+
+        // 語句より前は今までどおり別に変換する (文全体の変換エンジンの結果にすると コレ本垢だね になる)
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("korehonnakadane ");
+        Assert.Equal("これ本垢だね", string.Concat(k.Host.View!.Clauses!));
+
+        // 始まりが変換エンジンの文節の途中にある語句は、今までどおり語句で区切る (教派や|ないのだね にしない)
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("kyouhayanainodane ");
+        Assert.Equal("今日はやないのだね", string.Concat(k.Host.View!.Clauses!));
+    }
+
     [Test]
     public static void UserDictionary_WinsOverEngine()
     {
