@@ -335,6 +335,9 @@ internal sealed class SettingsForm : Form, IMessageFilter
         {
             var values = Enum.GetValues(type).Cast<object>().ToList();
             var combo = DropDown(values.Select(v => EnumName(type, v)).ToArray());
+            // Meltype IME を使えない (ARM64 の Windows・登録されていない・キーボードの一覧に無い) なら、灰色にして選ばせない
+            if (property.Name == nameof(Settings.Mode) && _engine.Settings.Mode != InputMode.Tsf && !Tip.TipServer.IsUsable)
+                DisableChoice(combo, values.IndexOf(InputMode.Tsf));
             return new Binding(property, combo,
                 s => combo.SelectedIndex = values.IndexOf(property.GetValue(s)!),
                 s => property.SetValue(s, values[Math.Max(0, combo.SelectedIndex)]));
@@ -510,6 +513,26 @@ internal sealed class SettingsForm : Form, IMessageFilter
         combo.Items.AddRange(items);
         combo.SelectedIndexChanged += (_, _) => RunTest();
         return combo;
+    }
+
+    /// <summary>プルダウンの 1 項目を灰色で出し、選んだら前の項目に戻す。</summary>
+    private static void DisableChoice(ComboBox combo, int disabled)
+    {
+        combo.DrawMode = DrawMode.OwnerDrawFixed;
+        combo.DrawItem += (_, e) =>
+        {
+            if (e.Index < 0) return;
+            e.DrawBackground();
+            var color = e.Index == disabled ? SystemColors.GrayText : e.ForeColor;
+            TextRenderer.DrawText(e.Graphics, combo.GetItemText(combo.Items[e.Index]), e.Font, e.Bounds, color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            e.DrawFocusRectangle();
+        };
+        var previous = disabled == 0 ? 1 : 0;
+        combo.SelectedIndexChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex == disabled) combo.SelectedIndex = previous;
+            else previous = combo.SelectedIndex;
+        };
     }
 
     /// <summary>窓を開いている実行中のアプリの一覧を出し、選んだものをアプリ別設定の表に足す (既に表にあれば、その行を選ぶ)。</summary>
