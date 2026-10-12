@@ -149,6 +149,80 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void CopyClipboard_KeepsContentAfterClipboardChanges()
+    {
+        // ほかのアプリ (クリップボードの履歴など) が同時にクリップボードを開いたり読んだりすると、入れられなかったり、
+        // テストで入れた Stream を先に読み進められて中身が 0 になったりするので、何回か試す
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                CheckCopyClipboard();
+                return;
+            }
+            catch (Exception) when (attempt < 5)
+            {
+                Thread.Sleep(500);
+            }
+        }
+    }
+
+    private static void CheckCopyClipboard()
+    {
+        // 貼り付けで確定したあと、元のクリップボードに戻す。GetDataObject() のまま戻すと、そのときの中身 (貼った文字) を読んで元の中身が消えていた
+        var before = CompositionService.CopyClipboard();
+        try
+        {
+            var text = new DataObject();
+            text.SetText("コピーしていた文字");
+            text.SetText("<b>コピーしていた文字</b>", TextDataFormat.Html);
+            text.SetData("Meltype.Test", autoConvert: false, new MemoryStream([1, 2, 3]));
+            Clipboard.SetDataObject(text, copy: true);
+            RestoreAfterPaste();
+            Assert.Equal("コピーしていた文字", Read(() => Clipboard.GetText()), "文字");
+            Assert.True(Read(() => Clipboard.GetText(TextDataFormat.Html)).Contains("<b>コピーしていた文字</b>"), "HTML");
+            Assert.Equal("1,2,3", Read(() => Clipboard.GetDataObject()?.GetData("Meltype.Test") is MemoryStream stream ? string.Join(",", stream.ToArray()) : ""), "アプリ独自の形式");
+
+            using (var bitmap = new System.Drawing.Bitmap(3, 2))
+            {
+                bitmap.SetPixel(1, 1, System.Drawing.Color.Red);
+                Clipboard.SetImage(bitmap);
+            }
+            RestoreAfterPaste();
+            Assert.Equal("3x2 FFFF0000", Read(() => Clipboard.GetImage() is System.Drawing.Bitmap image ? $"{image.Width}x{image.Height} {image.GetPixel(1, 1).ToArgb():X}" : ""), "画像");
+
+            Clipboard.SetFileDropList([Environment.ProcessPath!]);
+            RestoreAfterPaste();
+            Assert.Equal(Environment.ProcessPath, Read(() => string.Join(";", Clipboard.GetFileDropList().Cast<string>())), "ファイル");
+        }
+        finally
+        {
+            if (before is not null) Clipboard.SetDataObject(before, copy: true);
+            else Clipboard.Clear();
+        }
+
+        static void RestoreAfterPaste()
+        {
+            // 入れた直後は、ほかのアプリ (クリップボードの履歴など) が開いていて読めないことがある
+            Thread.Sleep(200);
+            var saved = CompositionService.CopyClipboard();
+            Assert.True(saved is not null, "中身を写せた");
+            Clipboard.SetDataObject(new DataObject(DataFormats.UnicodeText, "貼り付けた文字"), copy: true);
+            Clipboard.SetDataObject(saved!, copy: true);
+        }
+
+        static string Read(Func<string> read)
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                if (read() is { Length: > 0 } value) return value;
+                Thread.Sleep(50);
+            }
+            return "";
+        }
+    }
+
+    [Test]
     public static void SettingsToolTip_BreaksLinesForReading()
     {
         Assert.Equal("ひとつめ。\nふたつめ。", UI.SettingsForm.WrapToolTip("ひとつめ。ふたつめ。"), "文ごとに改行する");
