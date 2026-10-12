@@ -481,7 +481,7 @@ internal sealed class TipServer : IDisposable
                 if (!greeting) return Inactive;
                 // コードエディター・ターミナルのアプリか (DLL は、キャレットが動くたびに入力モードの表示を問い合わせる)
                 var codeApp = _settings().ProfileFor(process + ".exe") == AppProfile.Code;
-                return $"{{\"active\":true,\"code\":{(codeApp ? "true" : "false")},\"consumed\":false,\"commits\":[],\"view\":null}}";
+                return $"{{\"active\":true,\"code\":{(codeApp ? "true" : "false")},\"directDetection\":{(DirectDetectionFor(process) ? "true" : "false")},\"consumed\":false,\"commits\":[],\"view\":null}}";
             }
             case "close":
                 if (sessions.Remove(sid, out var closing) && closing.IsComposing) closing.CommitPending();
@@ -494,10 +494,11 @@ internal sealed class TipServer : IDisposable
             // DLL の側は変換中なのに、入力の続きが無い (つなぎ直した): 新しく始めると、変換中の文字を消したり置き換えたりするので、
             // 受け持たない (DLL は変換中の文字をそのまま確定し、キーはアプリに通す)
             if (!active || op is not ("key" or "toggle" or "mode") || IsTrue(root, "composing") || sessions.Count >= MaxSessionsPerConnection) return Inactive;
-            session = _composition.CreateSession(_settings);
+            session = _composition.CreateSession(_settings, directModeDetection: true);
             sessions[sid] = session;
         }
         SessionResult result;
+        var switchedToJapanese = false;
         switch (op)
         {
             case "key" when !active:
@@ -507,8 +508,14 @@ internal sealed class TipServer : IDisposable
                 break;
             case "key":
             {
+                if (root.TryGetProperty("direct", out var direct)) session.Direct = direct.ValueKind == JsonValueKind.True;
+                var wasDirect = session.Direct;
                 // 前に確定してから、キャレットが動いた (DLL がアプリに通したキー・クリック・別の入力欄): 前の語を確定し直さない
-                if (IsTrue(root, "moved")) session.ForgetLastCommit();
+                if (IsTrue(root, "moved"))
+                {
+                    session.ForgetLastCommit();
+                    session.ForgetDirectInput();
+                }
                 ApplyPassed(session, root);
                 var vk = Int(root, "vk");
                 var ch = Int(root, "ch");
@@ -519,6 +526,7 @@ internal sealed class TipServer : IDisposable
                 var before = UpdateCodeInput(session, process, String(root, "before"));
                 result = session.HandleKey(vk, ch is > 0 and < 0x10000 ? (char)ch : null,
                     (mods & 1) != 0, (mods & 2) != 0, (mods & 4) != 0, (mods & 8) != 0, before, String(root, "after"));
+                switchedToJapanese = wasDirect && !session.Direct;
                 break;
             }
             case "toggle":
@@ -531,11 +539,15 @@ internal sealed class TipServer : IDisposable
                 if (!active) return Inactive;
                 ApplyPassed(session, root);
                 var english = session.CodeEnglishAt(UpdateCodeInput(session, String(root, "process"), String(root, "before")));
-                return Reply(true, new SessionResult(false, [], null), session.CodeInput, english);
+                return Reply(true, new SessionResult(false, [], null), session.CodeInput, english, null);
             }
             case "commit":
                 // クリック・別の入力欄で確定した、アプリが確定した: 前の語を確定し直さない (確定する位置がキャレットと離れている)
-                if (IsTrue(root, "moved")) session.ForgetLastCommit();
+                if (IsTrue(root, "moved"))
+                {
+                    session.ForgetLastCommit();
+                    session.ForgetDirectInput();
+                }
                 result = session.CommitPending();
                 break;
             case "select":
@@ -544,13 +556,26 @@ internal sealed class TipServer : IDisposable
             default:
                 return Inactive;
         }
-        return Reply(active, result, session.CodeInput, session.CodeEnglishAt(null));
+        return Reply(active, result, session.CodeInput, session.CodeEnglishAt(null),
+            DirectDetectionFor(String(root, "process")), switchedToJapanese, session.DirectEnglishWord);
     }
 
-    private static string Reply(bool active, SessionResult result, bool code, bool english)
+    private bool DirectDetectionFor(string? process)
+    {
+        var settings = _settings();
+        var processName = string.IsNullOrWhiteSpace(process) || process.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? process
+            : process + ".exe";
+        return settings.DirectModeAutoDetect && settings.ForApp(processName).DetectionLevel != DetectionLevel.Manual;
+    }
+
+    private static string Reply(bool active, SessionResult result, bool code, bool english, bool? directDetection,
+        bool switchedToJapanese = false, bool? directEnglishWord = null)
     {
         var json = result.ToJson();
-        return $"{{\"active\":{(active ? "true" : "false")},\"code\":{(code ? "true" : "false")},\"english\":{(english ? "true" : "false")},{json[1..]}";
+        var detection = directDetection is { } enabled ? $"\"directDetection\":{(enabled ? "true" : "false")}," : "";
+        var englishWord = directEnglishWord is { } isEnglishWord ? $"\"directEnglishWord\":{(isEnglishWord ? "true" : "false")}," : "";
+        return $"{{\"active\":{(active ? "true" : "false")},\"code\":{(code ? "true" : "false")},\"english\":{(english ? "true" : "false")},{detection}{englishWord}\"switchToJapanese\":{(switchedToJapanese ? "true" : "false")},{json[1..]}";
     }
 
     /// <summary>

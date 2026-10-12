@@ -206,7 +206,7 @@ public sealed class Settings
     public bool AutoCorrectAfterCommit { get; set; } = true;
 
     [Category("1. 全般"), DisplayName("英数状態でもローマ字を検知"),
-     Description("Keyboard モードの英数 (直接入力) 状態でも単語の打ち始めを判定し、ローマ字 (日本語) なら自動で日本語入力に戻します。")]
+     Description("Keyboard モードまたは Meltype IME の英数状態でも単語の打ち始めを判定し、ローマ字 (日本語) なら自動で日本語入力に戻します。")]
     public bool DirectModeAutoDetect { get; set; } = true;
 
     [Category("1. 全般"), DisplayName("/ $ @ で始まる語はそのまま入力"),
