@@ -2184,6 +2184,11 @@ internal static class CompositionTests
             "ないで" => [new("ないで", "内で")],
             "かいしょうないひと" => [new("かいしょう", "解消"), new("ないひと", "ない人")],
             "ひと" => [new("ひと", "人")],
+            "これほんあかだね" => [new("これ", "コレ"), new("ほんあかだね", "本垢だね")],
+            "これ" => [new("これ", "これ")],
+            "きょうはやないのだね" => [new("きょうはや", "教派や"), new("ないのだね", "ないのだね")],
+            "きょうは" => [new("きょうは", "今日は")],
+            "だね" => [new("だね", "だね")],
             _ => null,
         };
     }
@@ -2201,6 +2206,16 @@ internal static class CompositionTests
         k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
         k.Type("kaishounaihito ");
         Assert.Equal("甲斐性ない人", string.Concat(k.Host.View!.Clauses!));
+
+        // 語句より前は今までどおり別に変換する (文全体の変換エンジンの結果にすると コレ本垢だね になる)
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("korehonnakadane ");
+        Assert.Equal("これ本垢だね", string.Concat(k.Host.View!.Clauses!));
+
+        // 始まりが変換エンジンの文節の途中にある語句は、今までどおり語句で区切る (教派や|ないのだね にしない)
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("kyouhayanainodane ");
+        Assert.Equal("今日はやないのだね", string.Concat(k.Host.View!.Clauses!));
     }
 
     [Test]
