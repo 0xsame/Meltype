@@ -1321,6 +1321,11 @@ internal static class CompositionTests
         var k = new Keyboard();
         k.Type("Gemma4\n");
         Assert.Equal("Gemma4", k.Host.Document);
+    public static void Issue346_FusionStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fusion\n");
+        Assert.Equal("fusion", k.Host.Document);
     }
 
     [Test]
