@@ -72,6 +72,18 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void RecheckStale_CooldownIsPerForegroundWindow()
+    {
+        // ブラウザーで再確認した直後に LINE へ移っても、共有クールダウンで抑止されない
+        var browser = new IntPtr(0x100);
+        var line = new IntPtr(0x200);
+        Assert.True(Composition.FocusInspector.RecheckCooldownActive(browser, browser, 500, 0, 1000), "同じウィンドウは 1 秒以内なら抑止");
+        Assert.True(!Composition.FocusInspector.RecheckCooldownActive(line, browser, 500, 0, 1000), "別ウィンドウへ移ったらすぐ再確認してよい");
+        Assert.True(!Composition.FocusInspector.RecheckCooldownActive(browser, browser, 1500, 0, 1000), "同じウィンドウでも 1 秒過ぎれば再確認してよい");
+        Assert.True(!Composition.FocusInspector.RecheckCooldownActive(IntPtr.Zero, browser, 500, 0, 1000), "前面ウィンドウが無いときは抑止しない");
+    }
+
+    [Test]
     public static void WebInputClassNames_AreTextInputs()
     {
         // #70: Chatwork の検索欄は Group で、クラス名 (sc-kzAZJu ijnNh inputLong) でしか入力欄と分からない
