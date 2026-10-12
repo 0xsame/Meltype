@@ -434,6 +434,7 @@ public sealed class Settings
     }
 
     /// <summary>プロファイルの名前の一覧 (使っているものも含む。並びは作った順)。</summary>
+    [JsonIgnore]
     public IReadOnlyList<string> ProfileNames => Profiles.Select(p => p.Name).ToList();
 
     /// <summary>

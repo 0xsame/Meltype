@@ -107,6 +107,15 @@ internal static class ProfileTests
         Assert.True(odd.Enabled, "ON/OFF は読み込まない");
         Assert.Equal(3000, odd.IdleFlushMs, "範囲に収める");
     }
+
+    [Test]
+    public static void ProfileNames_AreNotWrittenToJson()
+    {
+        // プロファイルの名前の一覧は Profiles から作るので、config.json にも書き出したファイルにも入れない
+        var settings = new Settings().Normalize().AddProfile("仕事用")!;
+        Assert.True(!settings.ToJson().Contains("ProfileNames"), "config.json に入れない");
+        Assert.True(!settings.ExportProfile().Contains("ProfileNames"), "書き出したファイルに、ほかのプロファイルの名前を入れない");
+    }
     [Test]
     public static void SettingsForm_KeepsTrayChangesMadeWhileOpen()
     {
