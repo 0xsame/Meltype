@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text;
+using Meltype.Composition;
 using Meltype.Config;
 
 namespace Meltype.UI;
@@ -361,6 +362,27 @@ internal sealed class SettingsForm : Form, IMessageFilter
                 s => text.Text = (string?)property.GetValue(s) ?? "",
                 s => property.SetValue(s, text.Text.Trim()));
         }
+        if (type == typeof(string) && property.Name is nameof(Settings.ModeIndicatorJapaneseColor) or nameof(Settings.ModeIndicatorDirectColor) or nameof(Settings.ModeIndicatorTextColor))
+        {
+            var fallback = property.Name switch
+            {
+                nameof(Settings.ModeIndicatorJapaneseColor) => ModeIndicatorWindow.DefaultJapaneseColor,
+                nameof(Settings.ModeIndicatorDirectColor) => ModeIndicatorWindow.DefaultDirectColor,
+                _ => Color.White,
+            };
+            var panel = ColorEditor(fallback, out var text);
+            return new Binding(property, panel,
+                s => text.Text = (string?)property.GetValue(s) ?? "",
+                s => property.SetValue(s, text.Text.Trim()));
+        }
+        if (type == typeof(string))
+        {
+            // 入力モードの表示の色・定型文を出す記号など
+            var box = new TextBox { Width = 120, Anchor = AnchorStyles.Left };
+            return new Binding(property, box,
+                s => box.Text = (string?)property.GetValue(s) ?? "",
+                s => property.SetValue(s, box.Text));
+        }
         if (type == typeof(int))
         {
             var number = new NumericUpDown { Minimum = 0, Maximum = 60000, Width = 120, Anchor = AnchorStyles.Left };
@@ -566,6 +588,31 @@ internal sealed class SettingsForm : Form, IMessageFilter
         var panel = new Panel { Height = Math.Max(box.PreferredHeight, add.PreferredSize.Height) + 4, Dock = DockStyle.Fill };
         panel.Controls.Add(box);
         panel.Controls.Add(add);
+        return panel;
+    }
+
+    /// <summary>
+    /// 色の設定 (#RRGGBB) の部品。手で書くほか、Windows の色の選択画面で選べる。
+    /// 横の見本は今の色で、空・読めない値なら既定の色 (fallback) を出す。
+    /// </summary>
+    private static Control ColorEditor(Color fallback, out TextBox text)
+    {
+        var box = text = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "空なら既定の色" };
+        var swatch = new Panel { Width = 28, Dock = DockStyle.Right, BorderStyle = BorderStyle.FixedSingle };
+        var pick = new Button { Text = "選ぶ…", AutoSize = true, Dock = DockStyle.Right };
+        Color Current() => Settings.ParseColor(box.Text) is var (r, g, b) ? Color.FromArgb(r, g, b) : fallback;
+        box.TextChanged += (_, _) => swatch.BackColor = Current();
+        swatch.BackColor = fallback;
+        pick.Click += (_, _) =>
+        {
+            using var dialog = new ColorDialog { Color = Current(), FullOpen = true };
+            if (dialog.ShowDialog(pick.FindForm()) == DialogResult.OK) box.Text = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+        };
+        // Panel だと表と同じく名前の下に幅いっぱいで出るので、ほかの項目と同じ右の列に置く UserControl にする
+        var panel = new UserControl { Height = Math.Max(box.PreferredHeight, pick.PreferredSize.Height) + 4, Dock = DockStyle.Fill };
+        panel.Controls.Add(box);
+        panel.Controls.Add(swatch);
+        panel.Controls.Add(pick);
         return panel;
     }
 
