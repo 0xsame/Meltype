@@ -101,6 +101,8 @@ internal sealed class Updater : IDisposable
         catch (Exception ex)
         {
             Log.Warn($"更新を始められませんでした: {ex.Message}");
+            // 始められなかったので、次の起動で「更新に失敗した」と扱わないよう消しておく
+            try { File.Delete(ApplyingFile); } catch { }
             return false;
         }
     }
