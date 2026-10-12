@@ -2432,6 +2432,24 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Clauses_ShiftArrowResize_ExpandsWithWindowsCandidatesAgain()
+    {
+        // 区切りを変えた文節も、新しい読みで変換エンジンの候補の一覧を取り直す。
+        var k = new Keyboard(moreCandidates: r => [r + "★"]);
+        k.Type("tanniwotoru ");
+        Assert.True(k.Host.View!.Candidates.Contains("たんいを★"), string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Right);
+        Assert.True(k.Host.View.Candidates.Contains("とる★"), string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Left);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift, up: true);
+        Assert.True(k.Host.View.Candidates.Contains("たんいをと★"), "選んでいる文節: " + string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Right);
+        Assert.True(k.Host.View.Candidates.Contains("る★"), "前に選んでいた次の文節: " + string.Join(",", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Clauses_ShiftArrowResizesAcrossEnglish()
     {
         // 報告 (#144): 英語の文節が混ざると Shift+← → で区切りを動かせない (みー|thin|ぐ、disco|で)。

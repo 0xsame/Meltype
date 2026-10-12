@@ -1964,6 +1964,10 @@ public sealed class CompositionController
         clause.Candidates = JapaneseCandidates(clause.Reading, null);
         clause.Index = 0;
         clause.Changed = false;
+        // 前の読みのもの。候補の一覧は、文節を選んだときに新しい読みで取り直す
+        clause.Expanded = false;
+        clause.Raw = null;
+        clause.Translations.Clear();
         if (_options.History?.Get(clause.Reading) is { } learned) Prefer(clause, learned);
     }
 
