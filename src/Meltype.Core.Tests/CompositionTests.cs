@@ -2681,6 +2681,28 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void FunctionKeys_TypingAfterCommits()
+    {
+        // F7 でカタカナにしたあと続けて打つと、カタカナを確定して新しく入力する (続きまでカタカナにしない)
+        var k = new Keyboard();
+        k.Type("tesuto");
+        k.Press(VirtualKeys.F7);
+        k.Type("desu");
+        Assert.Equal("テスト", string.Concat(k.Host.Output));
+        Assert.Equal("です", k.Showing);
+
+        // F10 で大文字にしたあとも同じ (続きまで大文字にしない)
+        k = new Keyboard();
+        k.Type("tesuto");
+        k.Press(VirtualKeys.F10);
+        k.Press(VirtualKeys.F10);
+        Assert.Equal("TESUTO", k.Showing);
+        k.Type("desu");
+        Assert.Equal("TESUTO", string.Concat(k.Host.Output));
+        Assert.Equal("です", k.Showing);
+    }
+
+    [Test]
     public static void F8_HalfWidthKatakana()
     {
         // Issue #74: F8 で半角カタカナ (Microsoft IME と同じ)。濁点・半濁点は ﾞ ﾟ に分ける
