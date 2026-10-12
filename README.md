@@ -251,7 +251,7 @@ General Public License for more details.
 
 <!-- sponsors:start -->
 <p align="center">
-  <sub>まだいません。最初の 1 人を募集中です！ → <a href="https://github.com/sponsors/yksr-melt">GitHub Sponsors</a></sub>
+  <a href="https://github.com/cpthgli"><img src="https://github.com/cpthgli.png?size=120" width="60" alt="@cpthgli" title="@cpthgli"></a>
 </p>
 <!-- sponsors:end -->
 <sub>名前を公開にして応援してくださった方を、毎日自動で載せています (.github/workflows/sponsors.yml)。</sub>
