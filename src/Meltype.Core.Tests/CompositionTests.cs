@@ -1285,7 +1285,7 @@ internal static class CompositionTests
         // えーmail、こーおp になっていた
         foreach (var (typed, expected) in new[]
         {
-            ("e-mail", "e-mail"), ("co-op", "co-op"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"),
+            ("e-mail", "e-mail"), ("co-op", "co-op"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"), ("Blu-ray", "Blu-ray"),
             ("e-to", "えーと"), ("su-pa-", "すーぱー"), ("o-bun", "おーぶん"),
         })
         {
@@ -1313,6 +1313,46 @@ internal static class CompositionTests
     {
         var dictionary = CandidateDictionary.Load(null);
         Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    }
+
+    [Test]
+    public static void Issue404_Gemma4StaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("Gemma4\n");
+        Assert.Equal("Gemma4", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue346_FusionStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fusion\n");
+        Assert.Equal("fusion", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue421_DefineStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("kachiwodefinesuru\n");
+        Assert.Equal("かちをdefineする", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue419_DefuseStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("mondaiwodefusesuru\n");
+        Assert.Equal("もんだいをdefuseする", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue435_BluRayStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("Blu-ray\n");
+        Assert.Equal("Blu-ray", k.Host.Document);
     }
 
     [Test]
@@ -1672,6 +1712,28 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void AutoCorrect_KeepsSuruFormBeforeEnglish()
+    {
+        // site → して のあと英字 (PR) が続いても、する活用を英単語 site に確定し直さない。
+        foreach (var (typed, expected) in new[]
+        {
+            ("sitePR\n", "してPR"),
+            ("site PR\n", "して PR"), // Space で変換開始していた空白は残す
+            ("sitaOK\n", "したOK"),
+            ("pushsitePR\n", "pushしてPR"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Host.Document, typed.Trim());
+        }
+        // sushi など、する活用でない曖昧語は、後ろが英語なら今までどおり英語に直す。
+        var sushi = new Keyboard();
+        sushi.Type("sushi PR\n");
+        Assert.Equal("sushi PR", sushi.Host.Document);
+    }
+
+    [Test]
     public static void AutoCorrect_EnglishToJapaneseAfterCommit()
     {
         var k = new Keyboard();
@@ -1851,6 +1913,8 @@ internal static class CompositionTests
             ["Meltype.amr"] = "Meltype.amr", ["Meltype.bas"] = "Meltype.bas", ["Meltype.ann"] = "Meltype.ann",
             // 長い名前の途中の助詞・ドメインの頭では分けない
             ["Meltype.gitignore"] = "Meltype.gitignore", ["Meltype.gcno"] = "Meltype.gcno", ["Meltype.automount"] = "Meltype.automount",
+            // 先頭のドットファイルも英字のまま (issue #431: 。ぎちgのれ にしない)
+            [".gitignore"] = ".gitignore", [".env"] = ".env", [".dll"] = ".dll", [".json"] = ".json", [".go"] = ".go",
             // 拡張子・ドメインの後ろの助詞からは日本語
             ["MeltypeTip.dllwokesu"] = "MeltypeTip.dllをけす", ["setup.exewojikkou"] = "setup.exeをじっこう", ["github.comnipush"] = "github.comにpush",
             ["tetr.iode"] = "tetr.ioで", ["google.comdekensaku"] = "google.comでけんさく",
@@ -1865,6 +1929,33 @@ internal static class CompositionTests
         var desu = new Keyboard();
         desu.Type("Meltype.desu\n");
         Assert.True(desu.Host.Document.EndsWith("です", StringComparison.Ordinal), desu.Host.Document);
+    }
+
+    [Test]
+    public static void ReadableToolNames_StayEnglish()
+    {
+        // 報告 (#301 / #457): おぺんこで・tむx に割れず、ツール名のまま英字にする
+        // discode は固有名詞でないので discoで (#145 メンテナー判断)
+        Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            var cases = new Dictionary<string, string>
+            {
+                ["discode"] = "discoで",
+                ["opencode"] = "opencode",
+                ["tmux"] = "tmux",
+            };
+            foreach (var (typed, expected) in cases)
+            {
+                var k = new Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, $"「{typed}」");
+            }
+        }
+        finally
+        {
+            Detector.SpellChecker = null;
+        }
     }
 
     [Test]
@@ -3045,5 +3136,30 @@ internal static class CompositionTests
             if (File.Exists(tsv)) File.Delete(tsv);
             if (File.Exists(json)) File.Delete(json);
         }
+    }
+
+    [Test]
+    public static void Issue407_TsuideNiFetch()
+    {
+        // Issue #407: ついでに の途中の ide を英単語にしない。見出しが先頭の ideにfetch は英字のまま。
+        foreach (var (typed, expected) in new[]
+        {
+            ("tuidenifetch upstream", "ついでにfetch upstream"),
+            ("idenifetch", "ideにfetch"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
+
+    [Test]
+    public static void Issue154_AbcToDef()
+    {
+        // Issue #154: 英字のあいだの「と」は助詞。全体を 1 つの英単語にしない。
+        var k = new Keyboard();
+        k.Type("abctodef\n");
+        Assert.Equal("abcとdef", k.Host.Document);
     }
 }
