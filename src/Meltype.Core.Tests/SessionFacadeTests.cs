@@ -133,25 +133,24 @@ internal static class SessionFacadeTests
     public static void TsfDirectMode_ManualJapaneseToggleResumesNormalComposition()
     {
         var settings = new Settings { DirectModeAutoDetect = true };
-        long now = 0;
         var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
             new CompositionOptions
             {
-                ClassifyDirect = (_, _) => Detection.Verdict.Undecided,
+                ClassifyDirect = (_, _) => Detection.Verdict.English,
             },
-            () => settings, directModeDetection: true, timeMs: () => now)
+            () => settings, directModeDetection: true)
         {
             Direct = true,
         };
 
-        Assert.True(!Type(session, "k")[0].Consumed, "英数状態で判定中のキーは入力欄へ渡す");
+        var english = Type(session, "hello");
+        Assert.True(english.All(result => !result.Consumed), "英数中の英語はそのままアプリへ渡す");
 
         session.Direct = false;
-        now += 1000;
-        var japanese = Type(session, "ai");
+        var japanese = Type(session, "ka");
 
         Assert.True(japanese.All(result => result.Consumed), "手動で日本語に戻した後は通常のローマ字入力として扱う");
-        Assert.Equal("あい", japanese[^1].View?.Text, "古い判定中の英字が後から英語判定されない");
+        Assert.Equal("か", japanese[^1].View?.Text, "英数検知の判定結果に関係なく日本語入力を開始する");
     }
 
     [Test]
@@ -185,92 +184,19 @@ internal static class SessionFacadeTests
     public static void TsfDirectMode_StopsCheckingAfterIdleTimeout()
     {
         var settings = new Settings { DirectModeAutoDetect = true };
-        long now = 0;
         var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
             new CompositionOptions { ClassifyDirect = (_, _) => Detection.Verdict.Undecided },
-            () => settings, directModeDetection: true, timeMs: () => now)
+            () => settings, directModeDetection: true)
         {
             Direct = true,
         };
 
         var first = Type(session, "k")[0];
-        now += 750;
+        Thread.Sleep(750);
         var second = Type(session, "a")[0];
 
         Assert.True(!first.Consumed && !second.Consumed, "無入力 0.7 秒後は英数のまま続ける");
         Assert.True(session.Direct, "英数状態を維持する");
-    }
-
-    [Test]
-    public static void TsfDirectMode_HyphenatedRomajiDeletesExactReplayedText()
-    {
-        var settings = new Settings { DirectModeAutoDetect = true };
-        foreach (var (word, expectedDelete, expectedText) in new[] { ("ro-", 2, "ro"), ("e-ma", 3, "e-m") })
-        {
-            var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
-                new CompositionOptions
-                {
-                    ClassifyDirect = (letters, _) => letters == "ma" ? Detection.Verdict.Japanese : Detection.Verdict.Undecided,
-                },
-                () => settings, directModeDetection: true)
-            {
-                Direct = true,
-            };
-
-            var result = Type(session, word)[^1];
-
-            Assert.True(result.Consumed, $"{word}: 日本語と判定したキーを再送しない");
-            Assert.Equal(expectedDelete, result.Commits.Single().DeleteBefore, $"{word}: 入力済みの文字数だけ削除する");
-            Assert.Equal(expectedText, result.Commits.Single().Expect, $"{word}: 入力欄の実際の文字列を照合する");
-        }
-    }
-
-    [Test]
-    public static void TsfDirectMode_CaretMoveDropsHeldTextAndReplayHistory()
-    {
-        var settings = new Settings { DirectModeAutoDetect = true };
-        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
-            new CompositionOptions
-            {
-                ClassifyDirect = (letters, _) => letters == "wa" ? Detection.Verdict.Japanese : Detection.Verdict.Undecided,
-            },
-            () => settings, directModeDetection: true)
-        {
-            Direct = true,
-        };
-
-        Type(session, "k");
-        session.ForgetDirectInput();
-        var result = Type(session, "wa", before: "")[^1];
-
-        Assert.True(result.Consumed, "キャレット移動後のローマ字を日本語と判定する");
-        Assert.Equal(1, result.Commits.Single().DeleteBefore, "移動前の文字を削除対象に含めない");
-        Assert.Equal("w", result.Commits.Single().Expect, "移動前に判定中だった文字を照合対象に含めない");
-    }
-
-    [Test]
-    public static void TsfDirectMode_EmptyCaretAfterEnglishWordRestartsDetection()
-    {
-        var settings = new Settings { DirectModeAutoDetect = true };
-        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
-            new CompositionOptions
-            {
-                ClassifyDirect = (letters, _) => letters == "ka" ? Detection.Verdict.Japanese
-                    : letters.Length >= 3 ? Detection.Verdict.English
-                    : Detection.Verdict.Undecided,
-            },
-            () => settings, directModeDetection: true)
-        {
-            Direct = true,
-        };
-
-        Type(session, "hello");
-        Assert.True(session.DirectEnglishWord, "英語と判定した語を記録する");
-        session.ForgetDirectInput();
-        var result = Type(session, "ka", before: "")[^1];
-
-        Assert.True(result.Consumed, "空になった入力欄でも次の語をローマ字判定する");
-        Assert.Equal("か", result.View?.Text, "日本語の変換中に切り替わる");
     }
 
     [Test]

@@ -121,17 +121,14 @@ public sealed class MeltypeSession
     private readonly CompositionController _controller;
     private readonly Host _host = new();
     private readonly Func<Settings> _settings;
-    private readonly Func<long> _timeMs;
     private readonly SigilWord _sigil = new();
     private readonly bool _directModeDetection;
     private bool _directEnglishWord;
     private bool _direct;
 
-    public MeltypeSession(CompositionDetector detector, IKanjiConverter converter, CompositionOptions options, Func<Settings> settings,
-        bool directModeDetection = false, Func<long>? timeMs = null)
+    public MeltypeSession(CompositionDetector detector, IKanjiConverter converter, CompositionOptions options, Func<Settings> settings, bool directModeDetection = false)
     {
         _settings = settings;
-        _timeMs = timeMs ?? (() => Environment.TickCount64);
         _directModeDetection = directModeDetection;
         _gate = new CaptureGate(() => { });
         var controllerOptions = directModeDetection
@@ -142,8 +139,8 @@ public sealed class MeltypeSession
                 {
                     Direct = !japanese;
                     _directEnglishWord = !japanese;
+                    _host.ResetDirectReplay();
                 },
-                DirectHoldCleared = _host.ResetDirectReplay,
             }
             : options;
         _host.DeferCurrentReplayOnDelete = directModeDetection;
@@ -208,17 +205,10 @@ public sealed class MeltypeSession
         get => _direct;
         set
         {
-            var wasDirect = _direct;
             _direct = value;
-            if (!value)
-            {
-                _directEnglishWord = false;
-                if (wasDirect && _directModeDetection) _controller.AbandonDirectHold();
-            }
+            if (!value) _directEnglishWord = false;
         }
     }
-
-    public bool DirectEnglishWord => _directEnglishWord;
 
     /// <summary>コードの入力欄ではコメント・文字列以外を直接入力する。</summary>
     private bool _codeInput;
@@ -332,14 +322,13 @@ public sealed class MeltypeSession
             return committed with { Consumed = false };
         }
         _host.Begin(ch, shift, before, after);
-        var down = new KeyEvent(vk, ch ?? 0, false, false, false, _timeMs());
+        var down = new KeyEvent(vk, ch ?? 0, false, false, false, Environment.TickCount64);
         if (_directModeDetection) _controller.Tick(down.TimeMs);
         // Ctrl・Option・Command と一緒のキーは、変換ボックスが空ならアプリの操作 (コピーなど) なので触らない。
         var modifier = control || alt || command;
         var settings = _settings();
-        if (Direct && _directModeDetection && _directEnglishWord &&
-            (ch is { } directChar && !char.IsAsciiLetterOrDigit(directChar) && directChar is not ('@' or '_') ||
-             before is { Length: > 0 } && !char.IsAsciiLetterOrDigit(before[^1]) && before[^1] is not ('@' or '_')))
+        if (Direct && _directModeDetection && _directEnglishWord && before is { Length: > 0 } &&
+            !char.IsAsciiLetterOrDigit(before[^1]) && before[^1] is not ('@' or '_'))
             _directEnglishWord = false;
         if ((Direct && (!_directModeDetection || !settings.DirectModeAutoDetect || _directEnglishWord)) || !settings.Enabled)
         {
@@ -426,12 +415,6 @@ public sealed class MeltypeSession
     {
         _controller.ForgetLastCommit();
         _host.ForgetCommitted();
-    }
-
-    public void ForgetDirectInput()
-    {
-        _directEnglishWord = false;
-        _controller.AbandonDirectHold();
     }
 
     /// <summary>フォーカスが外れたときなど。未確定の内容をそのまま確定する。</summary>
@@ -571,21 +554,15 @@ public sealed class MeltypeSession
 
         public void DeleteBackward(int count)
         {
-            if (DeferCurrentReplayOnDelete)
+            if (DeferCurrentReplayOnDelete && ReplayedCurrent)
             {
-                if (ReplayedCurrent) count--;
+                count--;
                 ReplayedCurrent = false;
-                _pendingExpectOverride = null;
                 if (count > 0 && _directReplay.Length >= count)
                     _pendingExpectOverride = _directReplay.ToString(0, count);
                 _directReplay.Clear();
             }
             _pendingDelete += Math.Max(0, count);
-        }
-
-        public void RecordDirectReplay(char c)
-        {
-            if (DeferCurrentReplayOnDelete && char.IsAscii(c) && !char.IsControl(c)) _directReplay.Append(c);
         }
 
         public void Replay(KeyEvent e)
@@ -594,6 +571,7 @@ public sealed class MeltypeSession
             if (e.IsDown && !VirtualKeys.IsModifier(e.Vk))
             {
                 ReplayedCurrent = true;
+                if (DeferCurrentReplayOnDelete && _char is { } c && char.IsAsciiLetter(c)) _directReplay.Append(c);
             }
         }
 
