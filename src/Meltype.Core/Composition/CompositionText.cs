@@ -177,6 +177,15 @@ public sealed class CompositionText
                 foreach (var letter in _pending.ToString()[..^1]) _units.Add(new CompositionUnit(letter.ToString(), letter.ToString()));
                 _pending.Remove(0, _pending.Length - 1);
             }
+            // zh / zj / zk / zl → ← ↓ ↑ →。z が 1 文字のときだけ (puzzle の zz の次の l は英単語)。
+            if (_pending.Length == 1 && char.ToLowerInvariant(_pending[0]) == 'z' && ZSymbol(c) is { } arrow)
+            {
+                var raw = _pending[0].ToString() + c;
+                _pending.Clear();
+                Normalize(final: true);
+                _units.Add(new CompositionUnit(arrow.ToString(), raw));
+                return;
+            }
             _pending.Append(c);
             SplitUnitAfterNumber(final: false);
             Normalize(final: false);
@@ -1251,8 +1260,8 @@ public sealed class CompositionText
         return new string(chars);
     }
 
-    /// <summary>z + 記号 (Microsoft IME と同じ): z/ → ・、z. → …、z, → ‥、z- → ～、z[ → 『、z] → 』。</summary>
-    private static char? ZSymbol(char c) => c switch
+    /// <summary>z + 記号 (Microsoft IME と同じ): z/ → ・、z. → …、z, → ‥、z- → ～、z[ → 『、z] → 』。zh zj zk zl → ← ↓ ↑ →。</summary>
+    private static char? ZSymbol(char c) => char.ToLowerInvariant(c) switch
     {
         '/' => '・',
         '.' => '…',
@@ -1260,6 +1269,10 @@ public sealed class CompositionText
         '-' => '～',
         '[' => '『',
         ']' => '』',
+        'h' => '←',
+        'j' => '↓',
+        'k' => '↑',
+        'l' => '→',
         _ => null,
     };
 
