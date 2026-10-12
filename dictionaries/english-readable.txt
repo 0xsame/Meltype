@@ -7,3 +7,6 @@ pedia
 see seeyou seeyouagain seeyoulater seeyoutomorrow
 thankyou thankyouverymuch goodafternoon goodevening
 nicetomeetyou howareyou imfine iloveyou takecare
+
+# overcute: over|cute に割れるが全体は日本語の語ではない (issue #406)
+overcute

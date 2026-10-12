@@ -234,6 +234,9 @@ internal static class Quality
         new("大文字", "AInituite", "AIについて"),
         new("大文字", "AIdekiru", "AIできる"),
         new("大文字", "McAfeeto", "McAfeeと"),
+
+        // --- #406 ---
+        new("英語", "overcute", "overcute"),
     ];
 
     /// <summary>コードの行のキャレット位置 (コメント・文字列の中か)。</summary>
