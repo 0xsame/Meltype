@@ -393,6 +393,16 @@ public sealed class CompositionController
         UpdateView();
     }
 
+    /// <summary>予測変換の候補を番号で選んで確定する (Meltype IME の候補の一覧をクリックしたとき)。</summary>
+    public void CommitPredictionAt(int index)
+    {
+        if (_converting) return;
+        var predictions = CurrentPredictions();
+        if (index < 0 || index >= predictions.Count) return;
+        CommitPrediction(predictions[index]);
+        UpdateView();
+    }
+
     /// <summary>無効化・フォーカス喪失などで、未確定の内容をそのまま確定する。</summary>
     public void CommitPending() => CommitPending(preserveLatinRaw: false, preserveText: false);
 
@@ -1354,7 +1364,8 @@ public sealed class CompositionController
             {
                 if (i < kana.Length && keep[i] == keep[start]) continue;
                 var run = kana[start..i];
-                if (keep[start]) result.Add(new Clause(run, false, Distinct([run, .. _options.Candidates?.Lookup(run) ?? [], CompositionText.ToFullWidth(run)])));
+                // ユーザー辞書に英字のまま登録した読み (zh → ←) はここでも引く
+                if (keep[start]) result.Add(new Clause(run, false, Distinct([.. _options.UserDictionary?.Lookup(run) ?? [], run, .. _options.Candidates?.Lookup(run) ?? [], CompositionText.ToFullWidth(run)])));
                 else result.AddRange(ConvertJapanese(run));
                 start = i;
             }

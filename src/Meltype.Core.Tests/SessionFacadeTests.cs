@@ -128,6 +128,37 @@ internal static class SessionFacadeTests
     }
 
     [Test]
+    public static void Predictions_SentToNativeSide()
+    {
+        // Meltype IME の DLL も予測変換の候補の一覧を出せるように、候補と Tab で選んでいる候補を JSON に入れる
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions { Predictor = new Predictor(null, null, null), Predictions = () => true }, () => new Settings());
+        var typing = Type(session, "decis", "I made ")[^1];
+        Assert.True(typing.View?.Predictions?.Contains("decision") == true, string.Join(",", typing.View?.Predictions ?? []));
+        Assert.True(typing.ToJson().Contains("\"predictions\":[\"") && typing.ToJson().Contains("\"selectedPrediction\":-1"), typing.ToJson());
+        var tab = session.HandleKey(VirtualKeys.Tab, null, false, false, false, false, "I made ");
+        Assert.True(tab.Consumed, "Tab は予測の候補を選ぶのに使う");
+        Assert.Equal(0, tab.View?.SelectedPrediction);
+        Assert.Equal(typing.View!.Predictions![0], tab.View?.Text);
+        Assert.True(tab.ToJson().Contains("\"selectedPrediction\":0"), tab.ToJson());
+        var back = session.HandleKey(VirtualKeys.Tab, null, true, false, false, false, "I made ");
+        Assert.Equal(-1, back.View?.SelectedPrediction, "Shift+Tab で前に戻る (最初の前は選ばない状態)");
+    }
+
+    [Test]
+    public static void SelectPrediction_Commits()
+    {
+        // Meltype IME の候補の一覧で予測変換の候補をクリックしたら、その候補を確定する
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(),
+            new CompositionOptions { Predictor = new Predictor(null, null, null), Predictions = () => true }, () => new Settings());
+        var predictions = Type(session, "decis", "I made ")[^1].View!.Predictions!;
+        var result = session.SelectPrediction(1);
+        Assert.Equal(predictions[1], result.Commits.Single().Text);
+        Assert.True(result.View is null, "確定したら一覧を閉じる");
+        Assert.True(session.SelectPrediction(0).Commits.Count == 0, "打っていないときは何もしない");
+    }
+
+    [Test]
     public static void Commits_WithoutDeleteHaveNoExpect()
     {
         var session = Create();
@@ -256,7 +287,7 @@ internal static class SessionFacadeTests
     public static void Json_IsEscaped()
     {
         var result = new SessionResult(true, [new TextEdit(2, "a\"b\\c\n")], new CompositionView("x", ["y"], 0, true, "h", ["x"], 0));
-        const string expected = """{"consumed":true,"commits":[{"deleteBefore":2,"text":"a\"b\\c\n"}],"view":{"text":"x","converting":true,"selectedIndex":0,"selectedClause":0,"hint":"h","candidates":["y"],"clauses":["x"],"suggestion":null,"meaning":null,"notes":[null]}}""";
+        const string expected = """{"consumed":true,"commits":[{"deleteBefore":2,"text":"a\"b\\c\n"}],"view":{"text":"x","converting":true,"selectedIndex":0,"selectedClause":0,"hint":"h","candidates":["y"],"clauses":["x"],"suggestion":null,"meaning":null,"notes":[null],"predictions":[],"selectedPrediction":-1}}""";
         Assert.Equal(expected, result.ToJson());
     }
 

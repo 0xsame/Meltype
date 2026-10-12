@@ -2187,6 +2187,21 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void UserDictionary_ReadingThatStaysAscii_IsUsed()
+    {
+        // zh → ← のように、ローマ字として読めずに英字のまま残る読みを登録しても、変換で使われていなかった
+        var dictionary = new UserDictionary(null, builtIn: false);
+        dictionary.Add("zh", "←");
+        var k = new Keyboard(userDictionary: dictionary);
+        k.Type("zh ");
+        Assert.Equal("←", k.Host.View!.Clauses![0]);
+
+        k = new Keyboard(live: true, userDictionary: dictionary);
+        k.Type("zh ");
+        Assert.Equal("←", k.Host.View!.Clauses![0], "ライブ変換でも使う");
+    }
+
+    [Test]
     public static void UserDictionary_SavesAndLoads()
     {
         var path = Path.Combine(Path.GetTempPath(), $"meltype-userdict-{Guid.NewGuid():N}.txt");
