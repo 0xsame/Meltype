@@ -87,9 +87,12 @@ OS に依存しない部分 (`src/Meltype.Core`) とそのテストは、Mac・L
 ```bash
 dotnet run --project src/Meltype.Core.Tests                 # すべてのテスト
 dotnet run --project src/Meltype.Core.Tests -- --eval       # 品質テスト (スペルチェッカーは使わない)
+dotnet run --project src/Meltype.Core.Tests -- --version    # 版 (Meltype.Core)
 dotnet run --project src/Meltype.Core.Tests -- --repro kyouhagoogle enter   # 打ったときの見え方と確定の結果
 dotnet run --project src/Meltype.Core.Tests -- --mixed-bench out.json       # 日本語の文の中の英単語が正しく分かれるか (約 550 例)
 ```
+
+Windows のアプリ本体・Mac / Linux の IME も同じ形で版を出せます (`Meltype.exe --version`、`Meltype.app/.../Meltype --version`、`ibus-engine-meltype --version`)。Windows はコンソールアプリとしてビルドし、`--version` のときだけ標準出力へ書き、常駐起動はターミナルからでも親シェルを待たせないよう窓なしで立ち上げ直します。
 
 環境変数 `MELTYPE_SCORED=1` を付けると、区切りを点数で選ぶ α版 (設定「区切りを点数で選ぶ (α版)」、`ScoredSegmentation.cs`) で動かせます。
 今までの区切りと比べるときは、同じコマンドを `MELTYPE_SCORED=0` と `1` で 2 回動かします。`--mixed-bench` は `MELTYPE_BENCH_OFFSET=31` などで調べる語を変えられます。
