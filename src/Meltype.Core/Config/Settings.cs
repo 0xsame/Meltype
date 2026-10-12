@@ -394,6 +394,14 @@ public sealed class Settings
     [Browsable(false)]
     public bool TsfOffered { get; set; }
 
+    /// <summary>設定画面の下に、項目の説明を出すか (設定画面のチェックボックスで切り替える)。</summary>
+    [Browsable(false)]
+    public bool SettingsShowHelp { get; set; } = true;
+
+    /// <summary>設定画面で、プルダウン・数値の上でホイールを回したときに値を変えるか (OFF なら設定の一覧をスクロールする)。</summary>
+    [Browsable(false)]
+    public bool SettingsWheelChangesValue { get; set; } = true;
+
     /// <summary>プロファイル (仕事用・趣味用・SNS 用など)。設定画面の上と、トレイのメニューで切り替える。</summary>
     [Browsable(false)]
     public List<SettingsProfile> Profiles { get; set; } = [];
@@ -413,6 +421,8 @@ public sealed class Settings
         nameof(Enabled), nameof(JapaneseKeyboardOnly), nameof(AllowInjectedInput), nameof(FileLog), nameof(LogTypedText), nameof(AutoUpdate),
         // 入力の方式 (Windows の IME として入力するか) は PC 全体の選び方なので、プロファイルで変えない
         nameof(Mode), nameof(TsfIntroduced), nameof(TsfOffered),
+        // 設定画面の見た目は、プロファイルを切り替えても変えない
+        nameof(SettingsShowHelp), nameof(SettingsWheelChangesValue),
     ];
 
     /// <summary>今の設定の値のうち、プロファイルに入れるもの。</summary>

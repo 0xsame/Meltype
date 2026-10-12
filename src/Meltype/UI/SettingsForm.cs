@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using System.Reflection;
+using System.Text;
 using Meltype.Config;
 
 namespace Meltype.UI;
@@ -13,7 +14,7 @@ namespace Meltype.UI;
 /// 項目名・分類・説明は Settings の属性 (DisplayName / Category / Description) から取る。
 /// 下の「判定テスト」欄では、打った英字が IME 自動切替でどう判定されるかと理由を確認できる。
 /// </summary>
-internal sealed class SettingsForm : Form
+internal sealed class SettingsForm : Form, IMessageFilter
 {
     private const string On = "ON";
     private const string Off = "OFF";
@@ -21,17 +22,20 @@ internal sealed class SettingsForm : Form
     private readonly MeltypeEngine _engine;
     private readonly List<Binding> _bindings = [];
     private readonly TableLayoutPanel _body = new() { Dock = DockStyle.Fill, ColumnCount = 1, AutoScroll = true, Padding = new Padding(8, 8, SystemInformation.VerticalScrollBarWidth + 4, 8) };
-    private readonly Label _help = new() { Dock = DockStyle.Fill, ForeColor = SystemColors.GrayText, Padding = new Padding(8, 4, 8, 4) };
-    // 説明の欄。長い説明でも見切れないよう、説明の長さに合わせて高さを変える
-    private readonly Panel _helpPanel = new() { Dock = DockStyle.Bottom, Height = HelpMinHeight, BorderStyle = BorderStyle.FixedSingle };
-    private const int HelpMinHeight = 46;
-    private const int HelpMaxHeight = 150;
+    private readonly Label _help = new() { Dock = DockStyle.Fill, ForeColor = SystemColors.GrayText, Padding = new Padding(8, 4, 8, 4), AutoEllipsis = true };
+    // 説明の欄。出している説明に合わせて高さを変えると、カーソルを動かすたびに設定の一覧の高さが変わり、
+    // 文字が一瞬上に飛んだり、スクロールバーのつまみの大きさが変わったりするので、高さを 4 行ぶんに固定する。
+    // 4 行に収まらない説明は末尾を「…」にする (全文はツールチップで見られる)
+    private readonly Panel _helpPanel = new() { Dock = DockStyle.Bottom, BorderStyle = BorderStyle.FixedSingle };
+    private const int HelpLines = 4;
     private readonly TextBox _testInput = new() { Dock = DockStyle.Top, ImeMode = ImeMode.Disable };
     private readonly TextBox _testResult = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
     private readonly ToolTip _toolTip = new() { AutoPopDelay = 20000 };
     // プロファイル (仕事用・趣味用・SNS 用など) を選ぶ欄
     private readonly ComboBox _profiles = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, Anchor = AnchorStyles.Left };
     private bool _loadingProfiles;
+    private readonly CheckBox _showHelp = new() { Text = "下部に説明を表示", AutoSize = true };
+    private readonly CheckBox _wheelChangesValue = new() { Text = "マウスホイールで値を変更", AutoSize = true };
 
     /// <summary>画面の部品に出していない値 (プロファイルの一覧・使っているプロファイル など) を持つ設定。</summary>
     private Settings _draft;
@@ -45,9 +49,12 @@ internal sealed class SettingsForm : Form
         _draft = engine.Settings.Clone().Normalize();
         Text = "Meltype 設定";
         StartPosition = FormStartPosition.CenterScreen;
-        // 画面に収まる高さにする (中身はスクロールできる)。
+        // 上のプロファイルの欄のボタンが 1 段に並ぶ幅にし、高さも幅と同じにする。
+        // 文字は画面の拡大率に合わせて大きくなるので、窓の大きさも拡大率に合わせる。
+        // 画面に収まらないときは画面に合わせる (中身はスクロールできる)。
         var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        Size = new Size(Math.Min(640, area.Width - 40), Math.Min(640, area.Height - 60));
+        var size = LogicalToDeviceUnits(740);
+        Size = new Size(Math.Min(size, area.Width - 40), Math.Min(size, area.Height - 60));
         MinimumSize = new Size(480, 400);
         Font = new Font("Yu Gothic UI", 9.5F);
 
@@ -64,7 +71,7 @@ internal sealed class SettingsForm : Form
         _body.Controls.Add(new Panel { Height = 16, Margin = Padding.Empty });
 
         _helpPanel.Controls.Add(_help);
-        _helpPanel.Resize += (_, _) => FitHelp();
+        _helpPanel.Height = TextRenderer.MeasureText("あ", Font).Height * HelpLines + _help.Padding.Vertical + 6;
 
         var testLabel = new Label { Text = "判定テスト (IME 自動切替の判定。英字で入力):", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 6, 0, 2) };
         _testInput.TextChanged += (_, _) => RunTest();
@@ -99,6 +106,7 @@ internal sealed class SettingsForm : Form
         buttons.Controls.AddRange(cancel, ok, defaults);
 
         Controls.Add(_body);
+        Controls.Add(BuildViewOptions());
         Controls.Add(BuildProfileBar());
         Controls.Add(_helpPanel);
         Controls.Add(testPanel);
@@ -108,6 +116,48 @@ internal sealed class SettingsForm : Form
 
         LoadFrom(_draft);
         RefreshProfiles();
+    }
+
+    /// <summary>プロファイルの欄の下: 説明の欄を出すか、ホイールで値を変えるか。</summary>
+    private Control BuildViewOptions()
+    {
+        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(8, 4, 8, 0) };
+        _showHelp.Checked = _draft.SettingsShowHelp;
+        _helpPanel.Visible = _showHelp.Checked;
+        _showHelp.CheckedChanged += (_, _) => _helpPanel.Visible = _showHelp.Checked;
+        _wheelChangesValue.Checked = _draft.SettingsWheelChangesValue;
+        _toolTip.SetToolTip(_wheelChangesValue, WrapToolTip("OFF にすると、プルダウンや数値の上でホイールを回しても値を変えず、設定の一覧をスクロールします。"));
+        bar.Controls.AddRange([_showHelp, _wheelChangesValue]);
+        return bar;
+    }
+
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        Application.AddMessageFilter(this);
+    }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        Application.RemoveMessageFilter(this);
+        base.OnFormClosed(e);
+    }
+
+    /// <summary>「マウスホイールで値を変更」が OFF のとき、プルダウン・数値の上で回したホイールを設定の一覧のスクロールに回す。</summary>
+    public bool PreFilterMessage(ref Message m)
+    {
+        if (m.Msg != Native.WM_MOUSEWHEEL || _wheelChangesValue.Checked || !_body.IsHandleCreated) return false;
+        // 数値の入力欄は NumericUpDown の中の部品なので、親をたどって見る
+        for (var control = FromChildHandle(m.HWnd); control is not null; control = control.Parent)
+        {
+            if (control is ComboBox { DroppedDown: true }) return false; // 開いた一覧はホイールで選べるままにする
+            if (control is ComboBox or NumericUpDown && _body.Contains(control))
+            {
+                Native.SendMessage(_body.Handle, m.Msg, m.WParam, m.LParam);
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>上のプロファイルの欄: 選ぶと、そのプロファイルの値を画面に読み込む。新規は今の値を写して作る。</summary>
@@ -560,29 +610,81 @@ internal sealed class SettingsForm : Form
 
     private void ShowHelpFor(Control control, string name, string description)
     {
-        if (description.Length > 0) _toolTip.SetToolTip(control, description);
-        void Show(object? sender, EventArgs e)
-        {
-            _help.Text = description.Length > 0 ? $"{name}: {description}" : name;
-            FitHelp();
-        }
+        if (description.Length > 0) _toolTip.SetToolTip(control, WrapToolTip(description));
+        var text = description.Length > 0 ? $"{name}: {description}" : name;
+        void Show(object? sender, EventArgs e) => _help.Text = text;
         control.Enter += Show;
         control.MouseEnter += Show;
     }
 
-    /// <summary>説明の欄の高さを、説明が全部見える高さにする (上限を超える分はツールチップで見られる)。</summary>
-    private void FitHelp()
+    /// <summary>
+    /// ツールチップの説明を、文 (「。」) ごとに改行し、長い文は半角 80 字 (全角 40 字) くらいで折り返す。
+    /// ツールチップは画面の幅まで 1 行で出るので、そのままだと横に長くて読みにくい。
+    /// 英単語の途中では折り返さず、閉じ括弧・句読点は行頭に、開き括弧は行末に置かない。
+    /// </summary>
+    internal static string WrapToolTip(string text, int maxWidth = 80)
     {
-        // ここでBodyのスクロールがリセットされるので、一旦スクロール位置を保存してあげる
-        var bodyScrollPosition = _body.AutoScrollPosition.Y;
+        const string opening = "(（「『[";
+        const string closing = ")）」』]、。,.・";
+        var lines = new List<string>();
+        foreach (var sentence in Sentences(text))
+        {
+            var line = new StringBuilder();
+            var width = 0;
+            foreach (var token in Tokens(sentence))
+            {
+                var tokenWidth = token.Sum(c => c < 0x80 ? 1 : 2);
+                if (width > 0 && width + tokenWidth > maxWidth && !string.IsNullOrWhiteSpace(token))
+                {
+                    lines.Add(line.ToString().TrimEnd());
+                    line.Clear();
+                    width = 0;
+                }
+                if (width == 0 && string.IsNullOrWhiteSpace(token)) continue;
+                line.Append(token);
+                width += tokenWidth;
+            }
+            if (line.Length > 0) lines.Add(line.ToString().TrimEnd());
+        }
+        return string.Join("\n", lines);
 
-        var width = Math.Max(100, _helpPanel.ClientSize.Width - _help.Padding.Horizontal);
-        var size = TextRenderer.MeasureText(_help.Text, _help.Font, new Size(width, int.MaxValue), TextFormatFlags.WordBreak);
-        var height = Math.Clamp(size.Height + _help.Padding.Vertical + 6, HelpMinHeight, HelpMaxHeight);
-        if (_helpPanel.Height != height) _helpPanel.Height = height;
+        static IEnumerable<string> Sentences(string text)
+        {
+            var start = 0;
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (text[i] != '。') continue;
+                var end = i + 1;
+                while (end < text.Length && ")）」』".Contains(text[end])) end++;
+                yield return text[start..end].Trim();
+                start = end;
+                i = end - 1;
+            }
+            if (text[start..].Trim() is { Length: > 0 } rest) yield return rest;
+        }
 
-        // スクロール位置はYのみ-で返ってくるので反転して復元
-        _body.AutoScrollPosition = new(0, -bodyScrollPosition);
+        // 折り返してよい単位: 英数字の語 1 つ、または全角の 1 字 (前の開き括弧・後ろの閉じ括弧と句読点を含める)
+        static IEnumerable<string> Tokens(string sentence)
+        {
+            var i = 0;
+            while (i < sentence.Length)
+            {
+                var start = i;
+                while (i < sentence.Length && opening.Contains(sentence[i])) i++;
+                if (i < sentence.Length && IsWordChar(sentence[i]))
+                {
+                    while (i < sentence.Length && IsWordChar(sentence[i])) i++;
+                }
+                else if (i < sentence.Length)
+                {
+                    i++;
+                }
+                while (i < sentence.Length && closing.Contains(sentence[i])) i++;
+                yield return sentence[start..i];
+            }
+        }
+
+        static bool IsWordChar(char c) => c is > ' ' and < (char)0x80 && !opening.Contains(c) && !closing.Contains(c);
     }
 
     private void LoadFrom(Settings settings)
@@ -595,6 +697,8 @@ internal sealed class SettingsForm : Form
     {
         var settings = _draft.Clone();
         foreach (var binding in _bindings) binding.Store(settings);
+        settings.SettingsShowHelp = _showHelp.Checked;
+        settings.SettingsWheelChangesValue = _wheelChangesValue.Checked;
         return settings.Normalize();
     }
 

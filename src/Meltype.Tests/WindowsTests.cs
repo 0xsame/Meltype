@@ -124,4 +124,29 @@ internal static class WindowsTests
             Assert.True(!active && calls == 1, "失敗や期限後の肯定結果を採用せず、追加の問い合わせをしない");
         }
     }
+
+    [Test]
+    public static void SettingsToolTip_BreaksLinesForReading()
+    {
+        Assert.Equal("ひとつめ。\nふたつめ。", UI.SettingsForm.WrapToolTip("ひとつめ。ふたつめ。"), "文ごとに改行する");
+        Assert.Equal($"{new string('あ', 39)}\nAnyDesk を使う", UI.SettingsForm.WrapToolTip($"{new string('あ', 39)}AnyDesk を使う"), "英単語の途中で折り返さない");
+        Assert.Equal($"{new string('あ', 39)}\nあ、い", UI.SettingsForm.WrapToolTip($"{new string('あ', 40)}、い"), "読点を行頭に置かない");
+        Assert.Equal($"{new string('あ', 39)}\n(OFF)", UI.SettingsForm.WrapToolTip($"{new string('あ', 39)}(OFF)"), "開き括弧を行末に置かない");
+
+        // 設定画面に出す説明すべてで、文字を落とさず、長すぎる行・行頭の閉じ括弧・行末の開き括弧を作らない
+        var descriptions = typeof(Settings).GetProperties()
+            .Select(p => p.GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false).OfType<System.ComponentModel.DescriptionAttribute>().FirstOrDefault()?.Description)
+            .OfType<string>().ToList();
+        Assert.True(descriptions.Count > 20, "説明を読めている");
+        foreach (var description in descriptions)
+        {
+            var wrapped = UI.SettingsForm.WrapToolTip(description);
+            Assert.Equal(description.Replace(" ", ""), wrapped.Replace("\n", "").Replace(" ", ""), description);
+            foreach (var line in wrapped.Split('\n'))
+            {
+                Assert.True(line.Sum(c => c < 0x80 ? 1 : 2) <= 80, $"長すぎる行: {line}");
+                Assert.True(line.Length > 0 && !")）」』]、。,.・".Contains(line[0]) && !"(（「『[".Contains(line[^1]), $"括弧・句読点の位置: {line}");
+            }
+        }
+    }
 }
