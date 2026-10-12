@@ -2550,6 +2550,31 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Clauses_ShiftArrowKeepsEnglishWhenItCannotMove()
+    {
+        // 区切りを動かせないときは、選んだ英語の文節を日本語に読み直さない (日本語の文節と同じく何も変えない)
+        var k = new Keyboard();
+        k.Type("konoteam");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("この|team", string.Join("|", k.Host.View!.Clauses!));
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        Assert.Equal("この|team", string.Join("|", k.Host.View.Clauses!), "最後の文節は伸ばせない");
+        k.Key(VirtualKeys.LShift, up: true);
+
+        k = new Keyboard();
+        k.Type("konoteamXyz");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("この|team|Xyz", string.Join("|", k.Host.View!.Clauses!));
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        Assert.Equal("この|team|Xyz", string.Join("|", k.Host.View.Clauses!), "次の文節がかなに読めないので伸ばせない");
+        k.Key(VirtualKeys.LShift, up: true);
+    }
+
+    [Test]
     public static void AmbiguousWord_FollowsEnglishContext()
     {
         var k = new Keyboard();
