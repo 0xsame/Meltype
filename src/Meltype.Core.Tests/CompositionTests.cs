@@ -1911,6 +1911,8 @@ internal static class CompositionTests
             ["Meltype.e57"] = "Meltype.e57", ["Meltype.cargo/config.toml"] = "Meltype.cargo/config.toml", ["Meltype.db-journal"] = "Meltype.db-journal",
             // 表示で英字にした拡張子を、確定でローマ字の打ち間違いとして直さない (amr → あめ、bas → ば)
             ["Meltype.amr"] = "Meltype.amr", ["Meltype.bas"] = "Meltype.bas", ["Meltype.ann"] = "Meltype.ann",
+            // issue #462: ローマ字読める語尾 (llama → っぁま) + 読めない拡張子は英字スパンとしてまとめる
+            ["llama.cpp"] = "llama.cpp",
             // 長い名前の途中の助詞・ドメインの頭では分けない
             ["Meltype.gitignore"] = "Meltype.gitignore", ["Meltype.gcno"] = "Meltype.gcno", ["Meltype.automount"] = "Meltype.automount",
             // 先頭のドットファイルも英字のまま (issue #431: 。ぎちgのれ にしない)
