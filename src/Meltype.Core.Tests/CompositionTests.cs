@@ -1879,6 +1879,8 @@ internal static class CompositionTests
             ["Meltype.amr"] = "Meltype.amr", ["Meltype.bas"] = "Meltype.bas", ["Meltype.ann"] = "Meltype.ann",
             // 長い名前の途中の助詞・ドメインの頭では分けない
             ["Meltype.gitignore"] = "Meltype.gitignore", ["Meltype.gcno"] = "Meltype.gcno", ["Meltype.automount"] = "Meltype.automount",
+            // 先頭のドットファイルも英字のまま (issue #431: 。ぎちgのれ にしない)
+            [".gitignore"] = ".gitignore", [".env"] = ".env", [".dll"] = ".dll", [".json"] = ".json", [".go"] = ".go",
             // 拡張子・ドメインの後ろの助詞からは日本語
             ["MeltypeTip.dllwokesu"] = "MeltypeTip.dllをけす", ["setup.exewojikkou"] = "setup.exeをじっこう", ["github.comnipush"] = "github.comにpush",
             ["tetr.iode"] = "tetr.ioで", ["google.comdekensaku"] = "google.comでけんさく",
@@ -1893,6 +1895,33 @@ internal static class CompositionTests
         var desu = new Keyboard();
         desu.Type("Meltype.desu\n");
         Assert.True(desu.Host.Document.EndsWith("です", StringComparison.Ordinal), desu.Host.Document);
+    }
+
+    [Test]
+    public static void ReadableToolNames_StayEnglish()
+    {
+        // 報告 (#301 / #457): おぺんこで・tむx に割れず、ツール名のまま英字にする
+        // discode は固有名詞でないので discoで (#145 メンテナー判断)
+        Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            var cases = new Dictionary<string, string>
+            {
+                ["discode"] = "discoで",
+                ["opencode"] = "opencode",
+                ["tmux"] = "tmux",
+            };
+            foreach (var (typed, expected) in cases)
+            {
+                var k = new Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, $"「{typed}」");
+            }
+        }
+        finally
+        {
+            Detector.SpellChecker = null;
+        }
     }
 
     [Test]
