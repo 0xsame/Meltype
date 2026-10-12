@@ -3044,6 +3044,33 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void EnglishVerb_PlusSuru_PendingConsonantIsShownOnce()
+    {
+        // 英単語 + する の活用の打ちかけの子音が 2 回出ていた (googleしまss)。Space で変換する読みも同じ
+        foreach (var (typed, expected, converted) in new[]
+        {
+            ("googleshimas", "googleしまs", "googleしまs"),
+            ("googleshimasen", "googleしませn", "googleしません"),
+            ("reflectsaret", "reflectされt", "reflectされt"),
+        })
+        {
+            Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+            try
+            {
+                var k = new Keyboard();
+                k.Type(typed);
+                Assert.Equal(expected, k.Showing, typed);
+                k.Type(" ");
+                Assert.Equal(converted, k.Showing, typed + " (Space)");
+            }
+            finally
+            {
+                Detector.SpellChecker = null;
+            }
+        }
+    }
+
+    [Test]
     public static void SpaceAroundEnglish_AddsHalfWidthSpaces()
     {
         // Twitter の要望: 半角英語の前後に半角スペース (設定、最初は OFF)
