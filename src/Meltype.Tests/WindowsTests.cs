@@ -39,6 +39,19 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void Foreground_RechecksFullscreenOnTheSameWindow()
+    {
+        // 枠ありで起動して、同じウィンドウのまま全画面に切り替えるゲーム。表示はしない
+        var screen = Screen.PrimaryScreen!.Bounds;
+        using var form = new Form { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Bounds = new Rectangle(screen.X, screen.Y, 200, 100) };
+        var tracker = new ForegroundTracker();
+        Assert.True(!tracker.CurrentFor(form.Handle, 1000).IsFullscreen, "枠あり");
+        form.Bounds = screen;
+        Assert.True(!tracker.CurrentFor(form.Handle, 1100).IsFullscreen, "すぐには確かめ直さない");
+        Assert.True(tracker.CurrentFor(form.Handle, 2000).IsFullscreen, "少し経つと全画面と分かる");
+    }
+
+    [Test]
     public static void MsIme_LongReading_IsSplitBeforeTheEngineLimit()
     {
         // #221: Microsoft IME の変換エンジンは 100 文字を超える読みを受け付けない (E_LARGEINPUT)。区切って渡す
