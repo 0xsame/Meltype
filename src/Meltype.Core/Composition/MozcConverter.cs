@@ -29,6 +29,14 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
     private Process? _process;
     private int _failures;
 
+    // 性能の計測用の回数と時間 (--perf)。_gate の中で数えるだけなので、ふだんの入力は遅くならない
+    private long _requests;
+    private long _cacheHits;
+    private long _candidateRequests;
+    private long _candidateCacheHits;
+    private long _helperCalls;
+    private long _helperTicks;
+
     // 要る DLL が無くて起動できない (Visual C++ のランタイムが無いなど)。起動し直しても同じなので、もう試さない
     private bool _missingDependency;
 
@@ -74,7 +82,12 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
     {
         lock (_gate)
         {
-            if (_candidates.TryGetValue(reading, out var cached)) return cached;
+            _candidateRequests++;
+            if (_candidates.TryGetValue(reading, out var cached))
+            {
+                _candidateCacheHits++;
+                return cached;
+            }
         }
         var segments = Request("", reading);
         if (segments is null) return [];
@@ -111,9 +124,12 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
         try
         {
             var process = Start();
+            var started = Stopwatch.GetTimestamp();
             process.StandardInput.Write(request + "\n");
             process.StandardInput.Flush();
             var line = ReadLine(process, TimeoutMs);
+            _helperCalls++;
+            _helperTicks += Stopwatch.GetTimestamp() - started;
             if (line is null)
             {
                 Diagnostics.Log.Warn($"Mozc が応答しませんでした ({TimeoutMs}ms)。");
@@ -140,8 +156,10 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
         {
             // ライブ変換は 1 キーごとに同じ読みを何度も変換し直すので、同じ頼み方の結果は使い回す (覚えさせたら捨てる)。
             var key = context + "\t" + reading;
+            _requests++;
             if (_conversions.TryGetValue(key, out var known))
             {
+                _cacheHits++;
                 // 候補の控えは「直前の変換」のものを使うので、使い回したときも控えを入れ直す
                 foreach (var (segmentReading, candidates) in known ?? []) _candidates[segmentReading] = candidates;
                 return known;
@@ -179,6 +197,28 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
         {
             _candidates.Clear();
             _conversions.Clear();
+        }
+    }
+
+    /// <summary>変換の控えの使い回しと、ヘルパーへの問い合わせの回数・時間 (性能の計測用)。入力した文字は含まない。</summary>
+    public MozcStatistics Statistics()
+    {
+        lock (_gate)
+        {
+            long workingSet = 0;
+            try
+            {
+                if (_process is { HasExited: false } process)
+                {
+                    process.Refresh();
+                    workingSet = process.WorkingSet64;
+                }
+            }
+            catch
+            {
+            }
+            return new MozcStatistics(_requests, _cacheHits, _candidateRequests, _candidateCacheHits, _helperCalls,
+                Stopwatch.GetElapsedTime(0, _helperTicks), workingSet);
         }
     }
 
@@ -293,3 +333,10 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
         }
     }
 }
+
+/// <summary>
+/// MozcConverter の計測値 (起動してからの合計)。Requests / CacheHits は変換、CandidateRequests / CandidateCacheHits は候補の一覧、
+/// HelperCalls / HelperTime は変換ヘルパーとのやり取り (学習・保存も含む)、HelperWorkingSet は変換ヘルパーの使っているメモリ (起動していなければ 0)。
+/// </summary>
+public readonly record struct MozcStatistics(long Requests, long CacheHits, long CandidateRequests, long CandidateCacheHits,
+    long HelperCalls, TimeSpan HelperTime, long HelperWorkingSet);
