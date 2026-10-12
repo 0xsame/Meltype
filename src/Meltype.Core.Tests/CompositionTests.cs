@@ -885,6 +885,28 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void CaptureGate_StartCheckDoesNotBlockQueue()
+    {
+        // 打ち始めの判定 (フォーカスを調べ終わるのを待つことがある) の間も、UI スレッドはキューを読める
+        var gate = new CaptureGate(() => { });
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var hook = Task.Run(() => gate.OnKey(new KeyEvent('A', 0, false, false, false, 0), _ =>
+        {
+            entered.Set();
+            release.Wait(5000);
+            return true;
+        }));
+        Assert.True(entered.Wait(5000), "判定が始まる");
+        var ui = Task.Run(() => gate.TryDequeue(out _) || gate.IsCaptured || !gate.TryRelease());
+        var finished = ui.Wait(2000);
+        release.Set();
+        Assert.True(finished && !ui.Result, "判定の間も、キューの出し入れと関所の開け閉めは待たされない");
+        Assert.True(hook.Result && gate.IsCaptured, "判定が済んだら横取りを始める");
+        Assert.True(gate.TryDequeue(out var input) && input.Key?.Vk == 'A' && !gate.TryDequeue(out _), "判定した打鍵を 1 回だけ積む");
+    }
+
+    [Test]
     public static void CtrlOtherShortcut_CommitsThenPasses()
     {
         var k = new Keyboard();
