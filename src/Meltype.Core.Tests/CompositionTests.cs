@@ -1326,6 +1326,11 @@ internal static class CompositionTests
         var k = new Keyboard();
         k.Type("fusion\n");
         Assert.Equal("fusion", k.Host.Document);
+    public static void Issue421_DefineStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("kachiwodefinesuru\n");
+        Assert.Equal("かちをdefineする", k.Host.Document);
     }
 
     [Test]
