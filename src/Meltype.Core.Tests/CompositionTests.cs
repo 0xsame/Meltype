@@ -3045,6 +3045,9 @@ internal static class CompositionTests
             if (File.Exists(tsv)) File.Delete(tsv);
             if (File.Exists(json)) File.Delete(json);
         }
+    }
+
+    [Test]
     public static void Issue154_AbcToDef()
     {
         // Issue #154: 英字のあいだの「と」は助詞。全体を 1 つの英単語にしない。
