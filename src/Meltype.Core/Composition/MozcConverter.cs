@@ -32,7 +32,6 @@ public sealed class MozcConverter : IKanjiConverter, ILearningConverter, IDispos
     // 起動はバックグラウンドで行い、そのあいだの変換は待たずに null を返す (変換は UI スレッドで動くので、READY を待つと入力が止まる)
     private Task? _starting;
     private bool _started;
-    private bool _disposed;
 
     // 要る DLL が無くて起動できない (Visual C++ のランタイムが無いなど)。起動し直しても同じなので、もう試さない
     private bool _missingDependency;
