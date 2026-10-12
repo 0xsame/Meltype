@@ -72,6 +72,14 @@ VS Code やターミナルでは英数が基本で、コメントと文字列の
 
 <img src="docs/images/headings/install.svg" alt="インストール" width="480"><br>
 
+<p align="center">
+  <a href="docs/WINDOWS.md"><img src="docs/images/cards/os-windows.svg" alt="Windows" width="30%"></a>
+  <a href="mac/README.md"><img src="docs/images/cards/os-mac.svg" alt="Mac" width="30%"></a>
+  <a href="linux/README.md"><img src="docs/images/cards/os-linux.svg" alt="Linux" width="30%"></a>
+</p>
+
+<p align="center"><sub>カードを押すと、それぞれの OS の README (インストール・使い方・困ったとき) が開きます</sub></p>
+
 1. [Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `Meltype-<version>-setup.exe` をダウンロード
 2. 開いて、案内どおりに進める
 3. タスクトレイに「あ」が出たら準備完了！
@@ -87,7 +95,7 @@ VS Code やターミナルでは英数が基本で、コメントと文字列の
 |---|---|
 | Windows (zip) | `Meltype-<version>-windows.zip` を展開して `Install.cmd` をダブルクリック |
 | Mac (プレビュー版) | `Meltype-<version>-mac.zip` ([mac/README.md](mac/README.md)) |
-| Linux (プレビュー版) | `Meltype-<version>-linux.zip` (IBus / fcitx5) |
+| Linux (プレビュー版) | `Meltype-<version>-linux.zip` (IBus / fcitx5、[linux/README.md](linux/README.md)) |
 
 インストーラーでも zip でも、入る場所は同じ `%LOCALAPPDATA%\Programs\Meltype` です。
 Windows 版に必要なのは Windows 10 / 11 (64bit) と Microsoft IME だけで、.NET は同梱しています。
