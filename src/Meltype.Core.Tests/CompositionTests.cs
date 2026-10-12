@@ -1340,6 +1340,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue506_EnumerateStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("enumerate\n");
+        Assert.Equal("enumerate", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue421_DefineStaysEnglish()
     {
         var k = new Keyboard();
