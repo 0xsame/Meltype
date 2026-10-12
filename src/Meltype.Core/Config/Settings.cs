@@ -768,7 +768,12 @@ public sealed class Settings
             var json = File.ReadAllText(path);
             var settings = JsonSerializer.Deserialize(json, JsonType) ?? new Settings();
             if (!json.Contains(nameof(SettingsVersion))) settings.SettingsVersion = 1;
-            if (settings.Migrate()) settings.Save(path);
+            if (settings.Migrate())
+            {
+                // 保存できなくても、読み込んだ設定は使う (既定値に戻すと、次の保存でユーザーの設定が消える)。
+                try { settings.Save(path); }
+                catch (Exception ex) { Diagnostics.Log.Warn($"移行した config.json を保存できませんでした: {ex.Message}"); }
+            }
             return settings.Normalize();
         }
         catch (Exception ex)
