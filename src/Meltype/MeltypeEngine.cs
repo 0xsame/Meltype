@@ -864,7 +864,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         {
             Log.Info($"{app.ProcessName} は「コード」: コメントと文字列の中だけ日本語を判定します (半角/全角 でこの行だけ日本語)。");
         }
-        _composition?.Focus.Invalidate();
+        _composition?.Focus.InvalidateForeground();
         _directEnglishWord = false;
         _composition?.ResetContext();
         _session.OnContextChanged(Environment.TickCount64);
