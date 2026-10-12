@@ -1324,6 +1324,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue469_HoloXStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("holoX\n");
+        Assert.Equal("holoX", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue346_FusionStaysEnglish()
     {
         var k = new Keyboard();
