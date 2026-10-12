@@ -287,6 +287,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
         ApplyUpdate();
     }
 
+    /// <summary>
+    /// 更新以外の通知を出す。BalloonTipClicked はどの通知のクリックでも起きるので、更新の通知のクリック待ちは外す
+    /// (外さないと、この通知をクリックしたときに更新が始まる)。
+    /// </summary>
+    private void ShowBalloonTip(int timeout, string title, string text)
+    {
+        _tray.BalloonTipClicked -= OnUpdateBalloonClicked;
+        _tray.ShowBalloonTip(timeout, title, text, ToolTipIcon.Info);
+    }
+
     private void ShowUpdateItem()
     {
         if (Updater.Staged() is not { } staged) return;
@@ -331,7 +341,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             if (now - _lastSuggestion < 30000) return;
             _lastSuggestion = now;
             if (!_engine.Settings.ShowNotifications) return;
-            _tray.ShowBalloonTip(2000, "Meltype (手動)", "日本語を打っているようです。半角/全角 で日本語入力にできます。", ToolTipIcon.Info);
+            ShowBalloonTip(2000, "Meltype (手動)", "日本語を打っているようです。半角/全角 で日本語入力にできます。");
         });
     }
 
@@ -344,7 +354,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _engine.Enabled = !_engine.Enabled;
         // 設定で通知を OFF にしていれば出さない (Windows の通知は音も鳴る)。
-        if (_engine.Settings.ShowNotifications) _tray.ShowBalloonTip(1500, "Meltype", _engine.Enabled ? "Meltype を有効にしました" : "Meltype を一時停止しました", ToolTipIcon.Info);
+        if (_engine.Settings.ShowNotifications) ShowBalloonTip(1500, "Meltype", _engine.Enabled ? "Meltype を有効にしました" : "Meltype を一時停止しました");
     }
 
     private static string LevelName(DetectionLevel level) => level switch
@@ -408,7 +418,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (name == _engine.Settings.ActiveProfile) return;
         _engine.ApplySettings(_engine.Settings.SwitchProfile(name));
         UpdateStatus();
-        if (_engine.Settings.ShowNotifications) _tray.ShowBalloonTip(1500, "Meltype", $"プロファイルを「{name}」にしました", ToolTipIcon.Info);
+        if (_engine.Settings.ShowNotifications) ShowBalloonTip(1500, "Meltype", $"プロファイルを「{name}」にしました");
     }
 
     private void SetLevel(DetectionLevel level)
