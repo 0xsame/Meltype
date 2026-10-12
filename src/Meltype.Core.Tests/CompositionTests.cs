@@ -1348,6 +1348,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue536_FatigueStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fatigue\n");
+        Assert.Equal("fatigue", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue421_DefineStaysEnglish()
     {
         var k = new Keyboard();

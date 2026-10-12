@@ -18,3 +18,5 @@ nicetomeetyou howareyou imfine iloveyou takecare
 overcute
 # enumerate は えぬめらて と読めるが、日本語の語ではない (issue #506)
 enumerate
+# fatigue は ふぁちぐえ と読めるが、日本語の語ではない (issue #536)
+fatigue
