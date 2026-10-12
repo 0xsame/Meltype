@@ -945,6 +945,34 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void KanaInput_DigitRowKeyTypesKana_WhileConverting()
+    {
+        // かな入力では数字の段のキーは ぬふあうえおやゆよ。変換中に打っても番号で選ばず、今の候補で確定して打ったかなを入れる。
+        var k = new Keyboard { Kana = true };
+        k.TypeKanaKeys("tu");
+        k.Press(VirtualKeys.Space);
+        var current = k.Host.View!.Clauses![0];
+        k.Press(0x33);
+        Assert.Equal(current, k.Host.Document, "今の候補で確定する");
+        Assert.Equal("あ", k.Showing, "3 のキーは あ");
+    }
+
+    [Test]
+    public static void KanaInput_NumpadSelectsCandidateByNumber()
+    {
+        // かな入力でも、テンキーの数字なら候補の番号で選べる。
+        var k = new Keyboard { Kana = true };
+        k.TypeKanaKeys("tu");
+        k.Press(VirtualKeys.Space);
+        var view = k.Host.View!;
+        Assert.True(view.Converting && view.Candidates.Count >= 2, "候補の一覧が出る");
+        var second = view.Candidates[1];
+        k.Press(0x62);
+        Assert.Equal(second, k.Host.Document);
+        Assert.True(!k.Gate.IsCaptured, "最後の文節を番号で選んだら確定する");
+    }
+
+    [Test]
     public static void Slash_AsMiddleDot_WhenEnabled()
     {
         // #122: 設定が ON なら、かなの後ろの / は ・。英字・数字の後ろ・打ち始めは / のまま。OFF なら今までどおり /
