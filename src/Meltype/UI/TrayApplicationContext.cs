@@ -187,12 +187,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         if (_engine.Settings.TsfIntroduced || !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList ||
             RuntimeInformation.OSArchitecture == Architecture.Arm64) return;
+        var wasTsf = _engine.Settings.Mode == InputMode.Tsf;
         var next = _engine.Settings.Clone();
         next.TsfIntroduced = true;
         next.Mode = InputMode.Tsf;
         _engine.ApplySettings(next);
+        // ほかのモードからなら ApplySettings が切り替える。もう Meltype IME のモードだったときも、入力方式を Meltype IME にする
+        if (wasTsf) Tip.TipServer.ActivateForSession();
         Diagnostics.Log.Info("Meltype IME が入っているので、動作モードを Meltype IME にしました。");
-        Tip.TipServer.ActivateForSession();
     }
 
     /// <summary>
@@ -454,12 +456,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void SetMode(InputMode mode)
     {
+        var wasTsf = _engine.Settings.Mode == InputMode.Tsf;
         var next = _engine.Settings.Clone();
         next.Mode = mode;
         next.Enabled = true;
         _engine.ApplySettings(next);
-        // Meltype IME のモードにしたら、いま使う入力方式も Meltype IME にする (Win + Space で選び直さなくてよいように)
-        if (_engine.Settings.Mode == InputMode.Tsf) Tip.TipServer.ActivateForSession();
+        // ほかのモードからなら ApplySettings が切り替える。もう Meltype IME のモードで選び直したとき (Win + Space でほかの IME にしていた) も、入力方式を Meltype IME に戻す
+        if (wasTsf && mode == InputMode.Tsf) Tip.TipServer.ActivateForSession();
     }
 
     private void UpdateStatus()

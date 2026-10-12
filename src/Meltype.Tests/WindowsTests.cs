@@ -73,6 +73,17 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void ApplySettings_ActivatesTsfOnlyWhenSwitchingToIt()
+    {
+        // トレイでも設定画面でも、動作モードを Meltype IME に変えたら入力方式も Meltype IME にする。
+        Assert.True(MeltypeEngine.SwitchesToTsf(InputMode.Keyboard, InputMode.Tsf), "Meltype キーボードから");
+        Assert.True(MeltypeEngine.SwitchesToTsf(InputMode.AutoSwitch, InputMode.Tsf), "IME 自動切替から");
+        Assert.True(!MeltypeEngine.SwitchesToTsf(InputMode.Tsf, InputMode.Tsf), "ほかの設定だけ変えたときは切り替えない");
+        Assert.True(!MeltypeEngine.SwitchesToTsf(InputMode.Keyboard, InputMode.Keyboard), "Meltype IME を使えずに元のモードに戻したときは切り替えない");
+        Assert.True(!MeltypeEngine.SwitchesToTsf(InputMode.Tsf, InputMode.Keyboard), "Meltype IME から外したときは切り替えない");
+    }
+
+    [Test]
     public static void RecheckStale_CooldownIsPerForegroundWindow()
     {
         // ブラウザーで再確認した直後に LINE へ移っても、共有クールダウンで抑止されない
