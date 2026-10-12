@@ -1050,7 +1050,20 @@ public sealed partial class CompositionDetector
             var whole = head + rest;
             if (Enumerable.Range(head.Length + 1, whole.Length - head.Length).Any(length => IsKnownEnglishWord(whole[..length]))) continue;
             foreach (var particle in TrailingParticles)
-                if (rest.StartsWith(particle, StringComparison.Ordinal) && IsDefinitelyEnglish(rest[particle.Length..]) && !IsSuruTail(rest[particle.Length..])) return end;
+            {
+                if (!rest.StartsWith(particle, StringComparison.Ordinal) || !IsDefinitelyEnglish(rest[particle.Length..]) || IsSuruTail(rest[particle.Length..])) continue;
+                // 前のローマ字と合わせると日本語 (つ + ide + に = ついでに) なら、見出しの途中では分けない (issue #407)。
+                // 見出しが先頭 (ideにfetch、apiのerror) のときは今までどおり。
+                if (start > 0 && IsCommonJapanese is { } common)
+                {
+                    var prior = Raw(units, 0, start).ToLowerInvariant();
+                    var phrase = false;
+                    for (var len = 1; len <= Math.Min(prior.Length, 8); len++)
+                        if (common(prior[^len..] + head + particle)) { phrase = true; break; }
+                    if (phrase) continue;
+                }
+                return end;
+            }
         }
         return -1;
     }

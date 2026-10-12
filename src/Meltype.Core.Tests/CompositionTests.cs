@@ -3074,4 +3074,20 @@ internal static class CompositionTests
             if (File.Exists(json)) File.Delete(json);
         }
     }
+
+    [Test]
+    public static void Issue407_TsuideNiFetch()
+    {
+        // Issue #407: ついでに の途中の ide を英単語にしない。見出しが先頭の ideにfetch は英字のまま。
+        foreach (var (typed, expected) in new[]
+        {
+            ("tuidenifetch upstream", "ついでにfetch upstream"),
+            ("idenifetch", "ideにfetch"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
 }
