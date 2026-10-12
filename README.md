@@ -9,6 +9,8 @@
   <a href="https://github.com/yksr-melt/Meltype/releases/latest"><img src="https://img.shields.io/github/v/release/yksr-melt/Meltype?color=5ec4f0" alt="release"></a>
   <a href="https://github.com/yksr-melt/Meltype/releases"><img src="https://img.shields.io/github/downloads/yksr-melt/Meltype/total?color=ff8ab4" alt="downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-7a96f0" alt="license"></a>
+  <a href="https://discord.gg/y44wBbBgHt"><img src="https://img.shields.io/badge/Discord-参加する-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+  <a href="https://github.com/sponsors/yksr-melt"><img src="https://img.shields.io/badge/Sponsor-応援する-ff8ab4?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors"></a>
 </p>
 
 <p align="center">
@@ -27,6 +29,10 @@
   <a href="docs/USAGE.md">使い方</a>
   &nbsp;·&nbsp;
   <a href="https://github.com/yksr-melt/Meltype/issues/new/choose">不具合の報告・提案</a>
+  &nbsp;·&nbsp;
+  <a href="https://discord.gg/y44wBbBgHt">Discord</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/sponsors/yksr-melt">応援する</a>
 </p>
 
 <p align="center">
@@ -275,6 +281,18 @@ General Public License for more details.
 - 送り方 → [CONTRIBUTING.md](CONTRIBUTING.md)
 - ビルド・仕組み → [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
 - Mac の CLI ビルド → [docs/MAC-CLI.md](docs/MAC-CLI.md)、WSL / Linux の CLI ビルド → [docs/WSL.md](docs/WSL.md)
+
+<br><br>
+
+<a name="コミュニティ応援"></a>
+<img src="docs/images/headings/community.svg" alt="コミュニティ・応援" width="480"><br>
+
+使い方の相談や雑談は Discord で！ Meltype を気に入ってもらえたら、GitHub Sponsors で応援していただけると開発の励みになります！
+
+<p align="center">
+  <a href="https://discord.gg/y44wBbBgHt"><img src="docs/images/cards/community-discord.svg" alt="Discord" width="40%"></a>
+  <a href="https://github.com/sponsors/yksr-melt"><img src="docs/images/cards/support-sponsors.svg" alt="GitHub Sponsors" width="40%"></a>
+</p>
 
 <br><br>
 
