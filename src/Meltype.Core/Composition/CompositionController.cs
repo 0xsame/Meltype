@@ -648,10 +648,12 @@ public sealed class CompositionController
             case VirtualKeys.NonConvert when _options.SeparateKeyRoles():
                 // 無変換: 今までの入力を英字にする (F10 と同じ。続けて押すと大文字・小文字も切り替わる)
                 SetAlphanumericMode(DisplayMode.HalfWidthAlphanumeric);
+                _modeByKey = true;
                 return;
             case VirtualKeys.Kana when _options.SeparateKeyRoles():
                 // ひらがな / カタカナ キー: 押すたびに ひらがな ⇔ カタカナ (漢字・英字の状態からは、まずひらがな)
                 SetMode(_text.Mode == DisplayMode.Hiragana && !_converting ? DisplayMode.Katakana : DisplayMode.Hiragana);
+                _modeByKey = true;
                 return;
             case VirtualKeys.Space:
                 // 保護区間 (メンション・URL・パス) の末尾は、自動変換せず原文のまま + 半角空白で確定する。
@@ -706,11 +708,11 @@ public sealed class CompositionController
                 StartConversion();
                 _tabStartedConversion = _converting;
                 return;
-            case VirtualKeys.F6: SetMode(DisplayMode.Hiragana); return;
-            case VirtualKeys.F7: SetMode(DisplayMode.Katakana); return;
-            case VirtualKeys.F8: SetMode(DisplayMode.HalfWidthKatakana); return;
-            case VirtualKeys.F9: SetAlphanumericMode(DisplayMode.FullWidthAlphanumeric); return;
-            case VirtualKeys.F10: SetAlphanumericMode(DisplayMode.HalfWidthAlphanumeric); return;
+            case VirtualKeys.F6: SetMode(DisplayMode.Hiragana); _modeByKey = true; return;
+            case VirtualKeys.F7: SetMode(DisplayMode.Katakana); _modeByKey = true; return;
+            case VirtualKeys.F8: SetMode(DisplayMode.HalfWidthKatakana); _modeByKey = true; return;
+            case VirtualKeys.F9: SetAlphanumericMode(DisplayMode.FullWidthAlphanumeric); _modeByKey = true; return;
+            case VirtualKeys.F10: SetAlphanumericMode(DisplayMode.HalfWidthAlphanumeric); _modeByKey = true; return;
             case VirtualKeys.Left or VirtualKeys.Right or VirtualKeys.Up or VirtualKeys.Down when !_text.IsAlphanumeric:
                 // 変換前でも矢印キーで文節の選択に入る (Mac のライブ変換と同じ)。
                 EnterClauseSelection(vk);
@@ -725,15 +727,14 @@ public sealed class CompositionController
 
         if (_text.KanaInput && KanaOf(e) is { } key)
         {
-            if (_converting) CommitOrKeepConversion();
+            CommitBeforeTyping();
             _text.AppendKana(key.Raw, key.Kana);
             return;
         }
 
         if (_host.CharFromKey(e, _swallowedShift.Count > 0) is { } ch && !char.IsControl(ch) && ch != ' ')
         {
-            // 変換中に次の文字を打ったら、今の候補で確定して新しい入力を始める (IME と同じ。設定で、確定せずに続けることもできる)。
-            if (_converting) CommitOrKeepConversion();
+            CommitBeforeTyping();
             _text.Append(ch);
             return;
         }
@@ -809,6 +810,7 @@ public sealed class CompositionController
     /// </summary>
     private void CommitOrKeepConversion()
     {
+        _modeByKey = false;
         if (!_options.ContinueAfterConversion() || _reconversion is not null)
         {
             Commit();
@@ -818,6 +820,23 @@ public sealed class CompositionController
         foreach (var clause in _clauses.Where(c => !c.IsEnglish)) _keptChoices[clause.Reading] = clause.Text;
         _converting = false;
     }
+
+    /// <summary>
+    /// 入力中に次の文字を打ったとき。変換中なら、今の候補で確定して新しい入力を始める (IME と同じ。設定で、確定せずに続けることもできる)。
+    /// F6〜F10 でかな・英字にしたあとなら、見えているとおりに確定して新しい入力を始める (続けて打った文字までカタカナ・大文字にしない)。
+    /// </summary>
+    private void CommitBeforeTyping()
+    {
+        if (_converting) CommitOrKeepConversion();
+        else if (_modeByKey)
+        {
+            Commit();
+            BeginComposition();
+        }
+    }
+
+    // F6〜F10 (Ctrl+U/I/O/P・無変換・ひらがなキーも) でかな・英字にしたか。次に文字を打ったら確定する。
+    private bool _modeByKey;
 
     // 続けて打つ前に選んでいた候補 (読み → 文字)。確定するか、変換ボックスを空にするまで。
     private readonly Dictionary<string, string> _keptChoices = [];
@@ -887,6 +906,7 @@ public sealed class CompositionController
     private void BeginComposition()
     {
         _keptChoices.Clear();
+        _modeByKey = false;
         _text.KanaInput = _options.KanaInput();
         _text.Punctuation = _options.Punctuation();
         var id = ++_compositionId;
