@@ -76,6 +76,20 @@ internal static class Native
     [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
     /// <summary>コンソールを外す (常駐 GUI 起動時に黒い窓を消す)。</summary>
     [DllImport("kernel32.dll", SetLastError = true)] public static extern bool FreeConsole();
+    /// <summary>このコンソールに繋がっているプロセス数 (親シェルと共有なら 2 以上)。</summary>
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern uint GetConsoleProcessList(uint[] processList, uint count);
+
+    /// <summary>
+    /// 親のターミナル (cmd / PowerShell) とコンソールを共有しているか。
+    /// エクスプローラー起動など、Windows がこのプロセス専用にコンソールを付けた場合は false。
+    /// </summary>
+    public static bool SharesConsoleWithParent()
+    {
+        if (GetConsoleWindow() == IntPtr.Zero) return false;
+        // 要素 1 つだけ渡すと「足りない」ときに実際の数が返る。2 以上なら親と共有。
+        var count = GetConsoleProcessList(new uint[1], 1);
+        return count > 1;
+    }
 
     [DllImport("user32.dll")] public static extern int GetMessage(out MSG msg, IntPtr hwnd, uint min, uint max);
     [DllImport("user32.dll")] public static extern bool TranslateMessage(ref MSG msg);

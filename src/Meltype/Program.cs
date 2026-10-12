@@ -65,7 +65,8 @@ internal static class Program
         if (args.FirstOrDefault() == "--judge-words" && args.Length >= 3) return JudgeWords(args[1], args[2]);
 
         // ターミナルから常駐起動: Exe のまま動かすと cmd が Meltype 終了まで待つので、窓なしで自分を立ち上げ直してすぐ終わる。
-        if (!gui && !IsConsoleOnlyCommand(args.FirstOrDefault()) && Native.GetConsoleWindow() != IntPtr.Zero &&
+        // GetConsoleWindow だけではエクスプローラー起動も真になるので、親とコンソールを共有しているときだけ付け直す。
+        if (!gui && !IsConsoleOnlyCommand(args.FirstOrDefault()) && Native.SharesConsoleWithParent() &&
             Environment.ProcessPath is { } path)
         {
             var start = new ProcessStartInfo(path) { UseShellExecute = false, CreateNoWindow = true };
