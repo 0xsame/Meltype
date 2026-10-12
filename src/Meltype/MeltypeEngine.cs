@@ -533,7 +533,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         if (resetJapanese) _codeJapanese = false;
         Interlocked.Increment(ref _lineVersion);
         // キャレットの移動がアプリに届くのを少し待ってから読む。
-        if (_settings.ProfileFor(_foreground.Current.ProcessName) == AppProfile.Code) RequestLine(delayMs);
+        // 定型文を使うときは、コード以外のアプリでも読む (クリックした後の行頭の ;名前 を変換ボックスに入れないように)。
+        if (_settings.ProfileFor(_foreground.Current.ProcessName) == AppProfile.Code || SnippetsEnabled(_settings)) RequestLine(delayMs);
     }
 
     /// <summary>UI Automation で、今の行のキャレットより前を読む (delayMs 後)。</summary>
