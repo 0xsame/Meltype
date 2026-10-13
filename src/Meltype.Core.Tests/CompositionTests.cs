@@ -1686,6 +1686,22 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void ShiftRepeatWhileComposing_ReleaseReachesApp()
+    {
+        // キーボードが 2 台だと、文字を打っても Shift のリピートが止まらず、離しても Shift が押されたままになっていた (issue #617)。
+        var k = new Keyboard();
+        k.Host.PhysicalShift = true; // Shift の押下は、変換ボックスが開く前にアプリへ届いている
+        k.Press(0x41);
+        Assert.True(k.Gate.IsCaptured, "A で変換ボックスが開く");
+        k.Key(VirtualKeys.RShift); // リピート
+        k.Press(0x41);
+        k.Key(VirtualKeys.RShift);
+        k.Host.Events.Clear();
+        k.Key(VirtualKeys.RShift, up: true);
+        Assert.True(k.Host.Events.Contains("up:A1"), $"Shift を離したことをアプリに伝える ({string.Join(",", k.Host.Events)})");
+    }
+
+    [Test]
     public static void ProperNouns_AreEnglishEvenIfRomajiReadable()
     {
         var cases = new Dictionary<string, string>
