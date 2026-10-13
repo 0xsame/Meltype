@@ -207,7 +207,12 @@ public sealed partial class CompositionDetector
                 var analysis = _romaji.AnalyzeFragment(rest);
                 if (analysis.IsValid && IsSuruForm(analysis.Kana) && word.All(char.IsAsciiLetter) &&
                     !_romaji.AnalyzeFragment(word.ToLowerInvariant()).IsValid && IsKnownEnglishWord(word))
-                    return [new CompositionSegment(true, "", word), new CompositionSegment(false, analysis.Kana + analysis.Partial, raw[end..])];
+                {
+                    // 入力途中の子音 (pending) は表示・変換のときに後ろに足すので、読みに含めない (googleしまss になっていた)。
+                    // 読めない英字の単位として残った子音 (shimaSS の S) は pending ではないので、そのまま読みに含める。
+                    var partial = analysis.Partial.EndsWith(pending, StringComparison.OrdinalIgnoreCase) ? analysis.Partial[..^pending.Length] : analysis.Partial;
+                    return [new CompositionSegment(true, "", word), new CompositionSegment(false, analysis.Kana + partial, raw[end..])];
+                }
             }
         }
         var segments = ScoredSegmentation && !kanaInput

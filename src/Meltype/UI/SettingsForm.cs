@@ -41,6 +41,9 @@ internal sealed class SettingsForm : Form, IMessageFilter
     /// <summary>画面の部品に出していない値 (プロファイルの一覧・使っているプロファイル など) を持つ設定。</summary>
     private Settings _draft;
 
+    /// <summary>開いた時点の画面の値。閉じるときに比べて、画面で変えた項目だけを今の設定に重ねる (開いている間にトレイで変えた設定を戻さない)。</summary>
+    private readonly Settings _opened = null!;
+
     /// <summary>1 項目分の部品と、設定値との受け渡し。</summary>
     private sealed record Binding(PropertyInfo Property, Control Control, Action<Settings> Load, Action<Settings> Store);
 
@@ -95,7 +98,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
         FormClosing += (_, _) =>
         {
             if (discard) return;
-            var next = Collect();
+            var next = Settings.MergeEdits(_opened, Collect(), _engine.Settings);
             if (next.ToJson() != _engine.Settings.Clone().Normalize().ToJson()) _engine.ApplySettings(next);
         };
         defaults.Click += (_, _) =>
@@ -117,6 +120,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
 
         LoadFrom(_draft);
         RefreshProfiles();
+        _opened = Collect();
     }
 
     /// <summary>プロファイルの欄の下: 説明の欄を出すか、ホイールで値を変えるか。</summary>
