@@ -1405,6 +1405,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue537_ProcrasticleStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("procrasticle\n");
+        Assert.Equal("procrasticle", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue506_EnumerateStaysEnglish()
     {
         var k = new Keyboard();
