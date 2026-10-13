@@ -335,8 +335,8 @@ async function report() {
       const extra = r.converted && r.converted !== result ? ` / Space: ${code(r.converted)}` : '';
       rows.push(`| ${name} | ${code(result)}${extra} |`);
       if (name === 'main' || name === 'pr') {
-        if (expected && (result === expected || r.converted === expected || result === expected)) verdicts.push('match');
-        else if (reported && (result === reported || r.converted === reported || result === reported)) verdicts.push('reproduced');
+        if (expected && (result === expected || r.converted === expected)) verdicts.push('match');
+        else if (reported && (result === reported || r.converted === reported)) verdicts.push('reproduced');
         else verdicts.push('different');
       }
     }
