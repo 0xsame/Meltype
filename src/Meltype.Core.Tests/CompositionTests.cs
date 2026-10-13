@@ -1427,6 +1427,14 @@ internal static class CompositionTests
         k.Type("fatigue\n");
         Assert.Equal("fatigue", k.Host.Document);
     }
+
+    [Test]
+    public static void Issue538_InfobesityStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("infobesity\n");
+        Assert.Equal("infobesity", k.Host.Document);
+    }
   
     [Test]
     public static void Issue535_OverchoiceStaysEnglish()
