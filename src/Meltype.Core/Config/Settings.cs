@@ -774,7 +774,8 @@ public sealed class Settings
         catch (Exception ex)
         {
             // 壊れた設定で起動不能にしない。元ファイルは退避して既定値で動く。
-            try { File.Copy(path, path + ".broken", overwrite: true); } catch { }
+            try { File.Copy(path, path + ".broken", overwrite: true); }
+            catch (Exception copyEx) { Diagnostics.Log.Warn($"{Path.GetFileName(path)} を .broken に残せませんでした: {copyEx.Message}"); }
             Diagnostics.Log.Warn($"config.json を読み込めなかったため既定値を使います: {ex.Message}");
             return new Settings();
         }
