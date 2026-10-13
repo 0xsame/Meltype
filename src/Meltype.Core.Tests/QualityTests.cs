@@ -176,7 +176,31 @@ internal static class Quality
         new("混在", "yastack", "やstack"),
         new("混在", "yaplay", "やplay"),
         new("混在", "yasync", "やsync"),
+        // 全体で 1 語の英単語は、助詞 + 英単語に分けない (de|light、mo|rally)
+        new("英語", "delight", "delight"),
+        new("英語", "devote", "devote"),
+        new("英語", "morally", "morally"),
+        new("混在", "kokodevote", "ここでvote"),
+        new("混在", "githubdevote", "githubでvote"),
+        // 英字のあいだの と は、chotto の っと や、英単語の途中 (stories) では助詞にしない
+        new("混在", "chottodehijacked", "ちょっとでhijacked"),
+        new("混在", "korekarastories", "これからstories"),
+        new("混在", "devtoprod", "devとprod"),
+        new("混在", "edittopub", "editとpub"),
+        new("混在", "dottonet", "dotとnet"),
+        new("混在", "rdstoredshift", "rdsとredshift"),
+        new("混在", "mottopython", "もっとpython"),
+        new("混在", "uikittoswiftui", "uikitとswiftui"),
+        // 英単語の最後の t + s は つ にしないが、つ まで読むと日本語の語になるなら つ (しゅつ・おちつ)
+        new("日本語", "teishutsushita", "ていしゅつした"),
+        new("日本語", "ochitsuite", "おちついて"),
+        new("混在", "kyoucommitsuru", "きょうcommitする"),
+        new("混在", "shutsita", "shutした"),
         // -pedia / -pedias (ローマ字だと ぺぢあ。#207)
+        // site (=して) のあと英字が続いても、確定し直しで site に戻さない
+        new("混在", "sitePR", "してPR"),
+        new("混在", "site PR", "して PR"),
+        // -pedia (ローマ字だと ぺぢあ。#207)
         new("混在", "pedia", "pedia"),
         new("混在", "protopedia", "protopedia"),
         new("混在", "conservapedia", "conservapedia"),
@@ -237,6 +261,10 @@ internal static class Quality
 
         // --- #406 ---
         new("英語", "overcute", "overcute"),
+        // --- #434 数字挟み略語 ---
+        new("英語", "i18n", "i18n"),
+        new("英語", "l10n", "l10n"),
+        new("英語", "h2o", "h2o"),
     ];
 
     /// <summary>コードの行のキャレット位置 (コメント・文字列の中か)。</summary>
