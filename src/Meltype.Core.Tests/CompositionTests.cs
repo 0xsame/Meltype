@@ -3434,4 +3434,20 @@ internal static class CompositionTests
         k.Type("abctodef\n");
         Assert.Equal("abcとdef", k.Host.Document);
     }
+
+    [Test]
+    public static void Issue338_ZArrowKeys()
+    {
+        // Issue #338: zh / zj / zk / zl は Microsoft IME と同じ矢印。z + 記号は今までどおり。zz の次の l (puzzle) は矢印にしない。
+        foreach (var (typed, expected) in new[]
+        {
+            ("zh", "←"), ("zj", "↓"), ("zk", "↑"), ("zl", "→"),
+            ("z/", "・"), ("zu", "ず"), ("puzzle", "ぷっぞえ"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
 }
