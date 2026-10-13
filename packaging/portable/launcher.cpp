@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 Yukishiro
+// Copyright (C) 2026 rankoi
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
