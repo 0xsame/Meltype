@@ -788,6 +788,12 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         {
             return new Point(bounds.Left, bounds.Bottom + 2);
         }
+        // 複数行の欄 (Chrome の textarea など) は、空のときに入力位置が取れない。空の欄で打ち始めるのは左上なので、そこに出す
+        // (マウスカーソルの近くに出すと、欄の右下や別のモニターなど、打っている所から離れた所に出ていた)。
+        if (Focus.Current.Bounds is { } field && field.Height >= 120 && field.Width > 2 && IsOnScreen(field))
+        {
+            return new Point(field.Left, Math.Max(field.Top, Screen.FromRectangle(field).WorkingArea.Top) + 2);
+        }
         Native.GetCursorPos(out var cursor);
         return new Point(cursor.X + 12, cursor.Y + 20);
     }
