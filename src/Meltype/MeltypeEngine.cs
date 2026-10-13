@@ -704,6 +704,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         _settings = next;
         if (!next.Enabled || next.Mode != InputMode.Keyboard || !KeyboardLayoutPolicy.AllowsInput(next)) _composition?.Flush();
         if (next.Mode == InputMode.Keyboard && (previous.Mode != InputMode.Keyboard || !previous.Enabled)) CloseSystemImeAsync();
+        // Meltype IME のモードにしたら (トレイでも設定画面でも)、いま使う入力方式も Meltype IME にする (Win + Space で選び直さなくてよいように)
+        if (SwitchesToTsf(previous.Mode, next.Mode)) Tip.TipServer.ActivateForSession();
         if (!next.Enabled) FlushAbandoned(_session.Abort());
         // 「入力欄とみなすアプリ」を変えたら、今のフォーカスを調べ直す (前面のアプリに戻ったときを待たずに効かせる)。
         if (previous.TextInputApps != next.TextInputApps) _composition?.Focus.Invalidate();
@@ -717,6 +719,9 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         Log.Info($"設定を反映しました (モード: {next.Mode}, 有効: {(next.Enabled ? "ON" : "OFF")}, 判定の強さ: {next.DetectionLevel}, 閾値: {next.EffectiveJapaneseThreshold}, 入力方式: {next.InputStyle})。");
         StatusChanged?.Invoke();
     }
+
+    /// <summary>動作モードを Meltype IME に変えたか (使えずに元のモードに戻したときは、戻した後のモードで見る)。</summary>
+    internal static bool SwitchesToTsf(InputMode previous, InputMode next) => previous != InputMode.Tsf && next == InputMode.Tsf;
 
     public DetectionResult Evaluate(string letters, Settings? settings = null) =>
         _scoreEngine.Evaluate(new DetectionInput(letters, letters.Select(c => (int)char.ToUpperInvariant(c)).ToArray(), IsFinal: false), settings ?? _settings);
