@@ -1662,6 +1662,22 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void DirectMode_ShiftAfterHeldWordReachesApp()
+    {
+        // 英数状態で英字を打った直後に押した Shift がアプリに届かず、(bow) の ) が Shift なしの 0 になっていた。
+        var k = new Keyboard(direct: true);
+        k.Type("bow");
+        Assert.True(k.Gate.IsCaptured, "bow はまだ判定中");
+        k.Host.Events.Clear();
+        k.Key(VirtualKeys.LShift);
+        k.Press(0x30);
+        k.Key(VirtualKeys.LShift, up: true);
+        var shift = k.Host.Events.IndexOf("down:A0");
+        Assert.True(shift >= 0 && shift < k.Host.Events.IndexOf("passed:30"), $"Shift を 0 より先にアプリへ送る ({string.Join(",", k.Host.Events)})");
+        Assert.True(!k.Gate.IsCaptured, "判定をやめたら横取りもやめる");
+    }
+
+    [Test]
     public static void ProperNouns_AreEnglishEvenIfRomajiReadable()
     {
         var cases = new Dictionary<string, string>

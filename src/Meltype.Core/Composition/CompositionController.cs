@@ -359,6 +359,14 @@ public sealed class CompositionController
             if (IsComposing) return;
             // 読みをすべて削除した場合も、元の選択範囲は置換せず再変換を終了する。
             if (_reconversion is not null) ClearComposition();
+            // 送らずにいた Shift (押したまま) は、横取りをやめる前に送る。送らないと、次に打つキーが Shift なしでアプリに届く
+            // (英数状態で判定中の語を Shift で打ち切ったとき、(bow) の ) が 0 になっていた)。
+            foreach (var shift in _swallowedShift)
+            {
+                _host.Replay(new KeyEvent(shift, 0, false, false, false, 0));
+                _replayedDown.Add(shift);
+            }
+            _swallowedShift.Clear();
             if (_gate.TryRelease())
             {
                 // 以降のキーアップはフックを素通りしてアプリに直接届くので、追跡をやめる。
