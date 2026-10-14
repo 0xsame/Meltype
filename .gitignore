@@ -30,3 +30,6 @@ linux/build/
 tools/data/
 native/tip/bin/
 native/tip/obj/
+
+# ウェブサイトの作業ファイル
+tests/web/
