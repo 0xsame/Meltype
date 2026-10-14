@@ -71,13 +71,17 @@ internal sealed class TipServer : IDisposable
         System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.Arm64 &&
         IsRegistered && IsInUserLanguageList;
 
-    // 登録されているか。レジストリを読めなければ null
+    // 登録されているか。レジストリを読めなければ null。
+    // TIP のキーだけ残り、DLL の登録 (InprocServer32) や DLL が無いことがある (セキュリティソフトが登録を途中で止めたとき)。
+    // そのときは登録されていないとみなす (動作モードを Meltype キーボードに戻す)
     private static bool? Registration()
     {
         try
         {
             using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\CTF\TIP\{417D801B-A9BD-4C26-BD16-356A825A6998}");
-            return key is not null;
+            if (key is null) return false;
+            using var server = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes\CLSID\{417D801B-A9BD-4C26-BD16-356A825A6998}\InprocServer32");
+            return server?.GetValue(null) is string dll && File.Exists(dll);
         }
         catch
         {

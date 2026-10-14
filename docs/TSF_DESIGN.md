@@ -151,13 +151,14 @@ DLL の中で、Direct2D + DirectWrite で描く (絵文字もカラーで出る
 - DLL は `C:\Program Files\Meltype\tip` に置く (管理者として動くアプリにも読み込まれるので、ユーザーが書き換えられない場所)。使っている DLL は名前を変えて残し、次の登録で消す
 - 入れ直すたびに UAC を出さないように、DLL が同じ (署名する前の中身のハッシュ `MeltypeTip.dll.sha256` が同じ) なら登録し直さない。
   登録できてからハッシュを置くので、途中で失敗したら次に入れ直したときに登録し直す。新しい DLL を登録できなければ、前の DLL に戻して登録し直す。
+  TIP のキーだけ残り、COM の登録 (`InprocServer32`) か DLL が無いとき (セキュリティソフトが登録を途中で止めたとき) も、DLL が同じでも登録し直す。
   断られたら覚えておき、Install.cmd・Install-Meltype.ps1 を自分で実行したときだけまた聞く
 - 自動更新で入れる install.ps1 は、もう登録してあるときだけ Meltype IME を登録し直す (頼まれていないのに管理者権限の確認を出さない)。
   まだ入れていない人には、Install.cmd を自分で実行したとき (-Ask) に聞く。
   Meltype IME が無かった版から更新した人には、Meltype.exe が起動したときに一度だけ聞き (`TsfOffered`)、「はい」ならインストール先の meltype-ime.ps1 で登録する。
   初めて起動したとき (インストーラーが聞いている)・前に Meltype IME を使っていたとき (`TsfIntroduced`)・前に断ったとき (ImeDeclined) は聞かない。
   ImeDeclined は、UAC で断ったときと、setup.exe で「Meltype IME を登録する」のチェックを外したときに残す
-- 動作モードが Meltype IME なのに、ARM64 の Windows か、登録されていなければ (登録を外した・ほかのユーザーがアンインストールした)、起動したときに Meltype キーボードに戻して保存する
+- 動作モードが Meltype IME なのに、ARM64 の Windows か、登録されていなければ (登録を外した・ほかのユーザーがアンインストールした・TIP のキーだけ残り、64 ビットの `InprocServer32` か DLL が無い)、起動したときに Meltype キーボードに戻して保存する
   (入れ直したら、トレイで選び直す)。登録していないか、このユーザーのキーボードの一覧に無ければ、トレイでも設定画面でも Meltype IME は選べない。
   設定の初期値は Meltype IME なので、まだ Meltype IME に切り替えたことがない (`TsfIntroduced` が false) ときは、キーボードの一覧に無いときも起動したときに Meltype キーボードにする
 - 管理者として動かす前に、DLL が配布したときのハッシュ (`MeltypeTip.dll.package.sha256`、無ければ `.sha256`) と合うかを確かめる (壊れた DLL を登録しないため)。
