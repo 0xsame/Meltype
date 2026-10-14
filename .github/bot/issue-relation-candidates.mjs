@@ -29,20 +29,25 @@ function extractIdentifiers(text) {
     ...(text.match(/\b(?:E_FAIL|HRESULT|Win32Error|HTTP\s*[45]\d\d)\b/gi) ?? []),
   ].map(value => value.toLowerCase()))];
 }
-function extractTerms(text) {
+function extractTerms(title, body) {
   const terms = new Map();
-  const add = (value, weight = 1) => {
+  const add = (value, weight = 1, fromTitle = false) => {
     const term = value.trim().toLowerCase();
     if (term.length < 2 || STOPWORDS.has(term) || /^\d+$/.test(term)) return;
-    terms.set(term, Math.max(terms.get(term) ?? 0, weight));
+    const rankedWeight = weight + (fromTitle ? 5 : 0);
+    terms.set(term, Math.max(terms.get(term) ?? 0, rankedWeight));
   };
-  for (const word of text.match(/[A-Za-z][A-Za-z0-9_.:-]{3,}/g) ?? []) add(word, 4);
-  for (const run of text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}/gu) ?? []) {
-    if (run.length <= 12) add(run, Math.min(run.length, 6));
-    for (let size = Math.min(4, run.length); size >= 2; size--) {
-      for (let i = 0; i <= run.length - size; i++) add(run.slice(i, i + size), size);
+  const collect = (source, fromTitle) => {
+    for (const word of source.match(/[A-Za-z][A-Za-z0-9_.:-]{3,}/g) ?? []) add(word, 4, fromTitle);
+    for (const run of source.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]{2,}/gu) ?? []) {
+      if (run.length <= 12) add(run, Math.min(run.length, 6), fromTitle);
+      for (let size = Math.min(4, run.length); size >= 2; size--) {
+        for (let i = 0; i <= run.length - size; i++) add(run.slice(i, i + size), size, fromTitle);
+      }
     }
-  }
+  };
+  collect(title, true);
+  collect(body, false);
   return [...terms].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
 }
 export function extractIssueSignals(issue) {
@@ -51,15 +56,30 @@ export function extractIssueSignals(issue) {
   const text = title + '\n' + body;
   const references = [...new Set([...text.matchAll(/(?:^|[^\w])#(\d+)\b/g)].map(match => Number(match[1])))];
   const identifiers = extractIdentifiers(text);
-  const terms = extractTerms(text).slice(0, 80);
+  const terms = extractTerms(title, body).slice(0, 80);
   const labels = new Set((issue?.labels ?? []).map(label => typeof label === 'string' ? label : label.name).filter(Boolean));
   return { title, text: text.toLowerCase(), references, identifiers, terms, labels };
 }
 export function buildSearchQuery(repo, terms) {
-  const usable = terms.map(entry => Array.isArray(entry) ? entry[0] : entry)
-    .filter(term => typeof term === 'string' && term.length >= 2).slice(0, 8);
+  const unique = new Map();
+  for (const entry of terms) {
+    const term = Array.isArray(entry) ? entry[0] : entry;
+    const weight = Array.isArray(entry) && Number.isFinite(entry[1]) ? entry[1] : 0;
+    if (typeof term !== 'string') continue;
+    const normalized = term.trim().toLowerCase().replace(/["\\]/g, '');
+    if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\d+$/.test(normalized)) continue;
+    const identifier = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\d{2})$/i.test(normalized);
+    const lengthBonus = normalized.length >= 8 ? 4 : normalized.length >= 5 ? 2 : 0;
+    const priority = weight + lengthBonus + (identifier ? 100 : 0);
+    const previous = unique.get(normalized);
+    if (!previous || priority > previous.priority) unique.set(normalized, { term: normalized, priority });
+  }
+  const usable = [...unique.values()]
+    .sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term))
+    .slice(0, 6)
+    .map(entry => entry.term);
   if (usable.length === 0) return null;
-  const alternatives = usable.map(term => '"' + term.replace(/["\\]/g, '') + '"').join(' OR ');
+  const alternatives = usable.map(term => '"' + term + '"').join(' OR ');
   return 'repo:' + repo + ' is:issue (' + alternatives + ')';
 }
 export function scoreCandidate(currentIssue, candidate) {
