@@ -240,6 +240,14 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         }
         // 変換ボックスの準備前・終了処理中は何もしない (素通し)。
         if (_composition is not { } composition) return false;
+        // アプリ別設定で OFF にしたアプリ・ゲーム・全画面のアプリなどでは、切り替えのキーも定型文も扱わず、そのままアプリに通す (Windows の IME で打てるように)。
+        // CloseSystemImeAsync と同じ判定。一時停止中は下で行を追いかけるので、ここでは返さない。
+        // 追いかけない間に打った行は読み直す (同じウィンドウのまま全画面を出たときに、古い行で判定しないように)
+        if (settings.Enabled && !composition.Gate.IsCaptured && !_foreground.Check(settings).Allowed)
+        {
+            _line.Invalidate();
+            return false;
+        }
 
         // 左 Alt の単独押しで英数、右 Alt の単独押しで日本語。Alt の押下・解放はそのままアプリに通す。
         if (altTap != AltTap.None && settings.Enabled && settings.AltKeysSwitchKeyboard && !composition.Gate.IsCaptured)
@@ -864,6 +872,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         InvalidateLine();
         _sigil.Start();
         _snippet.Start();
+        // 置き換えた直後の Esc で戻すのは、置き換えたウィンドウの中だけ
+        _lastSnippet = null;
         _lastLineKind = null;
         var app = _foreground.Current;
         if (_settings.ProfileFor(app.ProcessName) == AppProfile.Code)
@@ -942,6 +952,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             _lastLayout = layout;
         }
         if (state.Mode != IME.ImeMode.Open) return;
+        // アプリ別設定で OFF にしたアプリ (・ゲーム) では、Microsoft IME をそのまま使ってもらう (CloseSystemImeAsync と同じ)
+        if (!_foreground.Check(_settings).Allowed) return;
         var composition = _composition;
         // 変換ボックスで入力中は、確定の直前に閉じる (CompositionService) ので触らない。
         if (composition is null || composition.Gate.IsCaptured) return;
