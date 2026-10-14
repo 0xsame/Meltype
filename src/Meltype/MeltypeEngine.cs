@@ -601,7 +601,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         if (!_foreground.Check(settings).Allowed) return false;
         // 文字入力欄 (パスワード以外) にフォーカスがあるときだけ。ショートカットキーやゲームの操作を横取りしない。
         if (_composition?.Focus.CanCaptureWaiting() != true &&
-            !(RechecksStaleFocus(_foreground.Current.ProcessName) && _composition?.Focus.RecheckStale() == true)) return false;
+            !(RechecksStaleFocus(_foreground.Current.ProcessName) && _composition?.Focus.RecheckStale() == true) &&
+            !RecheckAfterClick()) return false;
         // コードエディター・ターミナル: コードの中は英数のまま通す (補完もそのまま効く)。コメント・文字列の中は日本語を判定する。
         if (!reconvert && !_keyboardDirect && IsCodeApp(settings))
         {
@@ -639,6 +640,24 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         else _directEnglishWord = true;
     }
 
+    private long _lastMouseDown;
+
+    /// <summary>クリックの直後 (1 秒以内) か。</summary>
+    internal static bool IsRightAfterClick(long now, long lastMouseDown) => lastMouseDown != 0 && now - lastMouseDown <= 1000;
+
+    /// <summary>
+    /// クリックの直後に、入力欄ではない所で打ち始めた: クリックで移るはずのフォーカスが、まだ前の場所のまま調べ終わっていることがある
+    /// (入力欄をクリックしてすぐ打つと、最初の文字が変換ボックスを通らずに消えていた)。今のフォーカスを調べ直させて、最大 100 ms 待つ。
+    /// フォーカスの通知はフックと同じスレッドに届くので、通知は待たずに直接調べ直す。クリック 1 回につき 1 回だけ (続けて押したキーのたびに待たない)。
+    /// </summary>
+    private bool RecheckAfterClick()
+    {
+        if (_composition is not { } composition || !IsRightAfterClick(Environment.TickCount64, Interlocked.Exchange(ref _lastMouseDown, 0))) return false;
+        var capture = composition.Focus.RecheckWaiting(100);
+        Log.Info($"クリック直後の打ち始め: フォーカスを調べ直した → {(capture ? "入力欄なので変換ボックスに入れる" : "入力欄ではない")}");
+        return capture;
+    }
+
     private bool OnMouseButton(Composition.MouseButtonEvent e)
     {
         if (IsButtonDown(e.Message)) _altTap.Cancel();
@@ -648,6 +667,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             if (composition.Gate.OnMouseButton(e)) return true;
             if (IsButtonDown(e.Message))
             {
+                Interlocked.Exchange(ref _lastMouseDown, Environment.TickCount64);
                 composition.Focus.Invalidate();
                 composition.ResetContext();
                 InvalidateLine();
