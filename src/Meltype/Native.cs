@@ -169,4 +169,9 @@ internal static class Native
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, TOKEN_QUERY = 0x0008;
     public const int TokenElevation = 20;
     public const uint MONITOR_DEFAULTTONEAREST = 2;
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT point, uint flags);
+    /// <summary>モニターの DPI (dpiType 0 = MDT_EFFECTIVE_DPI: 拡大率を反映した値)。Windows 8.1 以降。</summary>
+    [DllImport("shcore.dll")] public static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+    /// <summary>システムの DPI (サインインしたときのメインのモニターの DPI)。Windows 10 1607 以降。</summary>
+    [DllImport("user32.dll")] public static extern uint GetDpiForSystem();
 }

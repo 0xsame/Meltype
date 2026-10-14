@@ -643,14 +643,18 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         Diagnostics.Log.Info($"変換ボックスを出す入力位置: {(caret is { } r ? $"{r.X},{r.Y} 高さ {r.Height}{(wholeField ? " (入力欄の枠)" : "")}" : "分からない")}");
         _window.SetFontFamily(_font());
         _window.SetAppearance(_lightTheme(), _opacity());
+        // 出すモニターの拡大率に合わせる (入力位置のモニター。分からなければ変換ボックスを置く位置のモニター)
+        var monitorScale = MonitorScale(caret?.Location ?? FindAnchor(caret, caretSearched: true));
+        _window.SetMonitorScale(monitorScale);
         // 文字の大きさ: 自動なら、入力欄の文字の高さに合わせる。小さな入力欄で大きく出すぎないように。
+        // 入力位置の高さはそのモニターのピクセルなので、拡大率の分を除いてから比べる
         _window.SetScale(_size() switch
         {
             Config.CompositionSize.Small => 0.8F,
             Config.CompositionSize.Large => 1.25F,
             Config.CompositionSize.ExtraLarge => 1.6F,
             Config.CompositionSize.Huge => 2F,
-            Config.CompositionSize.Auto when textHeight is { } h && h >= 8 => Math.Clamp((float)h / _window.BaseTextHeight, 0.7F, 1.4F),
+            Config.CompositionSize.Auto when textHeight is { } h && h >= 8 => Math.Clamp(h / (_window.BaseTextHeight * monitorScale), 0.7F, 1.4F),
             // 文字の高さが分からないときは、ふつうの画面の文字 (16px 前後) に近い大きさ
             Config.CompositionSize.Auto => 0.8F,
             _ => 1F,
@@ -683,6 +687,22 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             return;
         }
         _window.ShowView(view, FindAnchor(caret, caretSearched: true));
+    }
+
+    /// <summary>その点のモニターの DPI と、システムの DPI の比。取れなければ 1。</summary>
+    private static float MonitorScale(Point at)
+    {
+        try
+        {
+            var monitor = Native.MonitorFromPoint(new Native.POINT { X = at.X, Y = at.Y }, Native.MONITOR_DEFAULTTONEAREST);
+            var system = Native.GetDpiForSystem();
+            if (monitor == IntPtr.Zero || system == 0 || Native.GetDpiForMonitor(monitor, 0, out var dpi, out _) != 0 || dpi == 0) return 1F;
+            return (float)dpi / system;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return 1F;
+        }
     }
 
     public void Hide()
