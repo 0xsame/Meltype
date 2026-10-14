@@ -41,6 +41,9 @@ internal sealed class ForegroundTracker
         return processId == OwnProcessId && !TypingAllowedWindows.ContainsKey(window);
     }
 
+    /// <summary>このアプリに SendInput の入力が届くか (管理者として動くアプリには、Meltype も管理者でなければ届かない: UIPI)。</summary>
+    public static bool CanSendInputTo(AppInfo app) => app.IsElevated == false || SelfElevated;
+
     public AppInfo Current => CurrentFor(Native.GetForegroundWindow(), Environment.TickCount64);
 
     internal AppInfo CurrentFor(IntPtr window, long now)
