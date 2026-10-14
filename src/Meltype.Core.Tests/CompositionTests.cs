@@ -530,6 +530,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue545_ExclamationOffersBangBangEmoji()
+    {
+        var k = new Keyboard();
+        k.Type("! ");
+        Assert.True(k.Host.View!.Candidates.Contains("‼️"), string.Join(" ", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Emoji_AreLastAndReachedByUp()
     {
         // #133: 絵文字・顔文字は候補の最後に逆順でまとめる。変換してすぐ ↑ で、いちばんよく使う絵文字 (えがお → 😊) になる
