@@ -154,6 +154,8 @@ public sealed class MeltypeSession
                 DirectHoldCleared = _host.ResetDirectReplay,
             }
             : options;
+        // 入力を覚えないように求める入力欄 (Private) では学習しない
+        controllerOptions = controllerOptions with { Learning = () => !Private && options.Learning() };
         _host.DeferCurrentReplayOnDelete = directModeDetection;
         _controller = new CompositionController(_gate, detector, converter, _host, controllerOptions);
     }
@@ -249,6 +251,9 @@ public sealed class MeltypeSession
     }
 
     public bool DirectEnglishWord => _directEnglishWord;
+
+    /// <summary>入力を覚えないように求める入力欄か (Windows のブラウザーのシークレット / InPrivate ウィンドウ)。true の間は学習しない。</summary>
+    public bool Private { get; set; }
 
     /// <summary>コードの入力欄ではコメント・文字列以外を直接入力する。</summary>
     private bool _codeInput;
