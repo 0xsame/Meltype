@@ -609,6 +609,14 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     {
         if (_window.Visible)
         {
+            // Windows の検索の画面の横に出しているときは、確定しても動かさない。左なら右の端を、上なら下の端をそろえる (広がっても検索の画面の裏に入らないように)
+            if (_beside != BesideSearch.None)
+            {
+                _committedWhileVisible = "";
+                if (_beside == BesideSearch.Left) _window.ShowView(view, new Point(_window.Left, _window.Top), rightEdge: _searchLeftEdge);
+                else _window.ShowView(view, null);
+                return;
+            }
             // 確定した文字の分だけ右へ (同じ位置のままだと、確定した文字を変換ボックスが隠してしまう: issue #57)。
             // 入力欄のキャレットは確定した文字の入力が終わるまで動かないことがあるので、確定した文字の幅で動かす。
             // 改行を含むとき・右へずらすと画面の外に出るとき (折り返し) は、ずらさずに入力欄のキャレットの位置を取り直す。
@@ -628,6 +636,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             }
         }
         _committedWhileVisible = "";
+        _beside = BesideSearch.None;
         var caret = FindCaret();
         // 入力欄が空のとき、アプリによっては入力位置ではなく入力欄の枠 (40px の欄など) や、複数行の欄全体の四角形が返る。
         // 枠と同じ高さなら、文字の高さは枠のおよそ半分 (1 行の欄の文字は上下の真ん中にある)。高すぎる四角形は、文字の高さが分からない。
@@ -655,16 +664,33 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             Config.CompositionSize.Auto => 0.8F,
             _ => 1F,
         });
-        // Windows の検索・スタートメニューは、ふつうのアプリより上の特別な層に出るので、変換ボックスが隠れてしまう。
-        // 検索の画面の右に出す。
+        // Windows の検索・スタートメニューは、ふつうのアプリより上の特別な層に出るので、重なると変換ボックスが隠れてしまう。
+        // 検索の画面の左に入れば左、上に打った行が入れば上、どちらも入らなければ右に出す。
+        // Windows 11 の中央寄せのスタートは、検索の画面の右に「モバイル デバイス」の欄が並ぶので、右は最後にする
+        // (スタート・検索の窓は CoreWindow で EnumWindows に出てこないので、横に並ぶ窓を集めて避けることもできない)。
         if (ShellSearchBounds() is { } search)
         {
-            // 右に入らなければ左に出す (はみ出した分を画面の中に戻すと、スタートメニューの裏に隠れる)。
             var screen = Screen.FromRectangle(search).WorkingArea;
-            var width = _window.Width;
-            var left = search.Right + 8 + width <= screen.Right || search.Left - 8 - width < screen.Left ? search.Right + 8 : search.Left - 8 - width;
-            Diagnostics.Log.Info($"Windows の検索の画面: {search} (変換ボックスはその{(left > search.Left ? "右" : "左")}に出す)");
-            _window.ShowView(view, new Point(left, (caret?.Bottom ?? search.Bottom) - 4));
+            var size = _window.Measure(view);
+            if (search.Left - 8 - size.Width >= screen.Left)
+            {
+                Diagnostics.Log.Info($"Windows の検索の画面: {search} (変換ボックスはその左に出す)");
+                _beside = BesideSearch.Left;
+                _searchLeftEdge = search.Left - 8;
+                _window.ShowView(view, new Point(search.Left - 8 - size.Width, (caret?.Bottom ?? search.Top) - 4), rightEdge: _searchLeftEdge);
+            }
+            else if (search.Top - 8 - screen.Top >= _window.TextOffset.Y * 2)
+            {
+                // 候補まで入りきらなければ作業領域の上端に寄せる (打った行は見え、候補の下のほうは検索の画面の裏に入る)
+                Diagnostics.Log.Info($"Windows の検索の画面: {search} (変換ボックスはその上に出す)");
+                _beside = BesideSearch.Above;
+                _window.ShowView(view, new Point(search.Left, search.Top - 8), above: true, belowY: screen.Top);
+            }
+            else
+            {
+                Diagnostics.Log.Info($"Windows の検索の画面: {search} (変換ボックスはその右に出す)");
+                _window.ShowView(view, new Point(search.Right + 8, (caret?.Bottom ?? search.Top) - 4));
+            }
             return;
         }
         // 入力位置に重ねる: 変換ボックスの文字の行を、入力位置の行の高さの真ん中にそろえる。
@@ -685,9 +711,16 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         _window.ShowView(view, FindAnchor(caret, caretSearched: true));
     }
 
+    /// <summary>変換ボックスを Windows の検索の画面のどちら側に出しているか (検索の画面のときだけ)。</summary>
+    private enum BesideSearch { None, Left, Above }
+    private BesideSearch _beside;
+    /// <summary>検索の画面の左に出しているときの、変換ボックスの右の端。</summary>
+    private int _searchLeftEdge;
+
     public void Hide()
     {
         _committedWhileVisible = "";
+        _beside = BesideSearch.None;
         if (_window.Visible) _window.Hide();
     }
 
@@ -697,31 +730,12 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         "SearchHost", "SearchApp", "SearchUI", "StartMenuExperienceHost",
     };
 
-    /// <summary>
-    /// 前面が Windows の検索・スタートメニューなら、その画面の四角形。それ以外は null。
-    /// スタートメニューは、検索の欄 (SearchHost) と、その横の画面 (「モバイル デバイスを表示」の欄など、StartMenuExperienceHost) に
-    /// 分かれていることがあるので、同じ画面に出ている両方の窓を合わせた四角形にする (片方の右に出すと、もう片方の裏に隠れる、#18)。
-    /// </summary>
+    /// <summary>前面が Windows の検索・スタートメニューなら、その画面 (検索の欄のある窓) の四角形。それ以外は null。</summary>
     private static Rectangle? ShellSearchBounds()
     {
         var foreground = Native.GetForegroundWindow();
         if (!IsShellSearchWindow(foreground) || !Native.GetWindowRect(foreground, out var rect)) return null;
-        var bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
-        var screen = Screen.FromRectangle(bounds).Bounds;
-        var union = bounds;
-        var shell = ShellSearchProcessIds();
-        Native.EnumWindows((hwnd, _) =>
-        {
-            Native.GetWindowThreadProcessId(hwnd, out var pid);
-            if (hwnd != foreground && shell.Contains(pid) && Native.IsWindowVisible(hwnd) && !IsCloaked(hwnd) && Native.GetWindowRect(hwnd, out var r))
-            {
-                var other = Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom);
-                // 画面の外に置いてある窓・大きさの無い窓・画面全体の窓 (隠れている検索の画面) は含めない
-                if (other.Width > 0 && other.Height > 0 && screen.IntersectsWith(other) && other != screen) union = Rectangle.Union(union, Rectangle.Intersect(other, screen));
-            }
-            return true;
-        }, IntPtr.Zero);
-        return union;
+        return Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
     }
 
     private static bool IsShellSearchWindow(IntPtr hwnd)
@@ -737,24 +751,6 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             return false;
         }
     }
-
-    private static HashSet<uint> ShellSearchProcessIds()
-    {
-        var ids = new HashSet<uint>();
-        foreach (var name in ShellSearchProcesses)
-        {
-            foreach (var process in System.Diagnostics.Process.GetProcessesByName(name))
-            {
-                ids.Add((uint)process.Id);
-                process.Dispose();
-            }
-        }
-        return ids;
-    }
-
-    /// <summary>見えない窓 (スタートメニューを閉じているときの窓など) は、表示中でも DWM が「隠している」(cloaked)。</summary>
-    private static bool IsCloaked(IntPtr hwnd) =>
-        Native.DwmGetWindowAttribute(hwnd, Native.DWMWA_CLOAKED, out var cloaked, sizeof(int)) == 0 && cloaked != 0;
 
     /// <summary>
     /// キャレット (入力位置) の画面上の四角形。Windows のキャレット (メモ帳など) → UI Automation (Chrome・Discord など) の順に試す。

@@ -150,12 +150,14 @@ internal sealed class CompositionWindow : Form
     /// <param name="overlay">anchor が入力位置に重ねる位置か。画面の下からはみ出すときは、候補の一覧が入るだけ上にずらす。</param>
     /// <param name="above">anchor が入力位置の上 (変換ボックスの左下の角を置く位置) か。候補の一覧が出て高くなっても下の端をそろえる。
     /// 画面の上に入らなければ belowY (入力位置の下) に出す。</param>
-    public void ShowView(CompositionView view, Point? anchor, bool overlay = false, bool above = false, int belowY = 0)
+    /// <param name="rightEdge">右の端をここにそろえる (Windows の検索の画面の左に出すとき)。左の端は作業領域の中に収める。</param>
+    public void ShowView(CompositionView view, Point? anchor, bool overlay = false, bool above = false, int belowY = 0, int? rightEdge = null)
     {
         _view = view;
         var size = Measure(view);
         if (anchor is not null) _above = above ? (anchor.Value.Y, belowY) : null;
         var location = anchor ?? Location;
+        if (rightEdge is { } edge) location.X = Math.Max(Screen.FromPoint(new Point(edge - 1, location.Y)).WorkingArea.Left, edge - size.Width);
         // 画面からはみ出さないようにする。
         var screen = Screen.FromPoint(location).WorkingArea;
         if (_above is { } a) location.Y = a.Bottom - size.Height >= screen.Top ? a.Bottom - size.Height : a.BelowY;
@@ -297,7 +299,8 @@ internal sealed class CompositionWindow : Form
     private static string? ShowsTyped(CompositionView view) =>
         view.Typed is { Length: > 0 } typed && typed != view.Text ? typed : null;
 
-    private Size Measure(CompositionView view)
+    /// <summary>view を出したときの変換ボックスの大きさ (出す場所を決めるのにも使う)。</summary>
+    public Size Measure(CompositionView view)
     {
         using var g = CreateGraphics();
         var width = TextRenderer.MeasureText(g, view.Text, _textFont).Width + 20;
