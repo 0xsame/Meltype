@@ -28,7 +28,7 @@ public sealed class LanguageMemory
         public bool Explicit { get; set; }
     }
 
-    /// <summary>学習した語 (設定の「学習した語」の一覧に出す)。Active は今効いているか (2 回目を待っている語は false)。</summary>
+    /// <summary>学習した語 (設定の「学習した語」の一覧に出す)。Active は今有効になっているか (2 回目を待っている語は false)。</summary>
     public sealed record Learned(string Word, bool English, int Count, DateTime Used, bool Active);
 
     /// <summary>
@@ -59,6 +59,8 @@ public sealed class LanguageMemory
         }
         catch (Exception ex)
         {
+            try { File.Copy(path, path + ".broken", overwrite: true); }
+            catch (Exception copyEx) { Diagnostics.Log.Warn($"{Path.GetFileName(path)} を .broken に残せませんでした: {copyEx.Message}"); }
             Diagnostics.Log.Warn($"英語 / 日本語の学習データを読めませんでした: {ex.Message}");
         }
     }
@@ -73,6 +75,13 @@ public sealed class LanguageMemory
     {
         if (!_entries.TryGetValue(word, out var entry)) return null;
         if (NeedsTwice(word, entry)) return null;
+        return entry.English;
+    }
+
+    internal bool? Get(ReadOnlySpan<char> word)
+    {
+        if (!_entries.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(word, out var entry)) return null;
+        if (NeedsTwice(word.ToString(), entry)) return null;
         return entry.English;
     }
 
@@ -132,6 +141,14 @@ public sealed class LanguageMemory
         _entries.Clear();
         Version++;
         Save();
+    }
+
+    /// <summary>sinceUtc より後に覚えた (直した) 語を忘れる (トレイの「最近の学習を消す」)。忘れた数を返す。</summary>
+    public int ForgetSince(DateTime sinceUtc)
+    {
+        var recent = _entries.Where(e => e.Value.Used >= sinceUtc).Select(e => e.Key).ToList();
+        Remove(recent);
+        return recent.Count;
     }
 
     private void Save()

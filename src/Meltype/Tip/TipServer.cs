@@ -9,6 +9,7 @@ using System.Text.Json;
 using Meltype.Composition;
 using Meltype.Config;
 using Meltype.Diagnostics;
+using Meltype.Input;
 
 namespace Meltype.Tip;
 
@@ -18,16 +19,25 @@ namespace Meltype.Tip;
 /// DLL からはキーを 1 つずつ受け取って <see cref="SessionResult"/> を JSON で返す。
 ///
 /// やり取りは 1 メッセージ 1 JSON (UTF-8)。要求:
-///   {"op":"key","sid":"…","vk":65,"ch":97,"mods":1,"before":"…","after":"…","process":"notepad","moved":true,"composing":true}
-///   {"op":"commit","sid":"…","moved":true} / {"op":"select","sid":"…","index":2} / {"op":"close","sid":"…"} / {"op":"hello","process":"…"}
-/// 応答: {"active":true, "consumed":…, "commits":[…], "view":{…}} (active が false なら DLL は何もせずにキーを通す)
+///   {"op":"key","sid":"…","vk":65,"ch":97,"mods":1,"before":"…","after":"…","process":"notepad","moved":true,"composing":true,"code":true}
+///   {"op":"commit","sid":"…","moved":true} / {"op":"select","sid":"…","index":2,"prediction":true} / {"op":"close","sid":"…"} / {"op":"hello","process":"…"}
+///   {"op":"toggle","sid":"…","process":"…","before":"…","japanese":true} (半角/全角。consumed が true なら、コードの行を日本語にした / 英数に戻した)
+///   {"op":"mode","sid":"…","process":"…","before":"…","passed":37,"ctrl":true} (キャレットが動いた・文字が変わった。入力モードの表示を合わせる)
+/// select の prediction は、予測変換の候補を選んだこと (付けなければ変換の候補)。
+/// key の code は、DLL が toggle・mode を送ること (付けない古い DLL では、コードの入力欄として扱わない)。
+/// key の private は、入力を覚えないように求める入力欄 (InputScope が IS_PRIVATE) であること。次の key まで学習しない。
+/// passed は、DLL がアプリに通したキー (0 はキーなしでキャレットが動いた、-1 は文字が変わっただけ)。key・toggle にも、まだ伝えていなければ付ける。
+/// 応答: {"active":true, "consumed":…, "commits":[…], "view":{…}, "code":…, "english":…} (active が false なら DLL は何もせずにキーを通す)
+/// code はコードの入力欄か、english は次に打つキーがコードの行なので英数のまま通るか (DLL はタスクバーに「A」を出す)。
 /// moved は、前に確定してからキャレットが動いたかもしれないこと (前の語を確定し直さない)。
 /// commits の確定し直し (deleteBefore) には、消す文字 (expect) を付ける。DLL は入力欄の文字が同じときだけ消す。
 /// sid は DLL が入力欄 (スレッド) ごとに振る ID。入力の本体はつながり (パイプ) ごとに持ち、すべて UI スレッドで動かす。
 /// 別のつながりの sid には触れない (つなぎ直した DLL が古い入力の続きを拾わないように。ほかのアプリの入力を読めないように)。
 ///
-/// 同じユーザーのほかのプロセスが同じ名前のパイプを先に作ると、打鍵を横取りできてしまう。最初のパイプは FirstPipeInstance で作り、
-/// 先に作られていたら始めない。Meltype.exe より高い権限で動くアプリ (管理者として動くアプリなど) とサインインの画面には、
+/// ほかのプロセスが同じ名前のパイプを先に作ると、DLL はそちらにつなごうとする。パイプの名前はセッションをまたいで共通で、名前の SID も
+/// ほかのユーザーから分かるので、同じ PC のほかのユーザーのプロセスも先に作れる。同じユーザーのプロセスなら打鍵を横取りできてしまう。
+/// ほかのユーザーのプロセスなら DLL がつながないので打鍵は渡らないが、このユーザーは Meltype IME を使えなくなる。最初のパイプは
+/// FirstPipeInstance で作り、先に作られていたら始めない (ログに書く)。Meltype.exe より高い権限で動くアプリ (管理者として動くアプリなど) とサインインの画面には、
 /// DLL の側でつながない (Meltype.exe の権限より上の入力を扱わない)。
 /// </summary>
 internal sealed class TipServer : IDisposable
@@ -55,6 +65,11 @@ internal sealed class TipServer : IDisposable
 
     /// <summary>Meltype IME (native/tip の DLL) が Windows に登録されているか。</summary>
     public static bool IsRegistered => Registration() == true;
+
+    /// <summary>動作モードに Meltype IME を選べるか (ARM64 の Windows でなく、登録されていて、このユーザーのキーボードの一覧にある)。</summary>
+    public static bool IsUsable =>
+        System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.Arm64 &&
+        IsRegistered && IsInUserLanguageList;
 
     // 登録されているか。レジストリを読めなければ null
     private static bool? Registration()
@@ -471,7 +486,10 @@ internal sealed class TipServer : IDisposable
                 // 名前はアプリの側が送ってくるので、ログを崩さないように短くして、改行などは消す
                 var shown = new string(process.Where(c => !char.IsControl(c) && !char.IsSurrogate(c) && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.Format).Take(64).ToArray());
                 if (greeting && _greeted.Count < MaxGreeted && _greeted.Add(shown)) Log.Info($"Meltype IME: {shown} からつながりました。");
-                return greeting ? "{\"active\":true,\"consumed\":false,\"commits\":[],\"view\":null}" : Inactive;
+                if (!greeting) return Inactive;
+                // コードエディター・ターミナルのアプリか (DLL は、キャレットが動くたびに入力モードの表示を問い合わせる)
+                var codeApp = _settings().ProfileFor(process + ".exe") == AppProfile.Code;
+                return $"{{\"active\":true,\"code\":{(codeApp ? "true" : "false")},\"directDetection\":{(DirectDetectionFor(process) ? "true" : "false")},\"consumed\":false,\"commits\":[],\"view\":null}}";
             }
             case "close":
                 if (sessions.Remove(sid, out var closing) && closing.IsComposing) closing.CommitPending();
@@ -483,11 +501,12 @@ internal sealed class TipServer : IDisposable
         {
             // DLL の側は変換中なのに、入力の続きが無い (つなぎ直した): 新しく始めると、変換中の文字を消したり置き換えたりするので、
             // 受け持たない (DLL は変換中の文字をそのまま確定し、キーはアプリに通す)
-            if (!active || op != "key" || IsTrue(root, "composing") || sessions.Count >= MaxSessionsPerConnection) return Inactive;
-            session = _composition.CreateSession(_settings);
+            if (!active || op is not ("key" or "toggle" or "mode") || IsTrue(root, "composing") || sessions.Count >= MaxSessionsPerConnection) return Inactive;
+            session = _composition.CreateSession(_settings, directModeDetection: true);
             sessions[sid] = session;
         }
         SessionResult result;
+        var switchedToJapanese = false;
         switch (op)
         {
             case "key" when !active:
@@ -496,27 +515,111 @@ internal sealed class TipServer : IDisposable
                 result = session.CommitPending() with { Consumed = false };
                 break;
             case "key":
+            {
+                if (root.TryGetProperty("direct", out var direct)) session.Direct = direct.ValueKind == JsonValueKind.True;
+                // 入力を覚えないように求める入力欄 (ブラウザーのシークレット / InPrivate ウィンドウ) では学習しない
+                session.Private = IsTrue(root, "private");
+                var wasDirect = session.Direct;
                 // 前に確定してから、キャレットが動いた (DLL がアプリに通したキー・クリック・別の入力欄): 前の語を確定し直さない
-                if (IsTrue(root, "moved")) session.ForgetLastCommit();
+                if (IsTrue(root, "moved"))
+                {
+                    session.ForgetLastCommit();
+                    session.ForgetDirectInput();
+                }
+                ApplyPassed(session, root);
                 var vk = Int(root, "vk");
                 var ch = Int(root, "ch");
                 var mods = Int(root, "mods");
+                // code を付けない DLL (Meltype を更新する前から動いているアプリが、古い DLL を読み込んだまま) は、toggle・mode を送らず、
+                // キャレットの前も 20 文字しか送らない。コードの入力欄として扱うと、コードの行を日本語にできないので、一般として扱う
+                var process = IsTrue(root, "code") ? String(root, "process") : null;
+                var before = UpdateCodeInput(session, process, String(root, "before"));
                 result = session.HandleKey(vk, ch is > 0 and < 0x10000 ? (char)ch : null,
-                    (mods & 1) != 0, (mods & 2) != 0, (mods & 4) != 0, (mods & 8) != 0, String(root, "before"), String(root, "after"));
+                    (mods & 1) != 0, (mods & 2) != 0, (mods & 4) != 0, (mods & 8) != 0, before, String(root, "after"));
+                switchedToJapanese = wasDirect && !session.Direct;
                 break;
+            }
+            case "toggle":
+                if (!active) return Inactive;
+                ApplyPassed(session, root);
+                result = new SessionResult(session.SetCodeLine(IsTrue(root, "japanese"), UpdateCodeInput(session, String(root, "process"), String(root, "before"))), [], null);
+                break;
+            case "mode":
+            {
+                if (!active) return Inactive;
+                ApplyPassed(session, root);
+                var english = session.CodeEnglishAt(UpdateCodeInput(session, String(root, "process"), String(root, "before")));
+                return Reply(true, new SessionResult(false, [], null), session.CodeInput, english, null);
+            }
             case "commit":
                 // クリック・別の入力欄で確定した、アプリが確定した: 前の語を確定し直さない (確定する位置がキャレットと離れている)
-                if (IsTrue(root, "moved")) session.ForgetLastCommit();
+                if (IsTrue(root, "moved"))
+                {
+                    session.ForgetLastCommit();
+                    session.ForgetDirectInput();
+                }
                 result = session.CommitPending();
                 break;
             case "select":
-                result = session.SelectCandidate(Int(root, "index"));
+                result = IsTrue(root, "prediction") ? session.SelectPrediction(Int(root, "index")) : session.SelectCandidate(Int(root, "index"));
                 break;
             default:
                 return Inactive;
         }
+        return Reply(active, result, session.CodeInput, session.CodeEnglishAt(null),
+            DirectDetectionFor(String(root, "process")), switchedToJapanese, session.DirectEnglishWord);
+    }
+
+    private bool DirectDetectionFor(string? process)
+    {
+        var settings = _settings();
+        var processName = string.IsNullOrWhiteSpace(process) || process.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? process
+            : process + ".exe";
+        return settings.DirectModeAutoDetect && settings.ForApp(processName).DetectionLevel != DetectionLevel.Manual;
+    }
+
+    private static string Reply(bool active, SessionResult result, bool code, bool english, bool? directDetection,
+        bool switchedToJapanese = false, bool? directEnglishWord = null)
+    {
         var json = result.ToJson();
-        return $"{{\"active\":{(active ? "true" : "false")},{json[1..]}";
+        var detection = directDetection is { } enabled ? $"\"directDetection\":{(enabled ? "true" : "false")}," : "";
+        var englishWord = directEnglishWord is { } isEnglishWord ? $"\"directEnglishWord\":{(isEnglishWord ? "true" : "false")}," : "";
+        return $"{{\"active\":{(active ? "true" : "false")},\"code\":{(code ? "true" : "false")},\"english\":{(english ? "true" : "false")},{detection}{englishWord}\"switchToJapanese\":{(switchedToJapanese ? "true" : "false")},{json[1..]}";
+    }
+
+    /// <summary>
+    /// アプリの種類が「コード」で、フォーカスがコードエディター・ターミナルなら、コメント・文字列の外を英数のまま通す (Meltype キーボードと同じ判定)。
+    /// README.md などの文章のファイルと、チャット・AI への入力欄 (UI Automation で調べた名前) は一般として扱う。
+    /// DLL はキャレットの前を最大 4000 文字送ってくる (複数行のコメント・文字列を見分けるため)。コードでなければ、今までどおり 20 文字にして返す。
+    /// </summary>
+    private string? UpdateCodeInput(MeltypeSession session, string? process, string? before)
+    {
+        if (CodeFocusOf(process) is { } focus)
+        {
+            var code = focus != CodeFocus.None;
+            if (session.CodeInput != code) session.CodeInput = code;
+            session.CodeTerminal = focus == CodeFocus.Terminal;
+        }
+        return !session.CodeInput && before is { Length: > 20 } ? before[^20..] : before;
+    }
+
+    /// <summary>フォーカスのある所の種類。補完の一覧に移っただけなら null (今までの判定のまま)。</summary>
+    private CodeFocus? CodeFocusOf(string? process)
+    {
+        if (string.IsNullOrEmpty(process)) return CodeFocus.None;
+        var name = process + ".exe";
+        if (_settings().ProfileFor(name) != AppProfile.Code || LineContext.IsDocumentTitle(KeyText.WindowTitle(Native.GetForegroundWindow()))) return CodeFocus.None;
+        var info = _composition.Focus.Current;
+        // 打つと開く補完の一覧 (VS Code など) では、UI Automation のフォーカスは一覧の行に移るが、打った文字はエディターに入る
+        if (info.ClassName.Contains("monaco-list-row", StringComparison.Ordinal)) return null;
+        return LineContext.ClassifyFocus(name, info.Name, info.ClassName);
+    }
+
+    /// <summary>DLL がアプリに通したキー (passed。-1 なら文字が変わっただけ) で、キャレットが別の場所に移ったかを伝える。</summary>
+    private static void ApplyPassed(MeltypeSession session, JsonElement root)
+    {
+        if (root.TryGetProperty("passed", out var passed) && passed.TryGetInt32(out var vk) && vk >= 0) session.CaretMoved(vk, IsTrue(root, "ctrl"));
     }
 
     private static bool IsTrue(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;

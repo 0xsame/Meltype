@@ -119,6 +119,8 @@ public sealed class TranslationHistory
         }
         catch (Exception ex)
         {
+            try { File.Copy(path, path + ".broken", overwrite: true); }
+            catch (Exception copyEx) { Diagnostics.Log.Warn($"{Path.GetFileName(path)} を .broken に残せませんでした: {copyEx.Message}"); }
             Diagnostics.Log.Warn($"英訳の学習データを読めませんでした: {ex.Message}");
         }
     }
@@ -131,6 +133,13 @@ public sealed class TranslationHistory
     {
         if (!_counts.TryGetValue(reading, out var words)) _counts[reading] = words = new(StringComparer.Ordinal);
         words[word] = words.GetValueOrDefault(word) + 1;
+        Save();
+    }
+
+    /// <summary>選んだ英訳の記録をすべて消す (トレイの「学習データをリセット」)。</summary>
+    public void Clear()
+    {
+        _counts.Clear();
         Save();
     }
 

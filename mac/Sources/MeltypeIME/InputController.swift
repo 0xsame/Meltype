@@ -9,24 +9,35 @@ import InputMethodKit
 /// 返ってきた結果 (確定する文字・変換中の表示・候補) を入力欄に反映する。
 /// Info.plist の InputMethodServerControllerClass に書いた名前で、Input Method Kit が作る。
 @objc(MeltypeInputController)
-final class MeltypeInputController: IMKInputController {
+final class MeltypeInputController: IMKInputController, ModeServiceTarget {
     private var session: UnsafeMutableRawPointer?
     private var candidateList: [String] = []
     private var hasMarkedText = false
-    private var codeInput = false
-    private var directInput = false
+    private var codeInput = ModeSelection.shared.current == .code
+    private var directInput = ModeSelection.shared.current == .direct
+    private var mode: MacInputMode { directInput ? .direct : codeInput ? .code : .automatic }
+    private let modeIndicator = ModeIndicator.shared
     private var suggestionPanel: NSPanel?
     private var displayedSuggestion: String?
     private var dictionaryObserver: NSObjectProtocol?
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
+        ModeServices.shared.activate(self)
+        let selected = ModeSelection.shared.current
+        if mode != selected {
+            directInput = selected == .direct
+            codeInput = selected == .code
+        }
+        NativeCore.shared.setDirect(session, directInput)
         NativeCore.shared.setCodeInput(session, codeInput)
     }
 
     override init!(server: IMKServer!, delegate: Any!, client inputClient: Any!) {
         super.init(server: server, delegate: delegate, client: inputClient)
         session = NativeCore.shared.createSession()
+        NativeCore.shared.setDirect(session, directInput)
+        NativeCore.shared.setCodeInput(session, codeInput)
         dictionaryObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("MeltypeUserDictionaryChanged"), object: nil, queue: .main
         ) { [weak self] _ in
@@ -63,20 +74,30 @@ final class MeltypeInputController: IMKInputController {
             apply(NativeCore.shared.commit(session), to: client)
             directInput = true
             NativeCore.shared.setDirect(session, true)
+            rememberMode(caret: modeIndicatorCaret(client))
             return true
         case kVK_JIS_Kana:
             directInput = false
             codeInput = false
             NativeCore.shared.setCodeInput(session, false)
             NativeCore.shared.setDirect(session, false)
+            rememberMode(caret: modeIndicatorCaret(client))
             return true
         default:
             break
         }
 
         guard let vk = KeyMapping.virtualKey(for: event) else { return false }
-        let utf16 = Array((event.characters ?? "").utf16)
-        let character: Int32 = utf16.count == 1 ? Int32(utf16[0]) : 0
+        // event.characters は「見た目の 1 文字」で、UTF-16 要素が複数のことがある
+        // (補助面の文字・結合文字・ZWJ 絵文字・異体字セレクター)。1 要素へ切り詰めたり 0 に置き換えたりしない。
+        // 1 スカラーならそのコードポイントのまま本体へ渡し、複数スカラーは未確定内容だけ確定して
+        // 元のイベントを 1 回アプリへ通す (本体側の pass-through 契約と対にする)。
+        let scalars = Array((event.characters ?? "").unicodeScalars)
+        if scalars.count > 1 {
+            apply(NativeCore.shared.commitBeforeExternalText(session, text: event.characters ?? ""), to: client)
+            return false
+        }
+        let character: Int32 = scalars.count == 1 ? Int32(scalars[0].value) : 0
         let flags = event.modifierFlags
         var modifiers: Int32 = 0
         if flags.contains(.shift) { modifiers |= 1 }
@@ -94,11 +115,12 @@ final class MeltypeInputController: IMKInputController {
 
     /// フォーカスが外れた・クリックで別の場所に移ったときなど。未確定の内容をそのまま確定する。
     override func commitComposition(_ sender: Any!) {
-        guard let client = (sender as? IMKTextInput) ?? (self.client() as? IMKTextInput) else { return }
+        guard let client = (sender as? IMKTextInput) ?? self.client() else { return }
         apply(NativeCore.shared.commit(session), to: client)
     }
 
     override func deactivateServer(_ sender: Any!) {
+        ModeServices.shared.deactivate(self)
         commitComposition(sender)
         candidatesWindow?.hide()
         suggestionPanel?.orderOut(nil)
@@ -115,7 +137,7 @@ final class MeltypeInputController: IMKInputController {
     }
 
     override func candidateSelected(_ candidateString: NSAttributedString!) {
-        guard let client = self.client() as? IMKTextInput,
+        guard let client = self.client(),
               let string = candidateString?.string,
               let index = candidateList.firstIndex(of: string) else { return }
         // クリックした候補が候補ウィンドウで選ばれているので、覚えている位置も合わせる。
@@ -132,7 +154,7 @@ final class MeltypeInputController: IMKInputController {
         let mouseTypes: [NSEvent.EventType] = [.leftMouseDown, .leftMouseUp, .leftMouseDragged]
         guard !selectingFromCore,
               let type = NSApp.currentEvent?.type, mouseTypes.contains(type),
-              let client = self.client() as? IMKTextInput,
+              let client = self.client(),
               let string = candidateString?.string,
               let index = candidateList.firstIndex(of: string) else { return }
         windowIndex = index
@@ -153,6 +175,9 @@ final class MeltypeInputController: IMKInputController {
             item.state = selected ? .on : .off
         }
         menu.addItem(.separator())
+        let indicator = menu.addItem(withTitle: "入力モードをミニウィンドウで表示", action: #selector(toggleModeIndicator(_:)), keyEquivalent: "")
+        indicator.target = self
+        indicator.state = ModeIndicatorSettings.shared.isEnabled ? .on : .off
         let importItem = menu.addItem(withTitle: "macOSのユーザー辞書を取り込む…", action: #selector(importUserDictionary(_:)), keyEquivalent: "")
         importItem.target = self
         menu.addItem(withTitle: "Meltype のデータフォルダを開く (設定・ユーザー辞書)", action: #selector(openDataFolder(_:)), keyEquivalent: "")
@@ -160,17 +185,51 @@ final class MeltypeInputController: IMKInputController {
         return menu
     }
 
-    private func selectMode(direct: Bool, code: Bool) {
-        commitComposition(client())
+    private func selectMode(direct: Bool, code: Bool, showIndicator: Bool = false) {
+        let inputClient = client()
+        let caret = inputClient.flatMap { modeIndicatorCaret($0) }
+        commitComposition(inputClient)
         directInput = direct
         codeInput = code
         NativeCore.shared.setDirect(session, direct)
         NativeCore.shared.setCodeInput(session, code)
+        rememberMode(caret: inputClient.flatMap { modeIndicatorCaret($0) } ?? caret, showIndicator: showIndicator)
+    }
+
+    /// メニューと同じく、現在の表示を確定してからモードとミニウィンドウを更新する。
+    func selectModeFromService(_ action: ModeShortcutAction) -> Bool {
+        guard client() != nil else { return false }
+        let selected = action.mode(after: mode)
+        selectMode(direct: selected == .direct, code: selected == .code, showIndicator: true)
+        return true
+    }
+
+    private func rememberMode(caret: NSRect?, showIndicator: Bool = true) {
+        ModeSelection.shared.select(mode)
+        if showIndicator {
+            modeIndicator.show(mode, caret: caret)
+        } else {
+            modeIndicator.hide()
+        }
+    }
+
+    private func modeIndicatorCaret(_ client: IMKTextInput) -> NSRect? {
+        // IMK のインライン位置。0 はインラインセッションがない場合の現在の選択を表す。
+        let marked = client.markedRange()
+        let index = marked.location == NSNotFound ? 0 : marked.length
+        var rectangle = NSRect.zero
+        _ = client.attributes(forCharacterIndex: index, lineHeightRectangle: &rectangle)
+        return ModeIndicator.validCaret(rectangle) ? rectangle : nil
     }
 
     @objc private func selectAutomatic(_ sender: Any?) { selectMode(direct: false, code: false) }
     @objc private func selectDirect(_ sender: Any?) { selectMode(direct: true, code: false) }
     @objc private func selectCode(_ sender: Any?) { selectMode(direct: false, code: true) }
+
+    @objc private func toggleModeIndicator(_ sender: Any?) {
+        ModeIndicatorSettings.shared.isEnabled.toggle()
+        modeIndicator.hide()
+    }
 
     @objc private func importUserDictionary(_ sender: Any?) {
         commitComposition(client())

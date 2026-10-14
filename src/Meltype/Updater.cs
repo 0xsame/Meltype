@@ -56,7 +56,7 @@ internal sealed class Updater : IDisposable
     /// 起動時: ダウンロード済みの新しい版があればインストールを始める (true なら Meltype はそのまま終了する。install.ps1 が新しい版を起動する)。
     /// 前回インストールに失敗していた (同じ版のまま起動した) ときは、繰り返さない。
     /// </summary>
-    public static bool ApplyStagedAtStartup(Func<bool> enabled)
+    public static bool ApplyStagedAtStartup(Func<bool> enabled, Func<string, bool>? confirm = null)
     {
         try
         {
@@ -76,7 +76,8 @@ internal sealed class Updater : IDisposable
         {
             Log.Warn($"更新の状態を読めませんでした: {ex.Message}");
         }
-        return enabled() && Apply();
+        // 更新の前に、あなたの打ち方で変わる語があれば見せる (issue #285。「あとで」なら今回は更新しない)
+        return enabled() && Staged() is { } staged && (confirm?.Invoke(staged.Version) ?? true) && Apply();
     }
 
     /// <summary>ダウンロード済みの新しい版のインストールを始める。install.ps1 が動いている Meltype を終了させてから入れ替え、起動する。</summary>
@@ -100,7 +101,54 @@ internal sealed class Updater : IDisposable
         catch (Exception ex)
         {
             Log.Warn($"更新を始められませんでした: {ex.Message}");
+            // 始められなかったので、次の起動で「更新に失敗した」と扱わないよう消しておく
+            try { File.Delete(ApplyingFile); } catch { }
             return false;
+        }
+    }
+
+    /// <summary>
+    /// 更新の前に「あなたの打ち方で変わる語」を調べる (issue #285)。自分で英字 / かなに直した語 (languages.json) を、
+    /// 今の版とダウンロードした新しい版 (Meltype.exe --judge-words) の両方で判定し、見え方が変わる語を返す。
+    /// 調べられなければ (新しい版がこの仕組みを持たない・時間切れ) null。この PC の中だけで動かし、何も送らない。
+    /// </summary>
+    public static IReadOnlyList<Composition.WordChange>? PreviewChanges(IEnumerable<string> words)
+    {
+        if (Staged() is not { } staged) return null;
+        var list = words.Where(Composition.WordJudge.IsWord).Distinct(StringComparer.Ordinal).ToList();
+        if (list.Count == 0) return [];
+        var exe = Path.Combine(staged.Folder, "app", "Meltype.exe");
+        if (!File.Exists(exe)) return null;
+        var input = Path.Combine(Directory, "judge-words.txt");
+        var output = Path.Combine(Directory, "judge-result.txt");
+        try
+        {
+            File.WriteAllLines(input, list);
+            File.Delete(output);
+            var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(exe)! };
+            foreach (var arg in new[] { "--judge-words", input, output }) start.ArgumentList.Add(arg);
+            using var process = Process.Start(start)!;
+            if (!process.WaitForExit(60_000))
+            {
+                process.Kill();
+                Log.Warn("新しい版の判定が時間内に終わりませんでした。変わる語は調べずに更新します。");
+                return null;
+            }
+            if (process.ExitCode != 0 || !File.Exists(output)) return null;
+            var next = Composition.WordJudge.Parse(File.ReadAllText(output));
+            var now = Composition.WordJudge.Parse(Program.JudgeWords(list));
+            var changes = Composition.WordJudge.Changes(now, next);
+            Log.Info($"Meltype {staged.Version} で見え方が変わる語: {changes.Count} 語 (調べた語 {list.Count})。");
+            return changes;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"新しい版で変わる語を調べられませんでした: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            try { File.Delete(input); File.Delete(output); } catch { }
         }
     }
 
@@ -136,13 +184,17 @@ internal sealed class Updater : IDisposable
                 start.ArgumentList.Add(arg);
             }
             using var process = Process.Start(start)!;
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            if (!process.WaitForExit(15 * 60 * 1000)) process.Kill();
+            var output = ReadOutput(process, 15 * 60 * 1000)?.Trim();
+            if (output is null)
+            {
+                Log.Warn("更新の確認が時間内に終わりませんでした。");
+                return null;
+            }
             var line = output.Split('\n').LastOrDefault()?.Trim() ?? "";
             if (line.StartsWith("ready ", StringComparison.Ordinal))
             {
                 var version = line[6..];
-                Log.Info($"Meltype {version} をダウンロードしました。次の起動時に更新します。");
+                Log.Info(_enabled() ? $"Meltype {version} をダウンロードしました。次の起動時に更新します。" : $"Meltype {version} をダウンロードしました。トレイの「更新」→「Meltype {version} に更新して再起動」で更新できます。");
                 Ready?.Invoke(version);
                 return $"Meltype {version} をダウンロードしました。";
             }
@@ -159,6 +211,19 @@ internal sealed class Updater : IDisposable
         {
             Volatile.Write(ref _running, 0);
         }
+    }
+
+    /// <summary>標準出力を読みながら終わるのを待つ。時間内に終わらなければ子プロセスごと終了させて null。</summary>
+    internal static string? ReadOutput(Process process, int timeout)
+    {
+        // 先に ReadToEnd すると、PowerShell が止まったときに戻らず、時間で区切れない
+        var output = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(timeout))
+        {
+            process.Kill(entireProcessTree: true);
+            return null;
+        }
+        return output.Result;
     }
 
     private static bool IsNewer(string version) =>

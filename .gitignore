@@ -33,3 +33,4 @@ native/tip/obj/
 
 # ウェブサイトの作業ファイル
 tests/web/
+__pycache__/

@@ -21,6 +21,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     private readonly Func<string> _font;
     private readonly Func<bool> _lightTheme;
     private readonly Func<double> _opacity;
+    private readonly Func<(string Japanese, string Direct, string Text)> _indicatorColors;
     private readonly Func<bool> _directMode;
     private readonly MsImeKanjiConverter _converter = new();
     private readonly KeyInjector _injector = new();
@@ -63,6 +64,11 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             Translations = options.Translations ?? TranslationDictionary.Load(),
             TranslationCandidates = options.TranslationCandidates,
             CandidateMeanings = options.CandidateMeanings,
+            ShowTypedKeys = options.ShowTypedKeys,
+            TabConversion = options.TabConversion,
+            ContinueAfterConversion = options.ContinueAfterConversion,
+            Learning = options.Learning,
+            SeparateKeyRoles = options.SeparateKeyRoles,
             Meanings = options.Meanings ?? MeaningDictionary.Load(),
             RomajiTypos = options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji),
             CorrectTypos = options.CorrectTypos,
@@ -74,9 +80,11 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             Predictions = options.Predictions,
         };
         Phrases = resolved.Predictor?.Phrases;
+        TranslationHistory = resolved.TranslationHistory;
         _hybrid = new HybridConverter(options.Engine, _mozc, _converter, reading => _windowsCandidates.Get(reading));
         _resolved = resolved;
         Controller = new CompositionController(Gate, detector, _hybrid, this, resolved);
+        Controller.Corrected += Corrections.Add;
         if (options.Engine() != Config.ConversionEngine.System && _mozc.IsInstalled) _mozc.WarmUp();
         _showIndicator = options.ModeIndicator;
         _placement = options.Placement;
@@ -84,9 +92,15 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         _font = options.Font;
         _lightTheme = options.LightTheme;
         _opacity = options.Opacity;
+        _indicatorColors = options.ModeIndicatorColors;
         _directMode = options.DirectMode;
         var onFocus = options.ModeIndicatorOnFocus;
-        Focus.TextInputEntered += () => { if (onFocus()) ShowMode(!_directMode()); };
+        Focus.TextInputEntered += () =>
+        {
+            if (!onFocus()) return;
+            if (ShowModeOnFocus is { } show) show();
+            else ShowMode(!_directMode());
+        };
         Focus.CaptureLost += Abandon;
         Controller.Committed += text => Diagnostics.Log.Decision($"確定: {Diagnostics.Log.Text(text.Length > 20 ? text[..20] + "…" : text)}");
         _tick.Tick += (_, _) => Safely(() => Controller.Tick(Environment.TickCount64));
@@ -101,8 +115,13 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     /// Meltype IME (TSF) の入力欄 1 つ分の入力の本体を作る。辞書・学習データ・変換エンジンは変換ボックスと共有する
     /// (UI スレッドからだけ使うので排他は要らない)。英数状態は IME の ON/OFF で決まるので、フック用の英数の判定は外す。
     /// </summary>
-    public MeltypeSession CreateSession(Func<Config.Settings> settings) =>
-        new(_detector, _hybrid, _resolved with { DirectMode = () => false, ClassifyDirect = null, DirectDecided = null }, settings);
+    public MeltypeSession CreateSession(Func<Config.Settings> settings, bool directModeDetection = false) =>
+        new(_detector, _hybrid, _resolved with
+        {
+            DirectMode = () => false,
+            ClassifyDirect = directModeDetection ? _resolved.ClassifyDirect : null,
+            DirectDecided = null,
+        }, settings, directModeDetection);
 
     public CompositionController Controller { get; }
 
@@ -115,11 +134,20 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     /// <summary>ユーザーが英字 / かなに直した語の学習 (トレイの「学習データをリセット」で消す)。</summary>
     public LanguageMemory Languages { get; }
 
+    /// <summary>選んだ英訳の記録 (トレイの「学習データをリセット」で消す)。</summary>
+    public TranslationHistory? TranslationHistory { get; }
+
     /// <summary>予測変換のために覚えた、確定した語句。</summary>
     public PhraseHistory? Phrases { get; }
 
     /// <summary>ユーザー辞書 (トレイの「ユーザー辞書...」で編集する)。</summary>
     public UserDictionary UserDictionary { get; }
+
+    /// <summary>登録した定型文 (トレイの「定型文...」で編集する。;名前 + Space で入れる: issue #290)。</summary>
+    public SnippetStore Snippets { get; } = new(Config.AppPaths.SnippetsFile);
+
+    /// <summary>最近自分で直した誤判定 (メモリの中だけ。トレイの「直した誤判定を報告...」: issue #284)。</summary>
+    public CorrectionLog Corrections { get; } = new();
 
     private readonly CompositionDetector _detector;
 
@@ -171,6 +199,13 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             Volatile.Write(ref _pumpScheduled, 0);
             Safely(Controller.Pump);
         });
+    }
+
+    /// <summary>フックのスレッドから、UI スレッドで行う処理を頼む (定型文を入れる: issue #290)。</summary>
+    public void Post(Action action)
+    {
+        if (!_invoker.IsHandleCreated || _invoker.IsDisposed) return;
+        _invoker.BeginInvoke(() => Safely(action));
     }
 
     /// <summary>
@@ -255,7 +290,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         // 再変換のときは、IME の逆変換で出てくる読みを使う。
         _reconversionSelection = null;
         if (Focus.SelectedText() is not { } text) return null;
-        var reading = GuessReading(text);
+        // ローマ字のまま入った文 (kyouhaiitenki) は、逆変換せずにそのまま渡す (Meltype の判定で日本語にする: issue #288)
+        var reading = CompositionController.IsRomajiText(text) ? text : GuessReading(text);
         if (string.IsNullOrWhiteSpace(reading))
         {
             Diagnostics.Log.Info("再変換: 選択文字の読みを取得できませんでした。");
@@ -278,6 +314,9 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         CommitText(text);
         return true;
     }
+
+    /// <summary>入力欄にフォーカスが移ったときに、次に打つキーのモード (あ / A) を出す (フォーカスを調べるスレッドから呼ばれる)。null なら英数 / 日本語 をそのまま出す。</summary>
+    public Action? ShowModeOnFocus { get; set; }
 
     /// <summary>前面のアプリで、確定した文字を貼り付けで入れるか (設定の「貼り付けで入力するアプリ」)。</summary>
     public Func<bool> PasteCommit { get; set; } = () => false;
@@ -302,8 +341,10 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         Native.SendAll(array, "確定文字列の入力");
     }
 
-    private IDataObject? _savedClipboard;
+    private DataObject? _savedClipboard;
     private System.Windows.Forms.Timer? _restoreClipboard;
+    /// <summary>貼る文字を入れた直後のクリップボードの番号。戻すときに変わっていたら、ほかのアプリかユーザーが入れたものなので戻さない</summary>
+    private uint _pastedSequence;
 
     /// <summary>Windows のクリップボード履歴に保持しない</summary>
     private static readonly string[] ClipboardHistoryExclusions =
@@ -318,9 +359,11 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         if (text.Length == 0) return true;
         try
         {
-            if (_restoreClipboard is null) _savedClipboard = Clipboard.GetDataObject();
-            else _restoreClipboard.Stop();
+            // 前の貼り付けのあとにユーザーがコピーしていたら、戻す中身をそれに取り直す
+            if (_restoreClipboard is null || Native.GetClipboardSequenceNumber() != _pastedSequence) _savedClipboard = CopyClipboard();
+            _restoreClipboard?.Stop();
             Clipboard.SetDataObject(PasteData(text), copy: true);
+            _pastedSequence = Native.GetClipboardSequenceNumber();
             KeyInjector.SendShortcut(VirtualKeys.Control, 0x56); // Ctrl+V
             _restoreClipboard ??= new System.Windows.Forms.Timer { Interval = 500 };
             _restoreClipboard.Tick -= RestoreClipboard;
@@ -331,11 +374,13 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         catch (Exception ex) when (ex is ExternalException or System.Threading.ThreadStateException)
         {
             Diagnostics.Log.Warn($"クリップボードを使えないので、1 文字ずつ送ります: {ex.Message}");
+            // 前の貼り付けで止めた復元を動かし直す (止めたままだと元の中身に戻らない)
+            _restoreClipboard?.Start();
             return false;
         }
     }
 
-    private static DataObject PasteData(string text)
+    internal static DataObject PasteData(string text)
     {
         var data = new DataObject();
         data.SetText(text);
@@ -346,6 +391,24 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         return data;
     }
 
+    /// <summary>
+    /// 今のクリップボードの中身を、形式ごとに取り出して写す (戻すときに使う)。
+    /// Clipboard.GetDataObject() は中身のコピーではなく、そのときのクリップボードを読みに行くものを返すので、
+    /// 別の中身を入れたあとにそれで戻しても元に戻らない。取り出せない形式は戻さない。中身が無ければ null。
+    /// </summary>
+    internal static DataObject? CopyClipboard()
+    {
+        if (Clipboard.GetDataObject() is not { } current) return null;
+        var copy = new DataObject();
+        foreach (var format in current.GetFormats(autoConvert: false))
+        {
+            // 画像 (Bitmap) は autoConvert: false だと取り出せない
+            try { if ((current.GetData(format, autoConvert: false) ?? current.GetData(format, autoConvert: true)) is { } data) copy.SetData(format, autoConvert: false, data); }
+            catch { }
+        }
+        return copy.GetFormats(autoConvert: false).Length > 0 ? copy : null;
+    }
+
     private void RestoreClipboard(object? sender, EventArgs e)
     {
         var timer = _restoreClipboard;
@@ -353,7 +416,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         timer?.Dispose();
         try
         {
-            if (_savedClipboard is { } saved) Clipboard.SetDataObject(saved, copy: true);
+            if (Native.GetClipboardSequenceNumber() != _pastedSequence) Diagnostics.Log.Info("貼り付けのあとにクリップボードが変わったので、元の中身に戻しません。");
+            else if (_savedClipboard is { } saved) Clipboard.SetDataObject(saved, copy: true);
             else Clipboard.Clear();
         }
         catch (ExternalException ex)
@@ -403,6 +467,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     public void DeleteBackward(int count)
     {
         if (count <= 0) return;
+        // Microsoft IME が ON のままだと、BackSpace と後から送る文字の順番が入れ替わることがある (issue #227: wanI t)
+        EnsureSystemImeClosed();
         for (var i = 0; i < count; i++) KeyReplayed?.Invoke(new KeyEvent(VirtualKeys.Back, 0, false, false, false, 0));
         var events = new List<KeyEvent>(count * 2);
         for (var i = 0; i < count; i++)
@@ -411,6 +477,58 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             events.Add(new KeyEvent(VirtualKeys.Back, 0, false, true, false, 0));
         }
         _injector.Inject(events);
+    }
+
+    /// <summary>
+    /// 定型文を入れる: 打った ;名前 (count 文字) を消してから text を入れる (issue #290)。複数行の文は、改行を Enter として送ると
+    /// チャットでは途中で送信されてしまうので、貼り付けで入れる。1 行の文は、確定し直しと同じく 1 回の SendInput で送る。
+    /// </summary>
+    public void InsertSnippet(int count, string text)
+    {
+        if (!InputAllowed()) return;
+        if (text.Contains('\n'))
+        {
+            DeleteBackward(count);
+            EnsureSystemImeClosed();
+            if (TryPaste(text.ReplaceLineEndings("\r\n"))) return;
+            Diagnostics.Log.Warn("定型文を貼り付けられなかったので、1 文字ずつ送ります (改行は Shift+Enter)。");
+            foreach (var line in text.Split('\n').Select((line, i) => (line, i)))
+            {
+                if (line.i > 0) KeyInjector.SendShortcut(VirtualKeys.Shift, VirtualKeys.Return);
+                CommitText(line.line);
+            }
+            return;
+        }
+        ReplaceBackward(count, text);
+    }
+
+    /// <summary>
+    /// 確定し直し: BackSpace と新しい文字を 1 回の SendInput でまとめて送る (間に物理キーやほかの入力が割り込まないように。issue #227)。
+    /// 貼り付けで入れるアプリでは、消してから貼り付ける。
+    /// </summary>
+    public void ReplaceBackward(int count, string text)
+    {
+        if (count <= 0 || PasteCommit())
+        {
+            DeleteBackward(count);
+            CommitText(text);
+            return;
+        }
+        if (_window.Visible) _committedWhileVisible += text;
+        EnsureSystemImeClosed();
+        for (var i = 0; i < count; i++) KeyReplayed?.Invoke(new KeyEvent(VirtualKeys.Back, 0, false, false, false, 0));
+        var inputs = new List<Native.INPUT>(count * 2 + text.Length * 2);
+        for (var i = 0; i < count; i++)
+        {
+            inputs.Add(KeyInput(VirtualKeys.Back, up: false));
+            inputs.Add(KeyInput(VirtualKeys.Back, up: true));
+        }
+        foreach (var c in text)
+        {
+            inputs.Add(UnicodeInput(c, up: false));
+            inputs.Add(UnicodeInput(c, up: true));
+        }
+        Native.SendAll(inputs.ToArray(), "確定し直し");
     }
 
     public void RequestSurroundingText(Action<string?, string?> callback)
@@ -473,6 +591,8 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         {
             if (!_showIndicator() || _window.Visible) return;
             var anchor = FindAnchor();
+            var (jp, direct, text) = _indicatorColors();
+            _indicator.SetColors(Config.Settings.ParseColor(jp), Config.Settings.ParseColor(direct), Config.Settings.ParseColor(text));
             _indicator.Flash(japanese, new Point(anchor.X + 2, anchor.Y + 2));
         }));
     }
@@ -562,7 +682,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             _window.ShowView(view, new Point(line.Left, line.Top - 4), above: true, belowY: FindAnchor(caret).Y);
             return;
         }
-        _window.ShowView(view, FindAnchor(caret));
+        _window.ShowView(view, FindAnchor(caret, caretSearched: true));
     }
 
     public void Hide()
@@ -655,21 +775,45 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         return Focus.CaretBounds() is { Width: > 0, Height: > 0 and < 200 } bounds && (bounds.X != 0 || bounds.Y != 0) ? bounds : null;
     }
 
-    /// <summary>変換ボックスを入力位置の下に出すときの位置。キャレット → 入力欄の左下 → マウスカーソルの順に試す。</summary>
-    private Point FindAnchor(Rectangle? caret = null)
+    /// <summary>
+    /// 変換ボックスを入力位置の下に出すときの位置。キャレット → 入力欄の左下 → マウスカーソルの順に試す。
+    /// caretSearched なら、キャレットは探し済み (caret が null なら取れなかった) として探し直さない (FindCaret は最大 60ms 待つ)。
+    /// </summary>
+    private Point FindAnchor(Rectangle? caret = null, bool caretSearched = false)
     {
-        if ((caret ?? FindCaret()) is { } found) return new Point(found.Left, found.Bottom + 4);
+        if ((caretSearched ? caret : caret ?? FindCaret()) is { } found) return new Point(found.Left, found.Bottom + 4);
         // 入力欄の四角形が潰れている・画面の外にある (Google ドキュメントの、文字を受け取るための見えない欄など) ときは、
         // その左下に出すと画面の端や関係ない所に出てしまう (issue #128)。マウスカーソルの近くに出す。
         if (Focus.Current.Bounds is { } bounds && bounds.Height is > 2 and < 120 && bounds.Width > 2 && IsOnScreen(bounds))
         {
             return new Point(bounds.Left, bounds.Bottom + 2);
         }
+        // 複数行の欄 (Chrome の textarea など) は、空のときに入力位置が取れない。空の欄で打ち始めるのは左上なので、そこに出す
+        // (マウスカーソルの近くに出すと、欄の右下や別のモニターなど、打っている所から離れた所に出ていた)。
+        if (Focus.Current.Bounds is { } field && field.Height >= 120 && field.Width > 2 && IsOnScreen(field))
+        {
+            return new Point(field.Left, Math.Max(field.Top, Screen.FromRectangle(field).WorkingArea.Top) + 2);
+        }
         Native.GetCursorPos(out var cursor);
         return new Point(cursor.X + 12, cursor.Y + 20);
     }
 
     private static bool IsOnScreen(Rectangle bounds) => Screen.AllScreens.Any(s => s.Bounds.IntersectsWith(bounds));
+
+    /// <summary>仮想キーの打鍵 (確定し直しの BackSpace)。KeyInjector と同じく、Meltype が送ったキーの印を付ける。</summary>
+    private static Native.INPUT KeyInput(int vk, bool up) => new()
+    {
+        type = Native.INPUT_KEYBOARD,
+        u = new Native.InputUnion
+        {
+            ki = new Native.KEYBDINPUT
+            {
+                wVk = (ushort)vk,
+                dwFlags = up ? Native.KEYEVENTF_KEYUP : 0,
+                dwExtraInfo = KeyboardMonitor.InjectedMarker,
+            },
+        },
+    };
 
     private static Native.INPUT UnicodeInput(char c, bool up) => new()
     {

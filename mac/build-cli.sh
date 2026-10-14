@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Yukishiro
+# Copyright (C) 2026 hrmcngs
 #
 # Mac の CLI から Meltype をテスト・ビルド・インストールする入口。
 #   mac/build-cli.sh --setup --test --install
@@ -21,7 +21,7 @@ Usage: mac/build-cli.sh [options]
 
 Options:
   --setup       Install .NET 10 SDK into ~/.dotnet if dotnet is missing.
-  --test        Run Meltype.Core.Tests.
+  --test        Run Meltype.Core.Tests and the Mac shortcut tests.
   --build       Build mac/build/Meltype.app without installing it.
   --install     Build and install Meltype.app into ~/Library/Input Methods.
   --all         Run --test --install. This is the default.
@@ -88,6 +88,8 @@ ensure_dotnet_path
 if [[ $test_core -eq 1 ]]; then
     need dotnet
     dotnet run --project "$root/src/Meltype.Core.Tests"
+    need swift
+    swift test --package-path "$here"
 fi
 
 if [[ $build_only -eq 1 ]]; then

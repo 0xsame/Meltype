@@ -134,6 +134,9 @@ internal static class CompositionTests
 
         public bool IsShiftDown() => PhysicalShift;
 
+        /// <summary>入力欄の文字を、キーを処理しているその場で読めているか (Mac と同じ環境にするとき true)。</summary>
+        public bool SurroundingTextIsCurrent { get; set; }
+
         public void Show(CompositionView view) => View = view;
         public void Hide() => View = null;
     }
@@ -163,6 +166,9 @@ internal static class CompositionTests
         public bool Kana { get; set; }
         public bool CorrectTypos { get; set; } = true;
         public bool SpaceAroundEnglish { get; set; }
+        public bool ContinueAfterConversion { get; set; }
+        public bool Learning { get; set; } = true;
+        public bool SeparateKeyRoles { get; set; }
 
         /// <summary>句読点の組み合わせ (設定)。</summary>
         public Meltype.Config.PunctuationStyle Punctuation { get; set; }
@@ -205,7 +211,8 @@ internal static class CompositionTests
 
         public Keyboard(bool live = false, bool direct = false, ConversionHistory? history = null, IKanjiConverter? converter = null,
             Func<string, IReadOnlyList<string>>? moreCandidates = null, UserDictionary? userDictionary = null, LanguageMemory? languages = null,
-            TranslationDictionary? translations = null, TranslationHistory? translationHistory = null, bool slashAsMiddleDot = false, Predictor? predictor = null)
+            TranslationDictionary? translations = null, TranslationHistory? translationHistory = null, bool slashAsMiddleDot = false, Predictor? predictor = null,
+            Func<DateTime>? now = null, bool showTypedKeys = false, bool tabConversion = false)
         {
             Direct = direct;
             Controller = new CompositionController(Gate, Detector, converter ?? Converter, Host, new CompositionOptions
@@ -232,6 +239,12 @@ internal static class CompositionTests
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
                 SlashAsMiddleDot = () => slashAsMiddleDot,
+                Now = now ?? (() => DateTime.Now),
+                ShowTypedKeys = () => showTypedKeys,
+                TabConversion = () => tabConversion,
+                ContinueAfterConversion = () => ContinueAfterConversion,
+                Learning = () => Learning,
+                SeparateKeyRoles = () => SeparateKeyRoles,
             });
             Controller.Committed += Sigil.Append;
             Host.Replayed += e =>
@@ -307,6 +320,94 @@ internal static class CompositionTests
         }
 
         public string? Showing => Host.View?.Text;
+    }
+
+    [Test]
+    public static void Reconversion_RomajiTextBecomesJapanese()
+    {
+        // #288: ローマ字のまま入った文を選んで変換キー → Meltype の判定で日本語の所だけを日本語にして候補に出す。Enter で置き換える
+        Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (selected, expected) in new[]
+            {
+                ("kyouha iitenki desu ne", "きょうはいいてんきですね"),
+                ("asita no meeting de review shimasu", "あしたの meeting で review します"),
+                ("PR no review onegai shimasu", "PR の review おねがいします"),
+            })
+            {
+                var k = new Keyboard(direct: true);
+                var selection = new ReconversionSelection(selected, selected);
+                k.Host.Selection = selection;
+                k.Press(VirtualKeys.Convert);
+                Assert.True(k.Host.View?.Converting == true, selected + ": 候補を出す");
+                Assert.Equal(expected, k.Showing, selected);
+                Assert.True(k.Host.View!.Candidates.Contains(selected), "選んだままの文も候補に");
+                Assert.Equal(0, k.Host.Output.Count, "Enter まで置き換えない");
+                k.Press(VirtualKeys.Return);
+                Assert.True(k.Host.Events.Any(e => e == $"replace:{selected}:{expected}"), string.Join(" ", k.Host.Events));
+            }
+            // 日本語にする所が無い英文は、今までの再変換と同じく扱う (英文を勝手に日本語にしない)
+            var english = new Keyboard(direct: true);
+            english.Host.Selection = new ReconversionSelection("this is a pen", "this is a pen");
+            english.Press(VirtualKeys.Convert);
+            Assert.True(english.Showing is null || !english.Showing.Any(c => c is >= 'ぁ' and <= 'ゖ'), "英文を日本語にしない: " + english.Showing);
+        }
+        finally
+        {
+            Detector.SpellChecker = null;
+        }
+    }
+
+    [Test]
+    public static void SeparateKeyRoles_SpaceAlwaysOpensCandidates()
+    {
+        // #199: 設定「入力中のキーの役割を分ける」。英字で見えている語でも、Space で確定して空白を入れずに候補を開く
+        // (英字を最初の候補に残し、ローマ字として読めれば日本語の候補も選べる)
+        var k = new Keyboard { SeparateKeyRoles = true };
+        k.Host.PrecedingText = "I ";
+        k.Type("made");
+        Assert.Equal("made", k.Showing, "前が英語なので英字");
+        k.Press(VirtualKeys.Space);
+        Assert.Equal(0, k.Host.Output.Count, "確定しない");
+        Assert.True(k.Host.View?.Converting == true, "候補を開く");
+        Assert.Equal("made", k.Host.View!.Candidates[0]);
+        Assert.True(k.Host.View!.Candidates.Contains("まで"), string.Join(" ", k.Host.View!.Candidates));
+        k.Press(VirtualKeys.Return);
+        Assert.Equal("made", k.Host.Document, "確定は Enter");
+
+        // 設定が OFF なら今までどおり、英字で確定して空白を入れる
+        var normal = new Keyboard();
+        normal.Host.PrecedingText = "I ";
+        normal.Type("made ");
+        Assert.Equal("made ", normal.Host.Document);
+    }
+
+    [Test]
+    public static void SeparateKeyRoles_ConvertNonConvertAndKanaKeys()
+    {
+        // 変換: 日本語を優先して変換する
+        var k = new Keyboard { SeparateKeyRoles = true };
+        k.Host.PrecedingText = "I ";
+        k.Type("made");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("まで", k.Host.View!.Candidates[0], string.Join(" ", k.Host.View!.Candidates));
+
+        // 無変換: 英字にする
+        k = new Keyboard { SeparateKeyRoles = true };
+        k.Type("kana");
+        Assert.Equal("かな", k.Showing);
+        k.Press(VirtualKeys.NonConvert);
+        Assert.Equal("kana", k.Showing);
+
+        // ひらがな/カタカナ: 押すたびに ひらがな ⇔ カタカナ。英字からはまずひらがな
+        k.Press(VirtualKeys.Kana);
+        Assert.Equal("かな", k.Showing);
+        k.Press(VirtualKeys.Kana);
+        Assert.Equal("カナ", k.Showing);
+        k.Press(VirtualKeys.Kana);
+        Assert.Equal("かな", k.Showing);
+        Assert.Equal(0, k.Host.Output.Count, "確定しない");
     }
 
     [Test]
@@ -429,6 +530,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue545_ExclamationOffersBangBangEmoji()
+    {
+        var k = new Keyboard();
+        k.Type("! ");
+        Assert.True(k.Host.View!.Candidates.Contains("‼️"), string.Join(" ", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Emoji_AreLastAndReachedByUp()
     {
         // #133: 絵文字・顔文字は候補の最後に逆順でまとめる。変換してすぐ ↑ で、いちばんよく使う絵文字 (えがお → 😊) になる
@@ -444,6 +553,143 @@ internal static class CompositionTests
         Assert.Equal("😄", k.Showing);
     }
   
+    [Test]
+    public static void Now_ChosenTimeIsNotLearned()
+    {
+        // いま → 17:22 を選んで確定しても覚えない (覚えると、次の いま で古い時刻が最初に出る)
+        var history = new ConversionHistory(null);
+        var k = new Keyboard(history: history, now: () => new DateTime(2026, 10, 8, 17, 22, 0));
+        k.Type("ima ");
+        var first = k.Showing;
+        for (var i = 0; i < 30 && k.Showing != "17:22"; i++) k.Press(VirtualKeys.Space);
+        Assert.Equal("17:22", k.Showing, "時刻の候補まで進める");
+        k.Type("\n");
+        var next = new Keyboard(history: history, now: () => new DateTime(2026, 10, 8, 18, 5, 0));
+        next.Type("ima ");
+        Assert.Equal(first, next.Showing, "最初の候補は前と同じ (時刻を覚えていない)");
+    }
+
+    [Test]
+    public static void TypedKeys_ShownWhenEnabled()
+    {
+        // #224: 設定「打ったキーを表示」が ON なら、変換ボックスに打ったキーを渡す (変換中も)
+        var k = new Keyboard(showTypedKeys: true);
+        k.Type("kyouha");
+        Assert.Equal("kyouha", k.Host.View!.Typed);
+        k.Type(" ");
+        Assert.True(k.Host.View!.Converting, "変換中");
+        Assert.Equal("kyouha", k.Host.View!.Typed, "変換中も打ったキーを出す");
+        var off = new Keyboard();
+        off.Type("kyouha");
+        Assert.True(off.Host.View!.Typed is null, "OFF なら出さない");
+    }
+
+    [Test]
+    public static void Brand_GitHubFromKana()
+    {
+        // #231: ぎっとはぶ・ギットハブ を変換すると GitHub が候補に出る
+        foreach (var keys in new[] { "gittohabu ", "gittohabude " })
+        {
+            var k = new Keyboard();
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            Assert.True(candidates.Any(c => c.StartsWith("GitHub")), keys + ": " + string.Join(" ", candidates));
+        }
+    }
+
+    [Test]
+    public static void Issue231_ImeOffersIme()
+    {
+        // #231: いめ を変換すると IME が候補に出る。後ろの助詞はかなのまま。
+        foreach (var (keys, expected) in new[] { ("ime ", "IME"), ("imede ", "IMEで") })
+        {
+            var k = new Keyboard();
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            Assert.True(candidates.Contains(expected), keys + ": " + string.Join(" ", candidates));
+        }
+    }
+
+    [Test]
+    public static void Now_ShowsCurrentTime()
+    {
+        // #208: いま・なう を変換すると、今の時刻 (17:22 / 17時22分 / 午後5時22分) も候補に出る
+        foreach (var keys in new[] { "ima ", "nau " })
+        {
+            var k = new Keyboard(now: () => new DateTime(2026, 10, 8, 17, 22, 0));
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            foreach (var expected in new[] { "17:22", "17時22分", "午後5時22分" })
+                Assert.True(candidates.Contains(expected), keys + ": " + string.Join(" ", candidates));
+        }
+        var morning = new Keyboard(now: () => new DateTime(2026, 10, 8, 9, 5, 0));
+        morning.Type("ima ");
+        Assert.True(morning.Host.View!.Candidates.Contains("09:05") && morning.Host.View!.Candidates.Contains("午前9時5分"),
+            string.Join(" ", morning.Host.View!.Candidates));
+        // 日付と曜日つき (2026/10/8 は木曜日)
+        var dated = new Keyboard(now: () => new DateTime(2026, 10, 8, 17, 22, 0));
+        dated.Type("ima ");
+        foreach (var expected in new[] { "2026年10月8日(木) 17時22分", "10月8日(木) 17時22分", "2026/10/08 17:22" })
+            Assert.True(dated.Host.View!.Candidates.Contains(expected), string.Join(" ", dated.Host.View!.Candidates));
+        // きょう → 今日の日付
+        var today = new Keyboard(now: () => new DateTime(2026, 10, 8, 17, 22, 0));
+        today.Type("kyou ");
+        foreach (var expected in new[] { "2026年10月8日", "2026年10月8日(木)", "10月8日(木)", "2026/10/08", "2026-10-08", "木曜日" })
+            Assert.True(today.Host.View!.Candidates.Contains(expected), string.Join(" ", today.Host.View!.Candidates));
+        var other = new Keyboard(now: () => new DateTime(2026, 10, 8, 17, 22, 0));
+        other.Type("imada ");
+        Assert.True(!other.Host.View!.Candidates.Contains("17:22"), "いま だけの文節のとき");
+    }
+
+    [Test]
+    public static void TypedDate_OffersSlashForms()
+    {
+        // #294: 打った日付 (10がつ9にち) にも 10/9 の形を候補に出す。いつもの候補 (変換エンジンの結果) は最初のまま。
+        // 変換エンジンが 10がつ|9にち に分けても 1 つの文節にまとめる
+        var converter = new SplitConverter(new()
+        {
+            ["10がつ9にち"] = [new("10がつ", "10月"), new("9にち", "9日")],
+            ["12がつ25にち"] = [new("12がつ25にち", "12月25日")],
+            ["3じ15ふん"] = [new("3じ", "3時"), new("15ふん", "15分")],
+        });
+        foreach (var (keys, first, expected) in new[]
+        {
+            ("10gatsu9nichi ", "10月9日", new[] { "10/9", "10/09", "10/9(金)", "2026/10/09" }),
+            ("12gatsu25nichi ", "12月25日", new[] { "12/25", "12/25(金)" }),
+            ("3ji15hun ", "3時15分", new[] { "3:15", "03:15" }),
+        })
+        {
+            var k = new Keyboard(converter: converter, now: () => new DateTime(2026, 10, 8, 17, 22, 0));
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            Assert.Equal(first, candidates[0], keys);
+            foreach (var form in expected) Assert.True(candidates.Contains(form), keys + ": " + string.Join(" ", candidates));
+        }
+        // ありえない日付には出さない
+        var bad = new Keyboard(converter: new SplitConverter(new() { ["2がつ30にち"] = [new("2がつ30にち", "2月30日")] }), now: () => new DateTime(2026, 10, 8));
+        bad.Type("2gatsu30nichi ");
+        Assert.True(!bad.Host.View!.Candidates.Any(c => c.Contains('/')), string.Join(" ", bad.Host.View!.Candidates));
+
+        // 選んでも学習しない (次に違う日付を打ったときに邪魔になる)
+        var history = new ConversionHistory(null);
+        var chosen = new Keyboard(converter: converter, history: history, now: () => new DateTime(2026, 10, 8));
+        chosen.Type("10gatsu9nichi ");
+        var index = chosen.Host.View!.Candidates.ToList().IndexOf("10/9");
+        for (var i = 0; i < index; i++) chosen.Press(VirtualKeys.Space);
+        chosen.Press(VirtualKeys.Return);
+        Assert.Equal("10/9", chosen.Host.Document);
+        Assert.True(history.Get("10がつ9にち") is null, "学習しない");
+    }
+
+    /// <summary>決めた文節に区切る変換エンジン。</summary>
+    private sealed class SplitConverter(Dictionary<string, ConversionClause[]> clauses) : IKanjiConverter
+    {
+        private readonly FakeConverter _inner = new();
+        public string? Convert(string hiragana) => _inner.Convert(hiragana);
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) =>
+            clauses.TryGetValue(hiragana, out var result) ? result : _inner.ConvertClauses(hiragana, context);
+    }
+
       [Test]
       public static void ShiftSpace_DuringConversion_GoesBack()
       {
@@ -585,6 +831,29 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void CtrlH_IsBackSpaceWhileComposing()
+    {
+        // #150: 入力中の Ctrl+H は BackSpace (確定しない)。変換中なら変換をやめてかなに戻す
+        var k = new Keyboard();
+        k.Type("aiueo");
+        CtrlPress(k, 'H');
+        Assert.Equal("あいうえ", k.Showing);
+        Assert.Equal(0, k.Host.Output.Count);
+        Assert.True(!k.Host.Events.Any(e => e.EndsWith(":A2")), "Ctrl を送らない: " + string.Join(" ", k.Host.Events));
+
+        k.Press(VirtualKeys.Space);
+        CtrlPress(k, 'H');
+        Assert.Equal("あいうえ", k.Showing);
+        k.Press(VirtualKeys.Return);
+        Assert.Equal("あいうえ", k.Host.Document);
+
+        // 変換ボックスが空なら、Ctrl+H はアプリの操作 (置換など) としてそのまま送る
+        k = new Keyboard();
+        CtrlPress(k, 'H');
+        Assert.True(k.Host.Events.Contains("passed:48"), "Ctrl+H をアプリに通す: " + string.Join(" ", k.Host.Events));
+    }
+
+    [Test]
     public static void CtrlHeld_RepeatsShortcutAndMatchesUps()
     {
         // Ctrl を押したまま O を 2 回 (半角英数 → 大文字)。右 Ctrl でも同じ。Ctrl はアプリに送らず、上げ下げもそろったまま
@@ -634,6 +903,43 @@ internal static class CompositionTests
         Assert.True(events.StartsWith("text:かな|down:A2|mouse:201"), events);
         k.Key(VirtualKeys.LControl, up: true);
         Assert.True(string.Join("|", k.Host.Events).Contains("A2", StringComparison.Ordinal) && k.Host.Events.Count(e => e.Contains(":A2")) == 2, "Ctrl の上げ下げがそろう: " + string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void CaptureGate_StartCheckDoesNotBlockQueue()
+    {
+        // 打ち始めの判定 (フォーカスを調べ終わるのを待つことがある) の間も、UI スレッドはキューを読める
+        var gate = new CaptureGate(() => { });
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var hook = Task.Run(() => gate.OnKey(new KeyEvent('A', 0, false, false, false, 0), _ =>
+        {
+            entered.Set();
+            release.Wait(5000);
+            return true;
+        }));
+        Assert.True(entered.Wait(5000), "判定が始まる");
+        var ui = Task.Run(() => gate.TryDequeue(out _) || gate.IsCaptured || !gate.TryRelease());
+        var finished = ui.Wait(2000);
+        release.Set();
+        Assert.True(finished && !ui.Result, "判定の間も、キューの出し入れと関所の開け閉めは待たされない");
+        Assert.True(hook.Result && gate.IsCaptured, "判定が済んだら横取りを始める");
+        Assert.True(gate.TryDequeue(out var input) && input.Key?.Vk == 'A' && !gate.TryDequeue(out _), "判定した打鍵を 1 回だけ積む");
+    }
+
+    [Test]
+    public static void ShiftClick_CommitsThenSendsShiftWithClick()
+    {
+        // Shift を押したままクリック (範囲選択): 確定してから、Shift とクリックを送る
+        var k = new Keyboard();
+        k.Type("kana");
+        k.Key(VirtualKeys.LShift);
+        k.Gate.OnMouseButton(new MouseButtonEvent(0x201, 10, 20, 0));
+        k.Controller.Pump();
+        var events = string.Join("|", k.Host.Events);
+        Assert.True(events.StartsWith("text:かな|down:A0|mouse:201"), events);
+        k.Key(VirtualKeys.LShift, up: true);
+        Assert.True(k.Host.Events.Count(e => e.Contains(":A0")) == 2, "Shift の上げ下げがそろう: " + string.Join("|", k.Host.Events));
     }
 
     [Test]
@@ -694,6 +1000,34 @@ internal static class CompositionTests
         var digit = (char)('0' + count + 1);
         k.Press(digit);
         Assert.True(k.Host.Document.EndsWith(digit) || k.Showing == digit.ToString(), "番号の無い数字は普通に打った数字: " + k.Host.Document + " / " + k.Showing);
+    }
+
+    [Test]
+    public static void KanaInput_DigitRowKeyTypesKana_WhileConverting()
+    {
+        // かな入力では数字の段のキーは ぬふあうえおやゆよ。変換中に打っても番号で選ばず、今の候補で確定して打ったかなを入れる。
+        var k = new Keyboard { Kana = true };
+        k.TypeKanaKeys("tu");
+        k.Press(VirtualKeys.Space);
+        var current = k.Host.View!.Clauses![0];
+        k.Press(0x33);
+        Assert.Equal(current, k.Host.Document, "今の候補で確定する");
+        Assert.Equal("あ", k.Showing, "3 のキーは あ");
+    }
+
+    [Test]
+    public static void KanaInput_NumpadSelectsCandidateByNumber()
+    {
+        // かな入力でも、テンキーの数字なら候補の番号で選べる。
+        var k = new Keyboard { Kana = true };
+        k.TypeKanaKeys("tu");
+        k.Press(VirtualKeys.Space);
+        var view = k.Host.View!;
+        Assert.True(view.Converting && view.Candidates.Count >= 2, "候補の一覧が出る");
+        var second = view.Candidates[1];
+        k.Press(0x62);
+        Assert.Equal(second, k.Host.Document);
+        Assert.True(!k.Gate.IsCaptured, "最後の文節を番号で選んだら確定する");
     }
 
     [Test]
@@ -1037,7 +1371,7 @@ internal static class CompositionTests
         // えーmail、こーおp になっていた
         foreach (var (typed, expected) in new[]
         {
-            ("e-mail", "e-mail"), ("co-op", "co-op"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"),
+            ("e-mail", "e-mail"), ("co-op", "co-op"), ("bio-break", "bio-break"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"), ("Blu-ray", "Blu-ray"),
             ("e-to", "えーと"), ("su-pa-", "すーぱー"), ("o-bun", "おーぶん"),
         })
         {
@@ -1058,6 +1392,101 @@ internal static class CompositionTests
         // JMdict に無い社名 (brands.txt)
         Assert.True(dictionary.Lookup("しゃおみ").Contains("Xiaomi"), "しゃおみ → Xiaomi");
         Assert.True(dictionary.Lookup("でぃすこーど").Contains("Discord"), "ディスコード → Discord");
+    }
+
+    [Test]
+    public static void Issue409_TanomeOffersBirthdaySlang()
+    {
+        var dictionary = CandidateDictionary.Load(null);
+        Assert.True(dictionary.Lookup("たんおめ").Contains("誕おめ"), "たんおめ → 誕おめ");
+    }
+
+    [Test]
+    public static void Issue404_Gemma4StaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("Gemma4\n");
+        Assert.Equal("Gemma4", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue469_HoloXStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("holoX\n");
+        Assert.Equal("holoX", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue346_FusionStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fusion\n");
+        Assert.Equal("fusion", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue537_ProcrasticleStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("procrasticle\n");
+        Assert.Equal("procrasticle", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue506_EnumerateStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("enumerate\n");
+        Assert.Equal("enumerate", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue536_FatigueStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fatigue\n");
+        Assert.Equal("fatigue", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue538_InfobesityStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("infobesity\n");
+        Assert.Equal("infobesity", k.Host.Document);
+    }
+  
+    [Test]
+    public static void Issue535_OverchoiceStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("overchoice\n");
+        Assert.Equal("overchoice", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue421_DefineStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("kachiwodefinesuru\n");
+        Assert.Equal("かちをdefineする", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue419_DefuseStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("mondaiwodefusesuru\n");
+        Assert.Equal("もんだいをdefuseする", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue435_BluRayStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("Blu-ray\n");
+        Assert.Equal("Blu-ray", k.Host.Document);
     }
 
     [Test]
@@ -1142,6 +1571,41 @@ internal static class CompositionTests
         var k = new Keyboard { Punctuation = Meltype.Config.PunctuationStyle.FullWidthCommaPeriod };
         k.Type("x64,arm64\n");
         Assert.Equal("x64，arm64", k.Host.Document);
+    }
+
+    [Test]
+    public static void Punctuation_AfterEnglish_FollowsSetting()
+    {
+        // #416: 英字のすぐ後ろの , . も句読点にする設定。OFF なら今までどおり半角
+        string Type(string keys, bool on, bool scored = false, string? before = null, Meltype.Config.PunctuationStyle style = default)
+        {
+            Detector.UseJapanesePunctuationAfterEnglish = () => on;
+            Detector.UseScoredSegmentation = () => scored;
+            try
+            {
+                var k = new Keyboard { Punctuation = style };
+                k.Host.PrecedingText = before;
+                k.Type(keys);
+                return k.Host.Document;
+            }
+            finally
+            {
+                Detector.UseJapanesePunctuationAfterEnglish = null;
+                Detector.UseScoredSegmentation = null;
+            }
+        }
+        // 略語 (IME) は区切りを点数で選ぶ (α版) では い + ME になる (別の問題) ので、通常の判定だけで確かめる
+        Assert.Equal("IME。", Type("IME.\n", on: true), "略語の後ろも句点");
+        foreach (var scored in new[] { false, true })
+        {
+            var mode = scored ? " (点数で選ぶ)" : "";
+            Assert.Equal("Google.", Type("Google.\n", on: false, scored), "OFF は半角のまま" + mode);
+            Assert.Equal("Google。", Type("Google.\n", on: true, scored), "ON は句点" + mode);
+            Assert.Equal("Google、", Type("Google,\n", on: true, scored), "ON は読点" + mode);
+            Assert.Equal("Google．", Type("Google.\n", on: true, scored, style: Meltype.Config.PunctuationStyle.FullWidthCommaPeriod), "設定「句読点」の形" + mode);
+            Assert.Equal("world.", Type("world.\n", on: true, scored, before: "Hello "), "キャレットの前が英語 (Hello ) なら英文の続き" + mode);
+            Assert.Equal("tetr.io", Type("tetr.io\n", on: true, scored), "英単語の中の . は半角" + mode);
+        }
     }
 
     [Test]
@@ -1232,6 +1696,38 @@ internal static class CompositionTests
         Assert.Equal(2, k.Host.Events.Count(e => e.StartsWith("down:")), "しばらく打たなければ英語とみなす (送り直さない)");
         Assert.True(!k.Host.Events.Any(e => e.StartsWith("bs:")), "消さない");
         Assert.True(!k.Gate.IsCaptured, "判定をやめたら横取りもやめる");
+    }
+
+    [Test]
+    public static void DirectMode_ShiftAfterHeldWordReachesApp()
+    {
+        // 英数状態で英字を打った直後に押した Shift がアプリに届かず、(bow) の ) が Shift なしの 0 になっていた。
+        var k = new Keyboard(direct: true);
+        k.Type("bow");
+        Assert.True(k.Gate.IsCaptured, "bow はまだ判定中");
+        k.Host.Events.Clear();
+        k.Key(VirtualKeys.LShift);
+        k.Press(0x30);
+        k.Key(VirtualKeys.LShift, up: true);
+        var shift = k.Host.Events.IndexOf("down:A0");
+        Assert.True(shift >= 0 && shift < k.Host.Events.IndexOf("passed:30"), $"Shift を 0 より先にアプリへ送る ({string.Join(",", k.Host.Events)})");
+        Assert.True(!k.Gate.IsCaptured, "判定をやめたら横取りもやめる");
+    }
+
+    [Test]
+    public static void ShiftRepeatWhileComposing_ReleaseReachesApp()
+    {
+        // キーボードが 2 台だと、文字を打っても Shift のリピートが止まらず、離しても Shift が押されたままになっていた (issue #617)。
+        var k = new Keyboard();
+        k.Host.PhysicalShift = true; // Shift の押下は、変換ボックスが開く前にアプリへ届いている
+        k.Press(0x41);
+        Assert.True(k.Gate.IsCaptured, "A で変換ボックスが開く");
+        k.Key(VirtualKeys.RShift); // リピート
+        k.Press(0x41);
+        k.Key(VirtualKeys.RShift);
+        k.Host.Events.Clear();
+        k.Key(VirtualKeys.RShift, up: true);
+        Assert.True(k.Host.Events.Contains("up:A1"), $"Shift を離したことをアプリに伝える ({string.Join(",", k.Host.Events)})");
     }
 
     [Test]
@@ -1343,6 +1839,25 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void LearningOff_RemembersNothing()
+    {
+        // #277: 設定「ユーザー学習を使う」が OFF なら、選び直した変換も、F10 で英字に直した語も覚えない
+        var history = new ConversionHistory(null);
+        var languages = new LanguageMemory(null);
+        var k = new Keyboard(history: history, languages: languages) { Learning = false };
+        k.Type("hashiwo ");
+        var index = k.Host.View!.Candidates.ToList().IndexOf("箸を");
+        for (var i = 0; i < index; i++) k.Type(" ");
+        k.Type("\n");
+        Assert.Equal("箸を", k.Host.Output.Single());
+        k.Type("api");
+        k.Press(VirtualKeys.F10);
+        k.Type("\n");
+        Assert.Equal(0, history.Count, "変換を覚えない");
+        Assert.Equal(0, languages.Entries().Count, "英字に直した語を覚えない");
+    }
+
+    [Test]
     public static void CapitalI_IsEnglish()
     {
         // 報告: I want の I が「い」になる。
@@ -1363,6 +1878,28 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void AutoCorrect_KeepsSuruFormBeforeEnglish()
+    {
+        // site → して のあと英字 (PR) が続いても、する活用を英単語 site に確定し直さない。
+        foreach (var (typed, expected) in new[]
+        {
+            ("sitePR\n", "してPR"),
+            ("site PR\n", "して PR"), // Space で変換開始していた空白は残す
+            ("sitaOK\n", "したOK"),
+            ("pushsitePR\n", "pushしてPR"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Host.Document, typed.Trim());
+        }
+        // sushi など、する活用でない曖昧語は、後ろが英語なら今までどおり英語に直す。
+        var sushi = new Keyboard();
+        sushi.Type("sushi PR\n");
+        Assert.Equal("sushi PR", sushi.Host.Document);
+    }
+
+    [Test]
     public static void AutoCorrect_EnglishToJapaneseAfterCommit()
     {
         var k = new Keyboard();
@@ -1372,6 +1909,40 @@ internal static class CompositionTests
         k.Host.PrecedingText = null;
         k.Type("gasuki\n");
         Assert.Equal("すしがすき", k.Host.Document, "後ろに日本語が続いたので日本語に確定し直す");
+    }
+
+    [Test]
+    public static void AutoCorrect_KeepsEnglishWordInsideEnglishSentence()
+    {
+        // #265: 英文の中の普通の英単語 (Are you の you) は、後ろに日本語 (すし？) が続いても よう に確定し直さない。
+        // (#258 の Are yoよう人間？ も、この確定し直しで起きていた)
+        foreach (var (typed, expected) in new[] { ("Are you susi?\n", "Are you すし？"), ("Are you ningen?\n", "Are you にんげん？"), ("Are you susi\n", "Are you すし") })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Host.Document, typed);
+            Assert.True(!k.Host.Events.Any(e => e.StartsWith("bs:") || e.StartsWith("replace")), "消さない: " + string.Join(" ", k.Host.Events));
+        }
+        // 先頭の you は今までどおり、後ろの日本語に合わせて直す
+        var start = new Keyboard();
+        start.Type("you ninaru\n");
+        Assert.Equal("ようになる", start.Host.Document);
+    }
+
+    [Test]
+    public static void AutoCorrect_SendsReplacementTogetherWithNextText()
+    {
+        // #258: 確定し直し (消して すし を入れ直す) と、続けて確定する がすき を 1 回で送る
+        // (別々に送ると、その間で文字の順番が入れ替わるアプリがある: Are yoよ人間う？)
+        var k = new Keyboard();
+        k.Host.PrecedingText = "I love ";
+        k.Type("sushi ");
+        k.Host.PrecedingText = null;
+        k.Host.Events.Clear();
+        k.Type("gasuki\n");
+        Assert.Equal("すしがすき", k.Host.Document);
+        var edits = k.Host.Events.Where(e => e.StartsWith("bs:") || e.StartsWith("text:")).ToList();
+        Assert.Equal("bs:6 text:すしがすき", string.Join(" ", edits));
     }
 
     [Test]
@@ -1428,6 +1999,42 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void AutoCorrect_NotWhenCaretMovedOnMac()
+    {
+        // 報告 (#137): 確定した後に別の場所をクリックしてから英語の語を確定すると、前の語ではなく
+        // 「今のキャレットの前の文字」が消される。Mac はクリックを知らされない (ForgetLastCommit が呼ばれない) ので、
+        // 消す前に「直前に確定した語が今のキャレットの位置にあるか」を入力欄に確かめる。
+        var k = new Keyboard();
+        k.Host.SurroundingTextIsCurrent = true;
+        k.Type("i ");
+        k.Host.PrecedingText = "ほかのところ"; // 別の場所をクリックした (Mac なので知らされない)
+        k.Type("want ");
+        Assert.True(!k.Host.Events.Any(e => e.StartsWith("bs:")), $"前の語が今のキャレットの位置に無いので消さない: {string.Join("|", k.Host.Events)}");
+    }
+
+    [Test]
+    public static void AutoCorrect_StillCorrectsWhenCaretStaysAtTheWord()
+    {
+        // Mac (入力欄の文字をその場で読める) でも、キャレットの直前に前の語があるなら今までどおり直す。
+        var k = new Keyboard();
+        k.Host.SurroundingTextIsCurrent = true;
+        k.Type("i want ");
+        Assert.Equal("I want ", k.Host.Document, string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void AutoCorrect_StillCorrectsWhenSurroundingTextIsNotCurrent()
+    {
+        // Windows は入力欄の文字を別のスレッドで後から読むので、届いた値が古いことがある (キャレットが動いたことは
+        // ForgetLastCommit で知らされる)。読めていない環境では今までどおり直す。
+        var k = new Keyboard();
+        k.Type("i ");
+        k.Host.PrecedingText = "ほかのところ";
+        k.Type("want ");
+        Assert.True(k.Host.Events.Any(e => e.StartsWith("bs:")), $"読めていない環境では直す: {string.Join("|", k.Host.Events)}");
+    }
+
+    [Test]
     public static void AutoCorrect_NotWhenUserChoseCandidate()
     {
         var k = new Keyboard();
@@ -1457,6 +2064,66 @@ internal static class CompositionTests
         var ramen = new Keyboard();
         ramen.Type("ra-men\n");
         Assert.Equal("らーめん", ramen.Host.Document, "日本語の長音の打ち方は変えない");
+    }
+
+    [Test]
+    public static void DotSuffix_FileExtensionsStayEnglish()
+    {
+        // 報告 (#260・#254): 英語の語.拡張子 の拡張子がひらがなになる (MeltypeTip.dっl、Meltype.coんふぃg、Meltype.ご。mod)
+        var cases = new Dictionary<string, string>
+        {
+            ["MeltypeTip.dll"] = "MeltypeTip.dll", ["Meltype.aab"] = "Meltype.aab", ["Meltype.config"] = "Meltype.config", ["Meltype.index"] = "Meltype.index",
+            ["Meltype.ini"] = "Meltype.ini", ["Meltype.go.mod"] = "Meltype.go.mod", ["Meltype.abi.json"] = "Meltype.abi.json", ["Meltype.so.1"] = "Meltype.so.1",
+            ["Meltype.e57"] = "Meltype.e57", ["Meltype.cargo/config.toml"] = "Meltype.cargo/config.toml", ["Meltype.db-journal"] = "Meltype.db-journal",
+            // 表示で英字にした拡張子を、確定でローマ字の打ち間違いとして直さない (amr → あめ、bas → ば)
+            ["Meltype.amr"] = "Meltype.amr", ["Meltype.bas"] = "Meltype.bas", ["Meltype.ann"] = "Meltype.ann",
+            // issue #462: ローマ字読める語尾 (llama → っぁま) + 読めない拡張子は英字スパンとしてまとめる
+            ["llama.cpp"] = "llama.cpp",
+            // 長い名前の途中の助詞・ドメインの頭では分けない
+            ["Meltype.gitignore"] = "Meltype.gitignore", ["Meltype.gcno"] = "Meltype.gcno", ["Meltype.automount"] = "Meltype.automount",
+            // 先頭のドットファイルも英字のまま (issue #431: 。ぎちgのれ にしない)
+            [".gitignore"] = ".gitignore", [".env"] = ".env", [".dll"] = ".dll", [".json"] = ".json", [".go"] = ".go",
+            // 拡張子・ドメインの後ろの助詞からは日本語
+            ["MeltypeTip.dllwokesu"] = "MeltypeTip.dllをけす", ["setup.exewojikkou"] = "setup.exeをじっこう", ["github.comnipush"] = "github.comにpush",
+            ["tetr.iode"] = "tetr.ioで", ["google.comdekensaku"] = "google.comでけんさく",
+        };
+        foreach (var (typed, expected) in cases)
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, $"「{typed}」");
+        }
+        // 最後までローマ字として読める語は日本語のまま (ドメインの de を英字にして deす にしていた)
+        var desu = new Keyboard();
+        desu.Type("Meltype.desu\n");
+        Assert.True(desu.Host.Document.EndsWith("です", StringComparison.Ordinal), desu.Host.Document);
+    }
+
+    [Test]
+    public static void ReadableToolNames_StayEnglish()
+    {
+        // 報告 (#301 / #457): おぺんこで・tむx に割れず、ツール名のまま英字にする
+        // discode は固有名詞でないので discoで (#145 メンテナー判断)
+        Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            var cases = new Dictionary<string, string>
+            {
+                ["discode"] = "discoで",
+                ["opencode"] = "opencode",
+                ["tmux"] = "tmux",
+            };
+            foreach (var (typed, expected) in cases)
+            {
+                var k = new Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, $"「{typed}」");
+            }
+        }
+        finally
+        {
+            Detector.SpellChecker = null;
+        }
     }
 
     [Test]
@@ -1528,6 +2195,20 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void UnitThenKanaThenNumber_KeepsTypedOrder()
+    {
+        // 数字・単位・かな・数字の順に打つと、かなが後ろの数字の後ろに回っていた (100mlnomizu2 → 100ml2のみず)
+        foreach (var (typed, expected) in new[] { ("100mlnomizu2", "100mlのみず2"), ("3kmhashitte5", "3kmはしって5") })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Showing, typed);
+            k.Type("\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
+
+    [Test]
     public static void Candidates_ExpandWithWindowsCandidates()
     {
         var k = new Keyboard(moreCandidates: reading => reading == "かわ" ? ["川", "皮", "河", "革"] : []);
@@ -1569,6 +2250,50 @@ internal static class CompositionTests
         Assert.Equal("ＡＢＣ", CompositionController.NormalizeHalfWidth("ＡＢＣ", "えーびーしー"), "読みに英数字が無ければ全角のまま");
     }
 
+    /// <summary>決めた文節に区切る変換エンジン (計算の言葉のテスト用)。</summary>
+    private sealed class ClauseConverter(Dictionary<string, ConversionClause[]> clauses) : IKanjiConverter
+    {
+        private readonly FakeConverter _inner = new();
+        public string? Convert(string hiragana) => hiragana switch { "かける" => "掛ける", "わる" => "割る", "たす" => "足す", _ => _inner.Convert(hiragana) };
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) =>
+            clauses.TryGetValue(hiragana, out var result) ? result : _inner.ConvertClauses(hiragana, context);
+    }
+
+    [Test]
+    public static void MathWordsAfterDigits_OfferSymbols()
+    {
+        // #293: 数字のすぐ後ろの かける・わる は × ÷ を最初の候補に。変換エンジンが数字と同じ文節にしても (3かける) 別の文節にしても
+        var converter = new ClauseConverter(new()
+        {
+            ["3かける4"] = [new("3", "3"), new("かける", "掛ける"), new("4", "4")],
+            ["10わる2"] = [new("10わる", "10割る"), new("2", "2")],
+            ["1たす1は2"] = [new("1", "1"), new("たす", "足す"), new("1は2", "1は2")],
+            ["5ふんかける"] = [new("5ふん", "5分"), new("かける", "かける")],
+            ["でんわをかける"] = [new("でんわを", "電話を"), new("かける", "かける")],
+        });
+        foreach (var (typed, expected) in new[]
+        {
+            ("3kakeru4 \n", "3×4"), ("10waru2 \n", "10÷2"), ("1tasu1ha2 \n", "1足す1は2"),
+            ("5hunkakeru \n", "5分かける"), ("denwawokakeru \n", "電話をかける"),
+        })
+        {
+            var k = new Keyboard(converter: converter);
+            k.Type(typed);
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+
+        // たす は記号を 2 番目の候補に足す (動詞のことも多いので最初にはしない)。選んでも覚えない
+        var history = new ConversionHistory(null);
+        var tasu = new Keyboard(converter: converter, history: history);
+        tasu.Type("1tasu1ha2 ");
+        tasu.Press(VirtualKeys.Right);
+        Assert.Equal("+", tasu.Host.View!.Candidates[1], string.Join(",", tasu.Host.View!.Candidates));
+        tasu.Press(VirtualKeys.Space);
+        tasu.Press(VirtualKeys.Return);
+        Assert.Equal("1+1は2", tasu.Host.Document);
+        Assert.True(history.Get("たす") is null, "記号を選んでも学習しない");
+    }
+
     /// <summary>覚えさせた文節を記録する変換エンジン (Mozc の代わり)。</summary>
     private sealed class LearningConverter : IKanjiConverter, ILearningConverter
     {
@@ -1580,6 +2305,47 @@ internal static class CompositionTests
         public void Learn(string? context, IReadOnlyList<ConversionClause> clauses)
         {
             lock (Learned) Learned.Add(string.Join("|", clauses.Select(c => $"{c.Reading}={c.Text}")));
+        }
+    }
+
+    /// <summary>しゃーなし を 西なし にする変換エンジン (Mozc の苦手な語の代わり)。</summary>
+    private sealed class NishinashiConverter : IKanjiConverter
+    {
+        public string? Convert(string hiragana) => hiragana.Replace("しゃーなし", "西なし");
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) => [new(hiragana, Convert(hiragana)!)];
+    }
+
+    [Test]
+    public static void Shanashi_IsNotConvertedToPlaceName()
+    {
+        // #368: sha-nashi (しゃーなし) を、変換エンジンが 西なし にしていた。同梱の語句でかなのまま最初の候補にする
+        var k = new Keyboard(converter: new NishinashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("sha-nashi ");
+        Assert.Equal("しゃーなし", k.Host.View!.Candidates[0], string.Join(" ", k.Host.View!.Candidates));
+        k.Press(VirtualKeys.Return);
+        Assert.Equal("しゃーなし", k.Host.Document);
+    }
+
+    [Test]
+    public static void Ki_OffersOldKanji()
+    {
+        // #371: き の候補に 気 の旧字体 氣 も出す
+        var k = new Keyboard();
+        k.Type("ki ");
+        Assert.True(k.Host.View!.Candidates.Contains("氣"), string.Join(" ", k.Host.View!.Candidates));
+    }
+
+    [Test]
+    public static void Keigo_IsOfferedAfterEngineCandidates()
+    {
+        // #352: よく使う動詞の尊敬語・謙譲語も候補に出す。最初の候補 (変換エンジンの結果) は変えない
+        foreach (var (keys, keigo) in new[] { ("iu ", "おっしゃる"), ("iku ", "伺う"), ("taberu ", "召し上がる"), ("miru ", "拝見する"), ("suru ", "いたす") })
+        {
+            var k = new Keyboard();
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            Assert.True(candidates.Contains(keigo), keys + ": " + string.Join(" ", candidates));
+            Assert.True(candidates[0] != keigo, keys + ": 最初の候補は変えない");
         }
     }
 
@@ -1647,6 +2413,84 @@ internal static class CompositionTests
         Assert.Equal("たんいを=単位を|とる=取る", converter.Learned.SingleOrDefault() ?? "(なし)");
     }
 
+    /// <summary>わたしのことがすき・しのがきた を区切る変換エンジン (ユーザー辞書の語が文節の途中に入るテスト用)。</summary>
+    private sealed class WatashiConverter : IKanjiConverter
+    {
+        public string? Convert(string hiragana) => ConvertClauses(hiragana) is { } clauses ? string.Concat(clauses.Select(c => c.Text)) : null;
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) => hiragana switch
+        {
+            "わたしのことがすき" => [new("わたしの", "私の"), new("ことが", "事が"), new("すき", "好き")],
+            "わた" => [new("わた", "綿")],
+            "ことがすき" => [new("ことが", "事が"), new("すき", "好き")],
+            "しのがきた" => [new("しの", "篠"), new("が", "が"), new("きた", "来た")],
+            "がきた" => [new("が", "が"), new("きた", "来た")],
+            _ => null,
+        };
+    }
+
+    [Test]
+    public static void UserDictionary_WordInsideAnEngineClause_IsNotSplitOut()
+    {
+        // #374: しの → 紫乃 を登録すると、わたしのことがすき が ワタ紫乃ことが好き になっていた。
+        // 変換エンジンの文節 (わたしの) の途中から始まる語では区切らない。文節の頭から始まるなら今までどおり使う
+        var dictionary = new UserDictionary(null, builtIn: false);
+        dictionary.Add("しの", "紫乃");
+        var k = new Keyboard(converter: new WatashiConverter(), userDictionary: dictionary);
+        k.Type("watashinokotogasuki ");
+        Assert.Equal("私の事が好き", string.Concat(k.Host.View!.Clauses!));
+
+        k = new Keyboard(converter: new WatashiConverter(), userDictionary: dictionary);
+        k.Type("shinogakita ");
+        Assert.Equal("紫乃", k.Host.View!.Clauses![0], "文節の頭から始まる登録した語は使う");
+
+        k = new Keyboard(live: true, converter: new WatashiConverter(), userDictionary: dictionary);
+        k.Type("watashinokotogasuki");
+        Assert.True(!k.Showing!.Contains("紫乃"), "ライブ変換でも割り込まない: " + k.Showing);
+    }
+
+    private sealed class AgeashiConverter : IKanjiConverter
+    {
+        public string? Convert(string hiragana) => ConvertClauses(hiragana) is { } clauses ? string.Concat(clauses.Select(c => c.Text)) : null;
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) => hiragana switch
+        {
+            "あげあしとらないで" => [new("あげあし", "揚げ足"), new("とらないで", "取らないで")],
+            "ないで" => [new("ないで", "内で")],
+            "かいしょうないひと" => [new("かいしょう", "解消"), new("ないひと", "ない人")],
+            "ひと" => [new("ひと", "人")],
+            "これほんあかだね" => [new("これ", "コレ"), new("ほんあかだね", "本垢だね")],
+            "これ" => [new("これ", "これ")],
+            "きょうはやないのだね" => [new("きょうはや", "教派や"), new("ないのだね", "ないのだね")],
+            "きょうは" => [new("きょうは", "今日は")],
+            "だね" => [new("だね", "だね")],
+            _ => null,
+        };
+    }
+
+    [Test]
+    public static void Phrase_EngineAlreadyConvertsIt_IsNotSplitOut()
+    {
+        // 同梱の語句 あげあしとら → 揚げ足取ら で区切ると、残りの ないで を単独で変換して 内で になっていた。
+        // 変換エンジンが文の中で同じ文字 (揚げ足取らないで) にできているなら、語句では区切らない
+        var k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("ageashitoranaide ");
+        Assert.Equal("揚げ足取らないで", string.Concat(k.Host.View!.Clauses!));
+
+        // 変換エンジンが間違える語句 (解消ない人) は、今までどおり語句で区切る
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("kaishounaihito ");
+        Assert.Equal("甲斐性ない人", string.Concat(k.Host.View!.Clauses!));
+
+        // 語句より前は今までどおり別に変換する (文全体の変換エンジンの結果にすると コレ本垢だね になる)
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("korehonnakadane ");
+        Assert.Equal("これ本垢だね", string.Concat(k.Host.View!.Clauses!));
+
+        // 始まりが変換エンジンの文節の途中にある語句は、今までどおり語句で区切る (教派や|ないのだね にしない)
+        k = new Keyboard(converter: new AgeashiConverter(), userDictionary: new UserDictionary(null));
+        k.Type("kyouhayanainodane ");
+        Assert.Equal("今日はやないのだね", string.Concat(k.Host.View!.Clauses!));
+    }
+
     [Test]
     public static void UserDictionary_WinsOverEngine()
     {
@@ -1663,6 +2507,21 @@ internal static class CompositionTests
         k = new Keyboard(live: true, userDictionary: dictionary);
         k.Type("kigoutou");
         Assert.Equal("記号等", k.Showing, "ライブ変換でも使う");
+    }
+
+    [Test]
+    public static void UserDictionary_ReadingThatStaysAscii_IsUsed()
+    {
+        // zh → ← のように、ローマ字として読めずに英字のまま残る読みを登録しても、変換で使われていなかった
+        var dictionary = new UserDictionary(null, builtIn: false);
+        dictionary.Add("zh", "←");
+        var k = new Keyboard(userDictionary: dictionary);
+        k.Type("zh ");
+        Assert.Equal("←", k.Host.View!.Clauses![0]);
+
+        k = new Keyboard(live: true, userDictionary: dictionary);
+        k.Type("zh ");
+        Assert.Equal("←", k.Host.View!.Clauses![0], "ライブ変換でも使う");
     }
 
     [Test]
@@ -1737,6 +2596,24 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Clauses_ShiftArrowResize_ExpandsWithWindowsCandidatesAgain()
+    {
+        // 区切りを変えた文節も、新しい読みで変換エンジンの候補の一覧を取り直す。
+        var k = new Keyboard(moreCandidates: r => [r + "★"]);
+        k.Type("tanniwotoru ");
+        Assert.True(k.Host.View!.Candidates.Contains("たんいを★"), string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Right);
+        Assert.True(k.Host.View.Candidates.Contains("とる★"), string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Left);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift, up: true);
+        Assert.True(k.Host.View.Candidates.Contains("たんいをと★"), "選んでいる文節: " + string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Right);
+        Assert.True(k.Host.View.Candidates.Contains("る★"), "前に選んでいた次の文節: " + string.Join(",", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Clauses_ShiftArrowResizesAcrossEnglish()
     {
         // 報告 (#144): 英語の文節が混ざると Shift+← → で区切りを動かせない (みー|thin|ぐ、disco|で)。
@@ -1769,6 +2646,31 @@ internal static class CompositionTests
         Assert.Equal("たん|い|Github|で", string.Join("|", k.Host.View.Clauses!), "縮めて空いた分は、後ろの英語の文節を変えずに新しい文節にする");
         k.Press(VirtualKeys.Right);
         Assert.Equal("単位|Github|で", string.Join("|", k.Host.View.Clauses!), "伸ばして戻す");
+        k.Key(VirtualKeys.LShift, up: true);
+    }
+
+    [Test]
+    public static void Clauses_ShiftArrowKeepsEnglishWhenItCannotMove()
+    {
+        // 区切りを動かせないときは、選んだ英語の文節を日本語に読み直さない (日本語の文節と同じく何も変えない)
+        var k = new Keyboard();
+        k.Type("konoteam");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("この|team", string.Join("|", k.Host.View!.Clauses!));
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        Assert.Equal("この|team", string.Join("|", k.Host.View.Clauses!), "最後の文節は伸ばせない");
+        k.Key(VirtualKeys.LShift, up: true);
+
+        k = new Keyboard();
+        k.Type("konoteamXyz");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("この|team|Xyz", string.Join("|", k.Host.View!.Clauses!));
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        Assert.Equal("この|team|Xyz", string.Join("|", k.Host.View.Clauses!), "次の文節がかなに読めないので伸ばせない");
         k.Key(VirtualKeys.LShift, up: true);
     }
 
@@ -1986,12 +2888,242 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void FunctionKeys_TypingAfterCommits()
+    {
+        // F7 でカタカナにしたあと続けて打つと、カタカナを確定して新しく入力する (続きまでカタカナにしない)
+        var k = new Keyboard();
+        k.Type("tesuto");
+        k.Press(VirtualKeys.F7);
+        k.Type("desu");
+        Assert.Equal("テスト", string.Concat(k.Host.Output));
+        Assert.Equal("です", k.Showing);
+
+        // F10 で大文字にしたあとも同じ (続きまで大文字にしない)
+        k = new Keyboard();
+        k.Type("tesuto");
+        k.Press(VirtualKeys.F10);
+        k.Press(VirtualKeys.F10);
+        Assert.Equal("TESUTO", k.Showing);
+        k.Type("desu");
+        Assert.Equal("TESUTO", string.Concat(k.Host.Output));
+        Assert.Equal("です", k.Showing);
+    }
+
+    [Test]
+    public static void F8_HalfWidthKatakana()
+    {
+        // Issue #74: F8 で半角カタカナ (Microsoft IME と同じ)。濁点・半濁点は ﾞ ﾟ に分ける
+        var k = new Keyboard();
+        k.Type("aiueo");
+        k.Press(VirtualKeys.F8);
+        Assert.Equal("ｱｲｳｴｵ", k.Showing);
+        k.Press(VirtualKeys.Return);
+        Assert.Equal("ｱｲｳｴｵ", k.Host.Document);
+
+        k = new Keyboard();
+        k.Type("gakkoupa-ri-");
+        k.Press(VirtualKeys.F8);
+        Assert.Equal("ｶﾞｯｺｳﾊﾟｰﾘｰ", k.Showing);
+        k.Press(VirtualKeys.F6);
+        Assert.Equal("がっこうぱーりー", k.Showing);
+
+        // 変換中に押しても半角カタカナにする
+        k = new Keyboard();
+        k.Type("tesuto ");
+        k.Press(VirtualKeys.F8);
+        k.Press(VirtualKeys.Return);
+        Assert.Equal("ﾃｽﾄ", k.Host.Document);
+    }
+
+    [Test]
     public static void OtherKeys_CommitFirstThenPassThroughInOrder()
     {
         var k = new Keyboard();
         k.Type("kana");
         k.Press(VirtualKeys.Tab);
         Assert.Equal("text:かな|down:09|passed-up:09", string.Join("|", k.Host.Events), "確定後の キーアップ は関所を通らず直接届く");
+    }
+
+    private static void ShiftTab(Keyboard k)
+    {
+        k.Host.PhysicalShift = true;
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Tab);
+        k.Key(VirtualKeys.LShift, up: true);
+        k.Host.PhysicalShift = false;
+    }
+
+    /// <summary>今日は を 今日|は に区切る変換エンジン (変換したあとに続けて打つテスト用)。</summary>
+    private sealed class KyouhaConverter : IKanjiConverter
+    {
+        private readonly FakeConverter _inner = new();
+        public string? Convert(string hiragana) => _inner.Convert(hiragana);
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) => hiragana switch
+        {
+            "きょう" => [new("きょう", "今日")],
+            "きょうは" => [new("きょう", "今日"), new("は", "は")],
+            _ => _inner.ConvertClauses(hiragana, context),
+        };
+    }
+
+    [Test]
+    public static void ContinueAfterConversion_KeepsTheConvertedPartComposing()
+    {
+        // #123: 設定を ON にすると、Space で変換したあとに続けて打っても確定せず、続けて打った文字と一緒に変換ボックスに残る
+        var k = new Keyboard(converter: new KyouhaConverter()) { ContinueAfterConversion = true };
+        k.Type("kyou ");
+        Assert.Equal("今日", k.Showing);
+        k.Type("ha");
+        Assert.Equal(0, k.Host.Output.Count, "確定しない");
+        Assert.Equal("きょうは", k.Showing);
+        k.Type(" \n");
+        Assert.Equal("今日は", k.Host.Document);
+
+        // 選んでいた候補 (キョウ) は、続けて打ったあとにもう一度変換しても使う
+        k = new Keyboard(converter: new KyouhaConverter()) { ContinueAfterConversion = true };
+        k.Type("kyou ");
+        var index = k.Host.View!.Candidates.ToList().IndexOf("キョウ");
+        Assert.True(index > 0, string.Join(" ", k.Host.View!.Candidates));
+        for (var i = 0; i < index; i++) k.Press(VirtualKeys.Space);
+        Assert.Equal("キョウ", k.Showing);
+        k.Type("ha ");
+        Assert.Equal("キョウは", k.Showing);
+        k.Press(VirtualKeys.Return);
+        Assert.Equal("キョウは", k.Host.Document);
+
+        // 既定 (OFF) は今までどおり、変換した部分を確定してから続きを打つ
+        var normal = new Keyboard(converter: new KyouhaConverter());
+        Assert.True(!new Meltype.Config.Settings().ContinueAfterConversion, "既定で OFF");
+        normal.Type("kyou ha");
+        Assert.Equal("今日", string.Concat(normal.Host.Output));
+    }
+
+    [Test]
+    public static void TabConversion_IsOnByDefault()
+    {
+        // #219: 設定「Tab で変換」は既定で ON
+        Assert.True(new Meltype.Config.Settings().TabConversion, "既定で ON");
+    }
+
+    [Test]
+    public static void TabConversion_StartsConversionLikeSpace()
+    {
+        // #219: 設定 ON なら変換前の Tab で、Space と同じ表示・候補の変換が始まり、Tab はアプリに渡らない
+        var space = new Keyboard();
+        space.Type("kana ");
+        var k = new Keyboard(tabConversion: true);
+        k.Type("kana");
+        k.Press(VirtualKeys.Tab);
+        Assert.True(k.Host.View?.Converting == true, "変換が始まる");
+        Assert.Equal(space.Showing, k.Showing);
+        Assert.Equal(string.Join(",", space.Host.View!.Candidates), string.Join(",", k.Host.View!.Candidates));
+        Assert.True(!k.Host.Events.Any(e => e == "down:09"), "Tab は渡さない: " + string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void TabConversion_TabMovesToNextAndShiftTabToPreviousCandidate()
+    {
+        // #219: Tab で始めた変換の中では Tab が次の候補 (Space と同じ)、Shift+Tab が前の候補
+        var space = new Keyboard();
+        space.Type("kana  ");
+        var k = new Keyboard(tabConversion: true);
+        k.Type("kana");
+        k.Press(VirtualKeys.Tab);
+        var first = k.Showing;
+        k.Press(VirtualKeys.Tab);
+        Assert.Equal(space.Showing, k.Showing);
+        Assert.True(k.Showing != first, "候補が変わる");
+        ShiftTab(k);
+        Assert.Equal(first, k.Showing, "前の候補に戻る");
+    }
+
+    [Test]
+    public static void TabConversion_EnterCommitsFirstCandidateWithoutPassingTab()
+    {
+        // #219: Tab で始めた変換は Enter で 1 番目の候補を確定し、Tab はアプリに渡らない
+        var space = new Keyboard();
+        space.Type("kana ");
+        space.Press(VirtualKeys.Return);
+        var k = new Keyboard(tabConversion: true);
+        k.Type("kana");
+        k.Press(VirtualKeys.Tab);
+        k.Press(VirtualKeys.Return);
+        Assert.Equal(space.Host.Document, k.Host.Document);
+        Assert.True(!k.Host.Events.Any(e => e == "down:09"), string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void TabConversion_TabInsideSpaceConversion_CommitsAndPassesTab()
+    {
+        // #219: Space で始めた変換の中の Tab は、今までどおり確定して Tab を渡す
+        var off = new Keyboard();
+        off.Type("kana ");
+        off.Press(VirtualKeys.Tab);
+        var k = new Keyboard(tabConversion: true);
+        k.Type("kana ");
+        k.Press(VirtualKeys.Tab);
+        Assert.Equal(string.Join("|", off.Host.Events), string.Join("|", k.Host.Events));
+        Assert.True(k.Host.Events.Contains("down:09"), string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void TabConversion_EndingInEnglish_CommitsAndPassesTabWithoutSpace()
+    {
+        // #219: 英語で終わっているときは変換せず、確定して Tab を渡す (空白は入れない)
+        var k = new Keyboard(tabConversion: true);
+        k.Type("hello");
+        k.Press(VirtualKeys.Tab);
+        Assert.Equal("text:hello|down:09|passed-up:09", string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void TabConversion_PredictionTakesTabFirst()
+    {
+        // #219: 予測変換の候補が出ているときの Tab は、今までどおり予測を選ぶ
+        var k = new Keyboard(predictor: new Predictor(new PhraseHistory(null), null, null), tabConversion: true);
+        k.Type("kyou ");
+        k.Press(VirtualKeys.Return);
+        k.Type("kyo");
+        k.Press(VirtualKeys.Tab);
+        Assert.True(k.Host.View?.Converting != true, "変換にはならない");
+        Assert.Equal("今日", k.Showing);
+        Assert.Equal(0, k.Host.View!.SelectedPrediction);
+    }
+
+    [Test]
+    public static void TabConversion_MisspellingTakesTabFirst()
+    {
+        // #219: もしかしての提案が出ているときの Tab は、今までどおり書き間違いを直す
+        var k = new Keyboard(tabConversion: true);
+        k.Type("buresureddo");
+        k.Press(VirtualKeys.Tab);
+        Assert.Equal("ぶれすれっと", k.Showing);
+        Assert.True(k.Host.View?.Converting != true, "変換にはならない");
+    }
+
+    [Test]
+    public static void TabConversion_EscThenTab_StartsConversionAgain()
+    {
+        // #219: Esc で変換を取り消してかなに戻ったあとの Tab は、また変換を始める
+        var k = new Keyboard(tabConversion: true);
+        k.Type("kana");
+        k.Press(VirtualKeys.Tab);
+        k.Press(VirtualKeys.Escape);
+        Assert.True(k.Host.View?.Converting != true, "かなに戻る");
+        k.Press(VirtualKeys.Tab);
+        Assert.True(k.Host.View?.Converting == true, "再び変換が始まる");
+        Assert.True(!k.Host.Events.Any(e => e == "down:09"), string.Join("|", k.Host.Events));
+    }
+
+    [Test]
+    public static void TabConversion_ShiftTabWithoutPrediction_CommitsAndPassesTab()
+    {
+        // #219: Shift+Tab は変換を始めず、今までどおり確定して通す
+        var k = new Keyboard(tabConversion: true);
+        k.Type("kana");
+        ShiftTab(k);
+        Assert.True(k.Host.View?.Converting != true, "変換にはならない");
+        Assert.True(k.Host.Events.Contains("down:09"), string.Join("|", k.Host.Events));
     }
 
     [Test]
@@ -2075,6 +3207,8 @@ internal static class CompositionTests
             ("website", "website"),
             ("websitewomiru", "websiteをみる"),
             ("tetsudou", "てつどう"),
+            // #422: declutter が辞書に無いと、助詞 de + clutter に割れて「むだをでclutterする」になる
+            ("mudawodecluttersuru", "むだをdeclutterする"),
         })
         {
             // 実際と同じく、辞書にない英単語 (website) はスペルチェッカーで見る
@@ -2084,6 +3218,33 @@ internal static class CompositionTests
                 var k = new Keyboard();
                 k.Type(typed + "\n");
                 Assert.Equal(expected, k.Host.Document, typed);
+            }
+            finally
+            {
+                Detector.SpellChecker = null;
+            }
+        }
+    }
+
+    [Test]
+    public static void EnglishVerb_PlusSuru_PendingConsonantIsShownOnce()
+    {
+        // 英単語 + する の活用の打ちかけの子音が 2 回出ていた (googleしまss)。Space で変換する読みも同じ
+        foreach (var (typed, expected, converted) in new[]
+        {
+            ("googleshimas", "googleしまs", "googleしまs"),
+            ("googleshimasen", "googleしませn", "googleしません"),
+            ("reflectsaret", "reflectされt", "reflectされt"),
+        })
+        {
+            Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+            try
+            {
+                var k = new Keyboard();
+                k.Type(typed);
+                Assert.Equal(expected, k.Showing, typed);
+                k.Type(" ");
+                Assert.Equal(converted, k.Showing, typed + " (Space)");
             }
             finally
             {
@@ -2110,6 +3271,34 @@ internal static class CompositionTests
         })
         {
             Assert.Equal(expected, CompositionController.AddSpacesAroundEnglish(text, before, after), text);
+        }
+    }
+
+    [Test]
+    public static void SpaceAroundEnglish_WhenTypingInTheCompositionBox()
+    {
+        // #248: 英数を使わず、変換ボックスの中で英語と日本語を判定して打っても、設定「英単語の前後に半角スペース」が効く
+        Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, expected) in new[]
+            {
+                ("kyouhaGooglenipushshita\n", "きょうは Google に push した"),
+                ("pingwoutsu\n", "ping をうつ"),
+                ("meetingga\n", "meeting が"),
+                ("kyouhashoppingniiku\n", "きょうは shopping にいく"),
+                // 別々に確定しても、前に確定した英単語との間に入れる
+                ("GitHub\nni\n", "GitHub に"),
+            })
+            {
+                var k = new Keyboard { SpaceAroundEnglish = true };
+                k.Type(typed);
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+        finally
+        {
+            Detector.SpellChecker = null;
         }
     }
 
@@ -2228,5 +3417,82 @@ internal static class CompositionTests
         var k = new Keyboard { SigilWords = false };
         k.Type("/review");
         Assert.True(k.Gate.IsCaptured, "OFF なら今までどおり変換ボックスに入れる");
+    }
+
+    [Test]
+    public static void Issue455_OemNoPasokon()
+    {
+        // Issue #455: oem は 3 文字の略語。oemnopasokonn を おえもの と読まず、oem + の + ぱそこん。
+        // 漢字変換のないランナーでは、打った小文字のまま oemのぱそこん。おえむ (oemu) は日本語のまま。
+        var k = new Keyboard();
+        k.Type("oemnopasokonn\n");
+        Assert.Equal("oemのぱそこん", k.Host.Document);
+        k = new Keyboard();
+        k.Type("oemu\n");
+        Assert.Equal("おえむ", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue455_KatakanaExpectIgnoresAsciiCase()
+    {
+        var tsv = Path.Combine(Path.GetTempPath(), $"meltype-expect-455-{Guid.NewGuid():N}.tsv");
+        var json = Path.Combine(Path.GetTempPath(), $"meltype-expect-455-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(tsv, "oemnopasokonn\tOEMのパソコン\noemnopasokonn\tCPUのパソコン\n");
+            Checks.Expect(tsv, json);
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(json));
+            var rows = doc.RootElement.EnumerateArray().ToArray();
+            Assert.Equal(2, rows.Length);
+            Assert.True(rows[0].GetProperty("ok").GetBoolean(), "OEMのパソコン は oemのぱそこん と一致する");
+            Assert.Equal("oemのぱそこん", rows[0].GetProperty("actual").GetString());
+            Assert.Equal(false, rows[1].GetProperty("ok").GetBoolean());
+        }
+        finally
+        {
+            if (File.Exists(tsv)) File.Delete(tsv);
+            if (File.Exists(json)) File.Delete(json);
+        }
+    }
+
+    [Test]
+    public static void Issue407_TsuideNiFetch()
+    {
+        // Issue #407: ついでに の途中の ide を英単語にしない。見出しが先頭の ideにfetch は英字のまま。
+        foreach (var (typed, expected) in new[]
+        {
+            ("tuidenifetch upstream", "ついでにfetch upstream"),
+            ("idenifetch", "ideにfetch"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
+
+    [Test]
+    public static void Issue154_AbcToDef()
+    {
+        // Issue #154: 英字のあいだの「と」は助詞。全体を 1 つの英単語にしない。
+        var k = new Keyboard();
+        k.Type("abctodef\n");
+        Assert.Equal("abcとdef", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue338_ZArrowKeys()
+    {
+        // Issue #338: zh / zj / zk / zl は Microsoft IME と同じ矢印。z + 記号は今までどおり。zz の次の l (puzzle) は矢印にしない。
+        foreach (var (typed, expected) in new[]
+        {
+            ("zh", "←"), ("zj", "↓"), ("zk", "↑"), ("zl", "→"),
+            ("z/", "・"), ("zu", "ず"), ("puzzle", "ぷっぞえ"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
     }
 }
