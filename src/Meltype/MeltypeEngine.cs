@@ -13,7 +13,7 @@ namespace Meltype;
 
 /// <summary>
 /// 各モジュールをつなぐ (設計書 §4)。スレッドは 3 種類:
-///   フックのスレッド   … KeyboardMonitor。InputSession に打鍵を渡すだけ。
+///   フックのスレッド   … KeyboardMonitor。InputSession に打鍵を渡すだけ (例外: Alt の単独押しの解放の送り直し、MaskAltTap)。
 ///   再入力ワーカー     … IME 切替と保留分の再入力。待ちが発生する処理はすべてここ (STA)。
 ///   タイマー           … 無入力での出力、IME 状態のポーリング、学習データの保存。
 /// </summary>
@@ -281,7 +281,19 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             return true;
         }
         // Meltype IME (TSF): 入力は IME の側で受け持つので、フックでは何もしない。
-        if (settings.Mode == InputMode.Tsf) return false;
+        // 左右の Alt の単独押しだけは、Meltype キーボードと同じく英数 / 日本語の切り替えに使う (Meltype IME が受け持つアプリで。TipServer と同じ判定)。
+        if (settings.Mode == InputMode.Tsf)
+        {
+            var app = _foreground.Current;
+            if (altTap != AltTap.None && settings.Enabled && settings.AltKeysSwitchKeyboard &&
+                settings.IsAppEnabled(app.ProcessName) && !settings.IsGame(app.ProcessName, looksLikeGame: false))
+            {
+                var masked = MaskAltTap(altTap, e);
+                if (altTap == AltTap.Tapped) SetImeOpenAsync(japanese: e.Vk == VirtualKeys.RMenu);
+                return masked;
+            }
+            return false;
+        }
         if (settings.Mode != InputMode.Keyboard)
         {
             if (!e.Injected) TrackLine(e);
@@ -303,12 +315,12 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             return false;
         }
 
-        // 左 Alt の単独押しで英数、右 Alt の単独押しで日本語。Alt の押下・解放はそのままアプリに通す。
+        // 左 Alt の単独押しで英数、右 Alt の単独押しで日本語。Alt の押下はそのままアプリに通し、解放はメニューバーに移らないよう送り直す (MaskAltTap)。
         if (altTap != AltTap.None && settings.Enabled && settings.AltKeysSwitchKeyboard && !composition.Gate.IsCaptured)
         {
-            // 単独押しでメニューバーに移らないよう、押している間に何もしないキーを送る (Alt + ` と同じ)。
-            if (altTap == AltTap.Pressed) ThreadPool.QueueUserWorkItem(_ => KeyInjector.SendKey(0xE8));
-            else SetKeyboardMode(composition, settings, japanese: e.Vk == VirtualKeys.RMenu);
+            var masked = MaskAltTap(altTap, e);
+            if (altTap == AltTap.Tapped) SetKeyboardMode(composition, settings, japanese: e.Vk == VirtualKeys.RMenu);
+            if (masked) return true;
         }
         // 無変換で英数、変換で日本語 (Mac の 英数 / かな と同じく、トグルではなく決まったモードにする)。
         if (settings.Enabled && settings.ConvertKeysSwitchKeyboard && e.Vk is VirtualKeys.NonConvert or VirtualKeys.Convert && e.IsDown && !e.Injected && !composition.Gate.IsCaptured)
@@ -411,6 +423,45 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
     private static void MaskAltRelease()
     {
         if (IsDown(VirtualKeys.Menu)) ThreadPool.QueueUserWorkItem(_ => KeyInjector.SendKey(0xE8));
+    }
+
+    /// <summary>
+    /// 左右の Alt の単独押しでメニューバーに移らないよう、Alt の解放を止めて、何もしないキー (0xE8、割り当てなし) のあとに送り直す。
+    /// まとめて SendInput で送り、次の打鍵より先に届くように、ここだけはフックのスレッドで送る。
+    /// 押している間にスレッドプールで 0xE8 を送るやり方では、すぐに離すと Alt の解放のほうが先に並んでいて、メニューバーに移った。
+    /// 管理者として動くアプリには送り直した Alt の解放が届かず (UIPI)、Alt が押されたままになるので止めない。
+    /// 戻り値: このキー (Alt の解放) を止めたか。
+    /// </summary>
+    private bool MaskAltTap(AltTap altTap, KeyEvent e) =>
+        altTap == AltTap.Tapped && ForegroundTracker.CanSendInputTo(_foreground.Current) && _injector.Inject(MaskedAltRelease(e));
+
+    /// <summary>Alt の単独押しの解放 release の代わりに送るキー (0xE8 の押下・解放のあとに、release をそのまま。右 Alt の拡張キーの印も残す)。</summary>
+    internal static KeyEvent[] MaskedAltRelease(KeyEvent release) =>
+        [new KeyEvent(0xE8, 0, false, false, false, 0), new KeyEvent(0xE8, 0, false, true, false, 0), release];
+
+    /// <summary>
+    /// Meltype IME のモードで、前面のアプリの IME を日本語入力 / 英数にする (左右の Alt の単独押し)。
+    /// Meltype IME は開閉の変化を受けて表示を切り替え、英数にするときは変換中の文字を確定する。
+    /// 「コード」のアプリのコードの行だけを日本語にする働き (半角/全角 と同じ) はない。フックのスレッドでは待たない。
+    /// </summary>
+    private void SetImeOpenAsync(bool japanese)
+    {
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try
+            {
+                // 日本語のキーボードでなければ IME は無い
+                if (ImeTarget.FromForeground() is not { } target || (Native.GetKeyboardLayout(target.ThreadId).ToInt64() & 0xFFFF) != 0x0411) return;
+                if (_imm32.TrySetOpen(target, japanese, null, _settings.ImeTimeoutMs))
+                    Log.Info(japanese ? "左右の Alt: 日本語入力にしました (右 Alt)" : "左右の Alt: 英数にしました (左 Alt)");
+                else
+                    Log.Warn($"左右の Alt: {(japanese ? "日本語入力" : "英数")}にできませんでした。");
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"左右の Alt: IME を切り替えられませんでした: {ex.Message}");
+            }
+        });
     }
 
     // ---- アプリの種類「コード」: コメント・文字列の中だけ日本語 ----

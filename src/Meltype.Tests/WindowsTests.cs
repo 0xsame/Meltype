@@ -124,6 +124,17 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void AltTap_ReleaseIsSentAfterMaskKey()
+    {
+        // 右 Alt (拡張キー) の単独押しの解放: 0xE8 の押下・解放のあとに、解放をそのまま送り直す (先に解放が届くとメニューバーに移る)
+        var release = new KeyEvent(VirtualKeys.RMenu, 0x38, Extended: true, IsUp: true, Injected: false, TimeMs: 0);
+        var events = MeltypeEngine.MaskedAltRelease(release);
+        Assert.Equal(3, events.Length);
+        Assert.True(events[0] is { Vk: 0xE8, IsUp: false } && events[1] is { Vk: 0xE8, IsUp: true }, "先に 0xE8 を押して離す");
+        Assert.True(events[2] is { Vk: VirtualKeys.RMenu, Scan: 0x38, Extended: true, IsUp: true }, "解放は右 Alt の拡張キーのまま");
+    }
+
+    [Test]
     public static void RecheckStale_CooldownIsPerForegroundWindow()
     {
         // ブラウザーで再確認した直後に LINE へ移っても、共有クールダウンで抑止されない
