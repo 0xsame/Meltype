@@ -991,7 +991,7 @@ void TextService::QueryMode(TfEditCookie ec, ITfContext* context, bool selection
                           ",\"before\":" + JsonString(before) + "}";
     JsonValue reply;
     // キャレットを動かすたびに呼ぶので、応答が遅ければ待たない (表示が次のキーまで古いだけ)
-    if (Request(request, reply, 100)) {
+    if (Request(request, reply, 100, true)) {
         ApplyMode(reply);
     }
 }
@@ -1071,7 +1071,7 @@ void TextService::Reinject(UINT vk) {
     }
 }
 
-bool TextService::Request(const std::string& json, JsonValue& reply, DWORD timeoutMs) {
+bool TextService::Request(const std::string& json, JsonValue& reply, DWORD timeoutMs, bool optional) {
     if (deactivated_) return false;
     std::string response;
     // Meltype.exe 自身の中: どのスレッドからの要求かを付ける (画面のスレッドからなら、Meltype.exe はそのスレッドを待たずに処理する。
@@ -1081,7 +1081,7 @@ bool TextService::Request(const std::string& json, JsonValue& reply, DWORD timeo
         request.insert(request.size() - 1, ",\"tid\":" + std::to_string(GetCurrentThreadId()));
     }
     // 初めての変換は Mozc の起動などで時間がかかることがあるので、少し長めに待つ
-    if (!pipe_.Transact(request, response, timeoutMs)) return false;
+    if (!pipe_.Transact(request, response, timeoutMs, optional)) return false;
     if (!ParseJson(response, reply)) {
         TipLog(L"応答を読めません");
         return false;
@@ -1544,11 +1544,18 @@ void TextService::ShowCandidates(TfEditCookie ec, ITfContext* context, const Jso
     data.selected = view[L"selectedIndex"].Int();
     data.suggestion = view[L"suggestion"].Str();
     data.meaning = view[L"meaning"].Str();
+    // 打ったキー: 見えている文字と同じ (英字のまま) なら出さない
+    if (view[L"typed"].Str() != view[L"text"].Str()) data.typed = view[L"typed"].Str();
     bool converting = view[L"converting"].Bool();
     const auto& predictions = view[L"predictions"].array;
-    if (!((converting && data.candidates.size() > 1) || !data.suggestion.empty() || (!converting && !predictions.empty()))) {
+    if (!((converting && data.candidates.size() > 1) || !data.suggestion.empty() || (!converting && !predictions.empty()) || !data.typed.empty())) {
         candidates_->Hide();
         return;
+    }
+    // 打ったキーだけを出すときは、候補が 1 つでも一覧にしない
+    if (converting && data.candidates.size() <= 1) {
+        data.candidates.clear();
+        data.meaning.clear();
     }
     if (!converting) {
         // 変換していないときは、予測変換の候補を出す (Tab で選ぶ。無ければ「もしかして」だけ)

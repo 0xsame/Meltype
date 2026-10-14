@@ -470,8 +470,16 @@ internal static class SessionFacadeTests
     public static void Json_IsEscaped()
     {
         var result = new SessionResult(true, [new TextEdit(2, "a\"b\\c\n")], new CompositionView("x", ["y"], 0, true, "h", ["x"], 0));
-        const string expected = """{"consumed":true,"commits":[{"deleteBefore":2,"text":"a\"b\\c\n"}],"view":{"text":"x","converting":true,"selectedIndex":0,"selectedClause":0,"hint":"h","candidates":["y"],"clauses":["x"],"suggestion":null,"meaning":null,"notes":[null],"predictions":[],"selectedPrediction":-1}}""";
+        const string expected = """{"consumed":true,"commits":[{"deleteBefore":2,"text":"a\"b\\c\n"}],"view":{"text":"x","converting":true,"selectedIndex":0,"selectedClause":0,"hint":"h","candidates":["y"],"clauses":["x"],"suggestion":null,"meaning":null,"notes":[null],"predictions":[],"selectedPrediction":-1,"typed":null}}""";
         Assert.Equal(expected, result.ToJson());
+    }
+
+    [Test]
+    public static void Json_HasTypedKeys_WhenSettingIsOn()
+    {
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(), new CompositionOptions { ShowTypedKeys = () => true }, () => new Settings());
+        var json = Type(session, "kyou")[^1].ToJson();
+        Assert.True(json.Contains("\"typed\":\"kyou\""), json);
     }
 
     [Test]
@@ -738,5 +746,39 @@ internal static class SessionFacadeTests
         session.Private = false;
         ChooseHashi(session);
         Assert.Equal("箸を", history.Get("はしを"));
+      }
+    [Test]
+    public static void CreateDefault_SessionsShareLearning()
+    {
+        // 入力欄 (セッション) が 2 つあっても、学習データは 1 つ。B で選び直して保存しても、A で選び直したものが消えない
+        var directory = Path.Combine(Path.GetTempPath(), "meltype-session-share-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            IReadOnlyList<string> More(string reading) => reading switch
+            {
+                "かわ" => ["川", "皮", "河"],
+                "あつい" => ["熱い", "暑い", "厚い"],
+                _ => [],
+            };
+            var a = MeltypeSession.CreateDefault(directory, new CompositionTests.FakeConverter(), More, null);
+            var b = MeltypeSession.CreateDefault(directory, new CompositionTests.FakeConverter(), More, null);
+            void Choose(MeltypeSession session, string typed, string word)
+            {
+                var view = Type(session, typed + " ")[^1].View;
+                Assert.True(view?.Candidates.Contains(word) == true, $"{typed}: {string.Join(",", view?.Candidates ?? [])}");
+                session.SelectCandidate(view!.Candidates.ToList().IndexOf(word));
+                Assert.Equal(word, Type(session, "\n")[0].Commits.Single().Text, typed);
+            }
+            Choose(a, "kawa", "皮");
+            Choose(b, "atsui", "暑い");
+
+            var saved = new ConversionHistory(Path.Combine(directory, "conversions.json"));
+            Assert.Equal("皮", saved.Get("かわ"), "A で覚えたものが B の保存で消えない");
+            Assert.Equal("暑い", saved.Get("あつい"));
+            // 次に作った入力欄でも、A・B で覚えたものを使う
+            var c = MeltypeSession.CreateDefault(directory, new CompositionTests.FakeConverter(), More, null);
+            Assert.Equal("皮", Type(c, "kawa ")[^1].View?.Candidates[0]);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 }
