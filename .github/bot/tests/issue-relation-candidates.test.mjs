@@ -16,12 +16,28 @@ test('extracts identifiers and excludes log/environment sections', () => {
   assert.ok(!signals.text.includes('privatepath'));
 });
 
-test('builds bounded repository-scoped queries', () => {
-  const query = buildSearchQuery('yksr-melt/Meltype', [['0x80004005', 4], ['IME自動切替', 4]]);
-  assert.match(query, /repo:yksr-melt\/Meltype is:issue/);
-  assert.match(query, /0x80004005/);
+test('builds repository-scoped queries with at most five OR operators', () => {
+  const terms = [
+    ['ordinarylongterm', 1],
+    ['0x80004005', 1],
+    ['Win32Error', 1],
+    ['featureproposal', 1],
+    ['anotherterm', 1],
+    ['fifthterm', 1],
+    ['sixthterm', 1],
+    ['seventhterm', 1],
+    ['ORDINARYLONGTERM', 0],
+  ];
+  const query = buildSearchQuery('yksr-melt/Meltype', terms);
+  assert.match(query, /repo:yksr-melt\\/Meltype is:issue/);
+  assert.match(query, /"0x80004005"/);
+  assert.match(query, /"win32error"/);
+  assert.equal((query.match(/\\sOR\\s/g) ?? []).length, 5);
+  assert.equal((query.match(/"ordinarylongterm"/g) ?? []).length, 1);
+  assert.equal(buildSearchQuery('yksr-melt/Meltype', [['0x80004005', 4], ['IME自動切替', 4]]).match(/\\sOR\\s/g)?.length ?? 0, 1);
   assert.equal(buildSearchQuery('yksr-melt/Meltype', []), null);
 });
+
 
 test('explicit references and identifiers rank above weak overlap', () => {
   const current = { number: 10, title: 'Win32Error on launch', body: '### 詳細\n0x80004005 launch failure #12', labels: [{ name: 'bug' }] };
