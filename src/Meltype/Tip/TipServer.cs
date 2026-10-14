@@ -381,6 +381,29 @@ internal sealed class TipServer : IDisposable
         }
     }
 
+    /// <summary>
+    /// 応答に時間がかかった要求をログに残す。DLL はキーの応答を 800ms まで待ち、来なければ打った文字のまま入れるので、
+    /// その原因を調べられるように (UI スレッドが空くのを待った時間も含む)。打った文字は書かない。
+    /// 遅いことが続いてもほかのログを押し出さないように、書くのは 20 回まで。
+    /// </summary>
+    private void LogSlow(string request, long elapsedMs)
+    {
+        if (elapsedMs < SlowRequestMs || Interlocked.Increment(ref _slowRequests) > 20) return;
+        string? op = null;
+        try
+        {
+            using var document = JsonDocument.Parse(request);
+            if (document.RootElement.TryGetProperty("op", out var value)) op = value.GetString();
+        }
+        catch (JsonException) { }
+        // op はアプリの側が送ってくるので、知っているものだけを書く (ログを崩さないように)
+        var shown = op is "hello" or "key" or "commit" or "select" or "close" or "toggle" or "mode" ? op : "?";
+        Log.Warn($"Meltype IME: 要求 ({shown}) の応答に {elapsedMs}ms かかりました。");
+    }
+
+    private const int SlowRequestMs = 500;
+    private int _slowRequests;
+
     private async Task Serve(NamedPipeServerStream pipe)
     {
         // このつながりの入力の本体 (UI スレッドからだけ触る。Meltype.exe 自身の UI スレッドのつながりは、UI スレッドが止まっている間に触る)
@@ -406,7 +429,9 @@ internal sealed class TipServer : IDisposable
                 try
                 {
                     var request = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
+                    var started = Environment.TickCount64;
                     reply = FromOwnUiThread(ownClient, request) ? Handle(request, sessions) : Invoke(() => Handle(request, sessions));
+                    LogSlow(request, Environment.TickCount64 - started);
                 }
                 catch (Exception ex)
                 {
