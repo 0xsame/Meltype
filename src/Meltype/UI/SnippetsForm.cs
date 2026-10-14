@@ -32,6 +32,8 @@ internal sealed class SnippetsForm : Form
     {
         _store = store;
         _mark = mark;
+        // 定型文の文章は日本語で書くので、Meltype キーボードで打てるようにする (名前は半角の英数字・記号なので英数のまま)
+        Input.ForegroundTracker.AllowTyping(this, _name);
         Text = "Meltype 定型文";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(620, 580);

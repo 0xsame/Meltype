@@ -383,7 +383,9 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             return true;
         }
         // 入力欄にフォーカスがないとき (エクスプローラーのファイル一覧など) は展開しない。名前を消す Backspace が「前のフォルダーに戻る」になってしまう。
-        if (e.Vk is not (VirtualKeys.Space or VirtualKeys.Tab) || IsDown(VirtualKeys.Shift) || !SnippetsEnabled(settings) || !composition.Focus.CanCapture) return false;
+        // Meltype の設定画面などでも展開しない。プロファイルの名前などの画面を閉じて戻った直後は、フォーカスの判定が閉じた画面の入力欄のまま残っている。
+        if (e.Vk is not (VirtualKeys.Space or VirtualKeys.Tab) || IsDown(VirtualKeys.Shift) || !SnippetsEnabled(settings) || !composition.Focus.CanCapture ||
+            ForegroundTracker.IsOwnWindow(Native.GetForegroundWindow())) return false;
         _snippet.Mark = settings.SnippetMark;
         if (_snippet.Expand(composition.Snippets) is not { } expansion) return false;
         lock (_swallowedToggleUps) _swallowedToggleUps.Add(e.Vk);
