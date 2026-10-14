@@ -1538,11 +1538,18 @@ void TextService::ShowCandidates(TfEditCookie ec, ITfContext* context, const Jso
     data.selected = view[L"selectedIndex"].Int();
     data.suggestion = view[L"suggestion"].Str();
     data.meaning = view[L"meaning"].Str();
+    // 打ったキー: 見えている文字と同じ (英字のまま) なら出さない
+    if (view[L"typed"].Str() != view[L"text"].Str()) data.typed = view[L"typed"].Str();
     bool converting = view[L"converting"].Bool();
     const auto& predictions = view[L"predictions"].array;
-    if (!((converting && data.candidates.size() > 1) || !data.suggestion.empty() || (!converting && !predictions.empty()))) {
+    if (!((converting && data.candidates.size() > 1) || !data.suggestion.empty() || (!converting && !predictions.empty()) || !data.typed.empty())) {
         candidates_->Hide();
         return;
+    }
+    // 打ったキーだけを出すときは、候補が 1 つでも一覧にしない
+    if (converting && data.candidates.size() <= 1) {
+        data.candidates.clear();
+        data.meaning.clear();
     }
     if (!converting) {
         // 変換していないときは、予測変換の候補を出す (Tab で選ぶ。無ければ「もしかして」だけ)

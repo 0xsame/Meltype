@@ -470,8 +470,16 @@ internal static class SessionFacadeTests
     public static void Json_IsEscaped()
     {
         var result = new SessionResult(true, [new TextEdit(2, "a\"b\\c\n")], new CompositionView("x", ["y"], 0, true, "h", ["x"], 0));
-        const string expected = """{"consumed":true,"commits":[{"deleteBefore":2,"text":"a\"b\\c\n"}],"view":{"text":"x","converting":true,"selectedIndex":0,"selectedClause":0,"hint":"h","candidates":["y"],"clauses":["x"],"suggestion":null,"meaning":null,"notes":[null],"predictions":[],"selectedPrediction":-1}}""";
+        const string expected = """{"consumed":true,"commits":[{"deleteBefore":2,"text":"a\"b\\c\n"}],"view":{"text":"x","converting":true,"selectedIndex":0,"selectedClause":0,"hint":"h","candidates":["y"],"clauses":["x"],"suggestion":null,"meaning":null,"notes":[null],"predictions":[],"selectedPrediction":-1,"typed":null}}""";
         Assert.Equal(expected, result.ToJson());
+    }
+
+    [Test]
+    public static void Json_HasTypedKeys_WhenSettingIsOn()
+    {
+        var session = new MeltypeSession(CompositionTests.Detector, new CompositionTests.FakeConverter(), new CompositionOptions { ShowTypedKeys = () => true }, () => new Settings());
+        var json = Type(session, "kyou")[^1].ToJson();
+        Assert.True(json.Contains("\"typed\":\"kyou\""), json);
     }
 
     [Test]
