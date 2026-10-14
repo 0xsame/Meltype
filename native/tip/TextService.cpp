@@ -884,6 +884,8 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch) {
             // (送り直すと、その間に打った次のキーより後に届いて順番が入れ替わる)
             keyFailed_ = true;
             serverActive_ = false;
+            // 次のキーで、すぐに問い合わせ直す (Meltype.exe の画面のスレッドが少しふさがっただけなら、次のキーから使える)
+            lastHello_ = 0;
             if (candidates_) candidates_->Hide();
             EndComposition(ec);
             // Ctrl・Alt・Windows キーとの組み合わせは、文字を入れずにアプリに送り直す
