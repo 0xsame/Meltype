@@ -66,6 +66,7 @@ internal sealed class CompositionWindow : Form
     private Font _candidateFont = new(DefaultFamily, 11F);
     private Font _hintFont = new(DefaultFamily, 8.5F);
     private float _scale = 1F;
+    private float _monitorScale = 1F;
     private string _family = DefaultFamily;
     private string? _requestedFamily;
 
@@ -75,6 +76,18 @@ internal sealed class CompositionWindow : Form
         scale = Math.Clamp(scale, 0.6F, 2F);
         if (Math.Abs(scale - _scale) < 0.01F) return;
         _scale = scale;
+        RebuildFonts();
+    }
+
+    /// <summary>
+    /// 出すモニターの DPI とシステムの DPI の比 (1 = 同じ)。変わったときだけ作り直す。
+    /// Meltype は PerMonitorV2 で、文字の pt は起動したときのシステムの DPI で px にされるので、拡大率の違うモニターでは合わせないと小さく / 大きく出る。
+    /// </summary>
+    public void SetMonitorScale(float scale)
+    {
+        scale = Math.Clamp(scale, 0.25F, 5F);
+        if (Math.Abs(scale - _monitorScale) < 0.01F) return;
+        _monitorScale = scale;
         RebuildFonts();
     }
 
@@ -102,13 +115,13 @@ internal sealed class CompositionWindow : Form
         _textFont.Dispose();
         _candidateFont.Dispose();
         _hintFont.Dispose();
-        _textFont = new Font(_family, 13F * _scale);
-        _candidateFont = new Font(_family, 11F * _scale);
+        _textFont = new Font(_family, 13F * _scale * _monitorScale);
+        _candidateFont = new Font(_family, 11F * _scale * _monitorScale);
         // 案内の文字は小さくしすぎると読めないので、縮めるのは少しだけ
-        _hintFont = new Font(_family, 8.5F * Math.Max(_scale, 0.9F));
+        _hintFont = new Font(_family, 8.5F * Math.Max(_scale, 0.9F) * _monitorScale);
     }
 
-    /// <summary>倍率 1 のときの、打った文字の行の高さ (ピクセル)。</summary>
+    /// <summary>倍率 1 のときの、打った文字の行の高さ (システムの DPI のピクセル)。</summary>
     public int BaseTextHeight { get; } = MeasureBaseHeight();
 
     private static int MeasureBaseHeight()
@@ -340,7 +353,8 @@ internal sealed class CompositionWindow : Form
         }
         width = Math.Max(width, TextRenderer.MeasureText(g, view.Hint, _hintFont).Width + 16);
         height += _hintFont.Height + 6;
-        return new Size(Math.Min(width, 900), height);
+        // 幅の上限も文字と同じくモニターの拡大率に合わせる (どのモニターでも入る字数を同じにする)
+        return new Size(Math.Min(width, (int)(900 * _monitorScale)), height);
     }
 
     protected override void OnPaint(PaintEventArgs e)
