@@ -29,12 +29,12 @@ test('builds repository-scoped queries with at most five OR operators', () => {
     ['ORDINARYLONGTERM', 0],
   ];
   const query = buildSearchQuery('yksr-melt/Meltype', terms);
-  assert.match(query, /repo:yksr-melt\\/Meltype is:issue/);
+  assert.ok(query.includes('repo:yksr-melt/Meltype is:issue'));
   assert.match(query, /"0x80004005"/);
   assert.match(query, /"win32error"/);
-  assert.equal((query.match(/\\sOR\\s/g) ?? []).length, 5);
+  assert.equal(query.split(' OR ').length - 1, 5);
   assert.equal((query.match(/"ordinarylongterm"/g) ?? []).length, 1);
-  assert.equal(buildSearchQuery('yksr-melt/Meltype', [['0x80004005', 4], ['IME自動切替', 4]]).match(/\\sOR\\s/g)?.length ?? 0, 1);
+  assert.equal(buildSearchQuery('yksr-melt/Meltype', [['0x80004005', 4], ['IME自動切替', 4]]).split(' OR ').length - 1, 1);
   assert.equal(buildSearchQuery('yksr-melt/Meltype', []), null);
 });
 
