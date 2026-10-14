@@ -117,7 +117,9 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
     /// <summary>UI スレッドで作った変換ボックスをつなぐ。</summary>
     public void AttachComposition(Composition.CompositionService composition)
     {
-        _composition = composition;
+        // 起動の途中から Windows の IME で語を打っている (Enter で確定する前か、確定した直後) なら、閉じずにそのまま打たせる (PollImeState で引き継ぐ)。
+        // 語の途中で Meltype に替わると、前半と後半が別の IME に分かれる。OnKey が _composition を見る前に決めておく
+        Volatile.Write(ref _takeoverPending, IsKeyboardActive && StillTypingInSystemIme() ? 1 : 0);
         composition.PasteCommit = () => PastePolicy.ShouldPaste(_settings, _foreground.Current.ProcessName, IsQt(_foreground.Current.Window));
         composition.InputAllowed = () => KeyboardLayoutPolicy.AllowsInput(_settings);
         composition.Focus.TreatsAsTextInput = () => _settings.TreatsAsTextInput(_foreground.Current.ProcessName)
@@ -136,7 +138,54 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         composition.KeyReplayed += e => TrackLine(e);
         composition.MouseReplayed += () => InvalidateLine();
         composition.Focus.Invalidate();
-        if (IsKeyboardActive) CloseSystemImeAsync();
+        Volatile.Write(ref _composition, composition);
+        if (IsKeyboardActive && !TakeoverPending) CloseSystemImeAsync();
+    }
+
+    /// <summary>起動の途中から Windows の IME で語を打っていて、まだ Meltype キーボードが入力を受け持っていない (1)。</summary>
+    private int _takeoverPending;
+    private bool TakeoverPending => Volatile.Read(ref _takeoverPending) != 0;
+    /// <summary>Meltype キーボードが入力を受け持つ前に、Windows の IME で語を打っている途中か (文字のキーを押してから Enter を押していない)。</summary>
+    private volatile bool _imeMaybeComposing;
+    /// <summary>Meltype キーボードが入力を受け持つ前に、最後にキーを押した時刻。</summary>
+    private long _lastKeyDownMs;
+    /// <summary>最後にキーを押してから、この時間たつまで閉じない (Enter で確定した直後に閉じると、アプリがまだ受け取っていない Enter が改行になる)。</summary>
+    private const int TakeoverQuietMs = 200;
+
+    /// <summary>Windows の IME で語を打っている途中か、打ってすぐか (閉じると、前半と後半が別の IME に分かれる)。</summary>
+    private bool StillTypingInSystemIme() =>
+        _imeMaybeComposing || Environment.TickCount64 - Volatile.Read(ref _lastKeyDownMs) < TakeoverQuietMs;
+
+    /// <summary>
+    /// Meltype キーボードが入力を受け持つ前のキー。Windows の IME で語を打っている途中かを、打ったキーから推す
+    /// (未確定の文字があるかは、ほかのアプリの IME に問い合わせられない)。文字のキーで打ち始め、Enter で確定したとみなす。
+    /// </summary>
+    private void NoteKeyBeforeTakeover(KeyEvent e)
+    {
+        if (!e.IsDown) return;
+        Volatile.Write(ref _lastKeyDownMs, e.TimeMs);
+        if (e.Vk == VirtualKeys.Return) _imeMaybeComposing = false;
+        else if (StartsWordInSystemIme(e)) _imeMaybeComposing = true;
+    }
+
+    /// <summary>Windows の IME が ON なら、変換中の文字を打ち始めるキーか (英字・数字・記号。Ctrl などとの組み合わせは除く)。</summary>
+    private static bool StartsWordInSystemIme(KeyEvent e) =>
+        (VirtualKeys.IsLetter(e.Vk) || IsDigitOrPunctuationKey(e.Vk)) &&
+        !IsDown(VirtualKeys.Control) && !IsDown(VirtualKeys.Menu) && !IsDown(VirtualKeys.LWin) && !IsDown(VirtualKeys.RWin);
+
+    /// <summary>数字・句読点・かぎかっこ・長音・記号のキー (Shift を押して打つ ＃＄％（）＠ なども)。</summary>
+    private static bool IsDigitOrPunctuationKey(int vk) => vk is >= 0x30 and <= 0x39 or >= 0xBA and <= 0xC0 or >= 0xDB and <= 0xDF or 0xE2;
+
+    /// <summary>
+    /// 起動の途中から Windows の IME で打っていたのをやめて、Meltype キーボードが入力を受け持つ。
+    /// 待っていなければ false。Windows の IME を閉じるのは呼び出し元。
+    /// </summary>
+    private bool EndTakeover(string reason)
+    {
+        if (Interlocked.Exchange(ref _takeoverPending, 0) == 0) return false;
+        InvalidateLine();
+        if (IsKeyboardActive) Log.Info($"起動の途中から Windows の IME で打っていたのをやめて、Meltype キーボードが入力を受け持ちます ({reason})。");
+        return true;
     }
 
     /// <summary>終了時。未確定の内容を確定してから切り離す (UI スレッドで呼ぶ)。</summary>
@@ -239,7 +288,12 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             return _session.OnKey(e);
         }
         // 変換ボックスの準備前・終了処理中は何もしない (素通し)。
-        if (_composition is not { } composition) return false;
+        // 起動の途中から Windows の IME で語を打っている間も同じ (確定したら PollImeState で引き継ぐ)
+        if (Volatile.Read(ref _composition) is not { } composition || TakeoverPending)
+        {
+            NoteKeyBeforeTakeover(e);
+            return false;
+        }
 
         // 左 Alt の単独押しで英数、右 Alt の単独押しで日本語。Alt の押下・解放はそのままアプリに通す。
         if (altTap != AltTap.None && settings.Enabled && settings.AltKeysSwitchKeyboard && !composition.Gate.IsCaptured)
@@ -568,7 +622,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         var reconvert = e.Vk == VirtualKeys.Convert;
         // 句読点・かぎかっこ・長音・数字・記号のキー (Shift を押して打つ ＃＄％（）＠ なども) でも変換ボックスを開く。
         // 日本語の中では全角、英語の中では半角になる。
-        var punctuation = e.Vk is >= 0x30 and <= 0x39 or >= 0xBA and <= 0xC0 or >= 0xDB and <= 0xDF or 0xE2;
+        var punctuation = IsDigitOrPunctuationKey(e.Vk);
         // かな入力 (JIS): かなのキー (数字・記号のキーも含む) はすべて入力を始める。
         if (settings.InputStyle == InputStyle.Kana && !_keyboardDirect && KanaDetector.IsKanaKey(e.Vk)) punctuation = true;
         // 日本語入力のときの Shift+Space は全角スペース (Microsoft IME と同じ: issue #24)。
@@ -703,7 +757,11 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         }
         _settings = next;
         if (!next.Enabled || next.Mode != InputMode.Keyboard || !KeyboardLayoutPolicy.AllowsInput(next)) _composition?.Flush();
-        if (next.Mode == InputMode.Keyboard && (previous.Mode != InputMode.Keyboard || !previous.Enabled)) CloseSystemImeAsync();
+        if (next.Mode == InputMode.Keyboard && (previous.Mode != InputMode.Keyboard || !previous.Enabled))
+        {
+            EndTakeover("動作モードか有効・無効を変えた");
+            CloseSystemImeAsync();
+        }
         // Meltype IME のモードにしたら (トレイでも設定画面でも)、いま使う入力方式も Meltype IME にする (Win + Space で選び直さなくてよいように)
         if (SwitchesToTsf(previous.Mode, next.Mode)) Tip.TipServer.ActivateForSession();
         if (!next.Enabled) FlushAbandoned(_session.Abort());
@@ -860,6 +918,9 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
     {
         // 変換中に別のウィンドウに切り替わったら、変換中の内容は捨てる (切り替わった先のアプリに入らないように)。
         _composition?.Abandon("別のウィンドウに切り替わった");
+        // 起動の途中から Windows の IME で打っていた語も、ここで終わる (Meltype キーボードを使うなら下で閉じる)
+        _imeMaybeComposing = false;
+        EndTakeover("別のウィンドウに切り替わった");
         _foreground.Refresh(window);
         InvalidateLine();
         _sigil.Start();
@@ -907,6 +968,14 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             }
             var state = _imm32.GetState(target);
             _imeSnapshot = new ImeSnapshot(target.TopLevel, state, Environment.TickCount64);
+            if (TakeoverPending)
+            {
+                // 起動の途中から Windows の IME で語を打っている間は閉じない。IME が OFF と分かれば、変換中の文字は無い (分からないときは待つ)
+                var closed = state.Mode == IME.ImeMode.Closed;
+                if (!closed && StillTypingInSystemIme()) return;
+                if (EndTakeover(closed ? "IME が OFF" : "Enter で確定した") && IsKeyboardActive) CloseSystemImeAsync();
+                return;
+            }
             if (_settings.Mode == InputMode.Keyboard) KeepSystemImeClosed(target, state);
         }
         catch (Exception ex)
@@ -942,9 +1011,9 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             _lastLayout = layout;
         }
         if (state.Mode != IME.ImeMode.Open) return;
-        var composition = _composition;
-        // 変換ボックスで入力中は、確定の直前に閉じる (CompositionService) ので触らない。
-        if (composition is null || composition.Gate.IsCaptured) return;
+        var composition = Volatile.Read(ref _composition);
+        // 変換ボックスで入力中は、確定の直前に閉じる (CompositionService) ので触らない。起動の途中から Windows の IME で打っている間も触らない
+        if (composition is null || composition.Gate.IsCaptured || TakeoverPending) return;
         var now = Environment.TickCount64;
         // ユーザーが IME を ON にし続ける (閉じてもすぐ開く) なら、10 秒に 3 回までにして奪い合わない。
         if (now - _lastForcedClose > 10000) _forcedCloses = 0;
