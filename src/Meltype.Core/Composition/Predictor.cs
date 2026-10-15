@@ -86,7 +86,7 @@ public sealed class PhraseHistory
         if (_path is null) return;
         try
         {
-            Config.AtomicFile.Write(_path, temp => File.WriteAllLines(temp, _entries.Select(e => $"{e.Key.Reading}\t{e.Key.Text}\t{e.Value.Count}\t{e.Value.Used}"), Encoding.UTF8));
+            Config.DataFile.Write(_path, temp => File.WriteAllLines(temp, _entries.Select(e => $"{e.Key.Reading}\t{e.Key.Text}\t{e.Value.Count}\t{e.Value.Used}"), Encoding.UTF8));
         }
         catch (Exception ex)
         {

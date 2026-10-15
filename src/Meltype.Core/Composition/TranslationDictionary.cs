@@ -108,18 +108,11 @@ public sealed class TranslationHistory
     public TranslationHistory(string? path)
     {
         _path = path;
-        if (path is null || !File.Exists(path)) return;
-        try
+        Config.DataFile.Load(path, "英訳の学習データ", content =>
         {
-            var loaded = JsonSerializer.Deserialize(File.ReadAllText(path), Config.LearningJsonContext.Default.Translations);
+            var loaded = JsonSerializer.Deserialize(content, Config.LearningJsonContext.Default.Translations);
             if (loaded is not null) foreach (var (key, value) in loaded) _counts[key] = value;
-        }
-        catch (Exception ex)
-        {
-            try { File.Copy(path, path + ".broken", overwrite: true); }
-            catch (Exception copyEx) { Diagnostics.Log.Warn($"{Path.GetFileName(path)} を .broken に残せませんでした: {copyEx.Message}"); }
-            Diagnostics.Log.Warn($"英訳の学習データを読めませんでした: {ex.Message}");
-        }
+        });
     }
 
     /// <summary>読みに対して選んだ回数 (多い順)。</summary>
@@ -145,7 +138,7 @@ public sealed class TranslationHistory
         if (_path is null) return;
         try
         {
-            Config.AtomicFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(_counts, Config.LearningJsonContext.Default.Translations)));
+            Config.DataFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(_counts, Config.LearningJsonContext.Default.Translations)));
         }
         catch (Exception ex)
         {

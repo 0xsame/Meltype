@@ -158,7 +158,7 @@ public sealed class UserModel
         }
         try
         {
-            Config.AtomicFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(new ModelFile { Version = 1, Prefixes = snapshot }, Config.IndentedLearningJsonContext.Default.ModelFile)));
+            Config.DataFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(new ModelFile { Version = 1, Prefixes = snapshot }, Config.IndentedLearningJsonContext.Default.ModelFile)));
         }
         catch (Exception ex)
         {

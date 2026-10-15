@@ -212,7 +212,7 @@ public sealed class UserDictionary
         {
             var lines = new List<string> { "# Meltype ユーザー辞書: 1 行に「読み<Tab>単語」" };
             lines.AddRange(_words.Select(w => $"{w.Reading}\t{w.Word}"));
-            Config.AtomicFile.Write(_path, temp => File.WriteAllLines(temp, lines, new UTF8Encoding(true)));
+            Config.DataFile.Write(_path, temp => File.WriteAllLines(temp, lines, new UTF8Encoding(true)));
         }
         catch (Exception ex)
         {

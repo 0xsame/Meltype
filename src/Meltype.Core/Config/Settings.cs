@@ -845,6 +845,6 @@ public sealed class Settings
 
     public void Save(string path)
     {
-        AtomicFile.Write(path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonType)));
+        DataFile.Write(path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonType)));
     }
 }
