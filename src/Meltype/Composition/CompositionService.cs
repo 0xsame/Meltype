@@ -163,7 +163,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     /// <summary>ユーザー辞書の登録画面用: 語の読みを推測する (かなならそのまま、漢字は Microsoft IME の逆変換)。分からなければ空。</summary>
     public string GuessReading(string word)
     {
-        if (word.All(c => c is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヶ' or 'ー')) return new string(word.Select(c => c is >= 'ァ' and <= 'ヶ' ? (char)(c - 0x60) : c).ToArray());
+        if (word.All(c => KanaChars.IsHiraganaOrLongMark(c) || KanaChars.IsKatakana(c))) return KanaChars.ToHiragana(word);
         try
         {
             return _converter.Reading(word) ?? "";

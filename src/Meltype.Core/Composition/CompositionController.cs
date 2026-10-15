@@ -1542,7 +1542,7 @@ public sealed class CompositionController
             var surrounding = (_precedingText ?? "") + others + (_followingText ?? "");
             var preferred = _options.ContextRules?.Choose(clauses[i].Reading, surrounding) ?? _options.History?.Get(clauses[i].Reading);
             // 変換エンジンは、文節が「から」だけだと記号 (～) にしてしまう。記号だけの変換結果は、ひらがなの後ろに回す。
-            preferred ??= IsSymbolOnly(clauses[i].Text) && clauses[i].Reading.All(c => c is >= 'ぁ' and <= 'ゖ') ? clauses[i].Reading : null;
+            preferred ??= IsSymbolOnly(clauses[i].Text) && clauses[i].Reading.All(KanaChars.IsHiragana) ? clauses[i].Reading : null;
             // 英単語に挟まれて助詞だけの文節になると、変換エンジンは漢字にしてしまう (github + に + push → 二)。助詞はかなのまま。
             preferred ??= Particles.Contains(clauses[i].Reading) && clauses[i].Text != clauses[i].Reading ? clauses[i].Reading : null;
             // カタカナの語の後ろの「っ」で始まる文節 (スパイダーマ + っ！) は、カタカナの「ッ」にする (スパイダーマッ！)。
@@ -1616,7 +1616,7 @@ public sealed class CompositionController
         var lower = raw.ToLowerInvariant();
         if (!SuruRomajiKeepJapanese.Contains(lower)) return false;
         var reading = _detector.Romaji.ConvertLenient(lower, final: true);
-        return SuruForms.Any(reading.StartsWith) && reading.All(c => c is >= 'ぁ' and <= 'ゖ' or 'ー');
+        return SuruForms.Any(reading.StartsWith) && reading.All(KanaChars.IsHiraganaOrLongMark);
     }
 
     /// <summary>英単語の後ろの、する の活用の文節を、変換エンジンが漢字で始めた (した → 下、したい → 死体、しよう → 使用)。</summary>
@@ -2518,7 +2518,7 @@ public sealed class CompositionController
         }
         var kana = _text.AllKana(final: false);
         var predictions = new List<string>();
-        if (kana.All(c => c is >= 'ぁ' and <= 'ゖ' or 'ー')) predictions.AddRange(predictor.PredictJapanese(kana));
+        if (kana.All(KanaChars.IsHiraganaOrLongMark)) predictions.AddRange(predictor.PredictJapanese(kana));
         // 長い英単語は、打ち終わるまでローマ字として見えていることがある (decis → でしs)。英字だけを 4 文字以上打っていれば英単語の続きも出す
         if (_text.Raw.Length >= 4 && _text.Raw.All(char.IsAsciiLetter))
         {
