@@ -11,6 +11,7 @@
     "test:unit": "playwright test --project unit",
     "test:page": "playwright test --project page",
     "test:ci": "npm run typecheck && playwright test",
+    "test:ime:linux:ci": "/usr/bin/python3 scripts/linux_ime.py run",
     "report": "playwright show-report artifacts/report"
   },
   "devDependencies": {
