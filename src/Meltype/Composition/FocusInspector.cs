@@ -181,7 +181,10 @@ public sealed class FocusInspector : IDisposable
         waitedMs = -1;
         var now = Environment.TickCount64;
         if (!IsRightAfterClick(now, Interlocked.Exchange(ref _lastClick, 0))) return false;
-        if (!_windowsWithTextInput.ContainsKey(Native.GetForegroundWindow())) return false;
+        var foreground = Native.GetForegroundWindow();
+        if (!_windowsWithTextInput.ContainsKey(foreground)) return false;
+        // このキーで RecheckStale がもう調べ直していたら (ブラウザー・LINE)、もう一度は待たない
+        if (Interlocked.Read(ref _lastRecheckForeground) == foreground.ToInt64() && now - Interlocked.Read(ref _lastRecheck) < 200) return CanCapture;
         Invalidate();
         var deadline = now + waitMs;
         while (Interlocked.Read(ref _resolvedSequence) != Interlocked.Read(ref _focusSequence) && Environment.TickCount64 < deadline) Thread.Sleep(5);

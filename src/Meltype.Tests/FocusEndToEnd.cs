@@ -75,7 +75,7 @@ internal static class FocusEndToEnd
             }
         }
         Report(results);
-        // 5 回流して 144/150 回 (直す前は 8/150 回)。取りこぼした 6 回は最初の 2 回の実行だけで、理由は分かっていない
+        // 6 回流して 174/180 回 (直す前は 9/180 回)。取りこぼした 6 回は最初の 2 回の実行だけで、理由は分かっていない
         Expect(results.Count(r => r.Captured) >= 27, "30 回中 27 回以上、変換ボックスに入る");
         Expect(results.All(r => r.TotalMs <= 130), $"フックで止まった時間は最大 {results.Max(r => r.TotalMs)} ms (130 ms 以下)");
 
