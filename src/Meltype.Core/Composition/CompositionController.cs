@@ -1601,9 +1601,6 @@ public sealed class CompositionController
     private static bool IsMathSymbol(string reading, string text) =>
         MathOperator.IsMatch(reading) && text.IndexOfAny(['×', '÷', '+', '＋', '-', '－', '=', '＝']) >= 0;
 
-    /// <summary>する の活用 (した・して・しない・しよう・したい …) で始まる読み。</summary>
-    private static readonly string[] SuruForms = ["する", "すれ", "した", "して", "しま", "しな", "しよ", "しと", "しちゃ", "しろ", "され", "させ", "せず"];
-
     /// <summary>
     /// 確定し直しで英語に戻さない、する活用のローマ字。
     /// sure は make sure で英文に直す必要があるので入れない (すれ と読めても除外)。
@@ -1616,12 +1613,12 @@ public sealed class CompositionController
         var lower = raw.ToLowerInvariant();
         if (!SuruRomajiKeepJapanese.Contains(lower)) return false;
         var reading = _detector.Romaji.ConvertLenient(lower, final: true);
-        return SuruForms.Any(reading.StartsWith) && reading.All(KanaChars.IsHiraganaOrLongMark);
+        return CompositionDetector.IsSuruForm(reading);
     }
 
     /// <summary>英単語の後ろの、する の活用の文節を、変換エンジンが漢字で始めた (した → 下、したい → 死体、しよう → 使用)。</summary>
     private static bool IsSuruAfterEnglish(Clause clause) =>
-        SuruForms.Any(clause.Reading.StartsWith) && clause.Text.Length > 0 && !IsKana(clause.Text[0]) && clause.Text != clause.Reading;
+        CompositionDetector.SuruForms.Any(clause.Reading.StartsWith) && clause.Text.Length > 0 && !IsKana(clause.Text[0]) && clause.Text != clause.Reading;
 
     private static readonly HashSet<char> SentencePunctuation = ['、', '。', '，', '．', ',', '.', '！', '？', '!', '?', '…', '‥', '「', '」', '(', ')', '（', '）', ' ', '　'];
 

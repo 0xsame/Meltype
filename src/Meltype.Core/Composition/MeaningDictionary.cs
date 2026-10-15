@@ -24,10 +24,8 @@ public sealed class MeaningDictionary
     public static MeaningDictionary Parse(string text)
     {
         var dictionary = new MeaningDictionary();
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var line in Detection.DictionarySource.DataLines(text))
         {
-            var line = rawLine.TrimEnd('\r');
-            if (line.Length == 0 || line[0] == '#') continue;
             var fields = line.Split('\t');
             if (fields.Length < 3) continue;
             var word = fields[0];

@@ -22,10 +22,8 @@ public sealed class TranslationDictionary
     public static TranslationDictionary Parse(string text)
     {
         var dictionary = new TranslationDictionary();
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var line in Detection.DictionarySource.DataLines(text))
         {
-            var line = rawLine.TrimEnd('\r');
-            if (line.Length == 0 || line[0] == '#') continue;
             var fields = line.Split('\t');
             if (fields.Length < 3) continue;
             if (!dictionary._entries.TryGetValue(fields[0], out var list)) dictionary._entries[fields[0]] = list = [];

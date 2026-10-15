@@ -60,6 +60,17 @@ public static class DictionarySource
         return reader.ReadToEnd();
     }
 
+    /// <summary>辞書の本文を行に分ける。行末の \r を除き、空行と # で始まるコメント行は飛ばす。</summary>
+    public static IEnumerable<string> DataLines(string text)
+    {
+        foreach (var rawLine in text.Split('\n'))
+        {
+            var line = rawLine.TrimEnd('\r');
+            if (line.Length == 0 || line[0] == '#') continue;
+            yield return line;
+        }
+    }
+
     public static IEnumerable<string> Load(string name, string? userDirectory)
     {
         foreach (var word in WordList.ParseWords(ReadEmbedded(name))) yield return word;
