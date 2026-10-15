@@ -34,11 +34,8 @@ public sealed class WordList
     /// <summary>空白・改行区切り。# 以降はコメント。英小文字以外を含む語は無視する。</summary>
     public static IEnumerable<string> ParseWords(string text)
     {
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var line in DictionarySource.LinesWithoutComments(text))
         {
-            var line = rawLine;
-            var hash = line.IndexOf('#');
-            if (hash >= 0) line = line[..hash];
             foreach (var token in line.Split([' ', '\t', '\r', ','], StringSplitOptions.RemoveEmptyEntries))
             {
                 var word = token.Trim().ToLowerInvariant();
@@ -68,6 +65,16 @@ public static class DictionarySource
             var line = rawLine.TrimEnd('\r');
             if (line.Length == 0 || line[0] == '#') continue;
             yield return line;
+        }
+    }
+
+    /// <summary>辞書の本文を行に分け、# から行末までのコメントを除いた行を返す (行末の \r や空行はそのまま)。</summary>
+    public static IEnumerable<string> LinesWithoutComments(string text)
+    {
+        foreach (var line in text.Split('\n'))
+        {
+            var hash = line.IndexOf('#');
+            yield return hash >= 0 ? line[..hash] : line;
         }
     }
 
