@@ -79,11 +79,11 @@ public sealed class TranslationDictionary
     /// </summary>
     public string? Meaning(string text)
     {
-        if (!text.Any(c => KanaChars.IsKanji(c) || KanaChars.IsKatakana(c))) return null;
+        if (!text.Any(KanaChars.IsKanjiOrKatakana)) return null;
         for (var length = Math.Min(_maxLength, text.Length); length >= 1; length--)
         {
             if (!_entries.TryGetValue(text[..length], out var list)) continue;
-            if (text[length..].Any(c => KanaChars.IsKanji(c) || KanaChars.IsKatakana(c))) return null;
+            if (text[length..].Any(KanaChars.IsKanjiOrKatakana)) return null;
             var words = new List<string>();
             foreach (var (_, entryWords) in list)
             {
@@ -93,7 +93,6 @@ public sealed class TranslationDictionary
         }
         return null;
     }
-
 }
 
 /// <summary>

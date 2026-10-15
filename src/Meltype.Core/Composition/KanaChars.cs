@@ -17,6 +17,9 @@ internal static class KanaChars
 
     public static bool IsKanji(char c) => c is >= '㐀' and <= '䶿' or >= '一' and <= '鿿' or '々';
 
+    /// <summary>漢字かカタカナ。かな (助詞・送り仮名) だけでない語かを見るのに使う。</summary>
+    public static bool IsKanjiOrKatakana(char c) => IsKanji(c) || IsKatakana(c);
+
     public static string ToHiragana(string text) => new(text.Select(c => IsKatakana(c) ? (char)(c - KatakanaOffset) : c).ToArray());
 
     public static string ToKatakana(string text) => new(text.Select(c => IsHiragana(c) ? (char)(c + KatakanaOffset) : c).ToArray());

@@ -44,7 +44,7 @@ public sealed class MeaningDictionary
     /// </summary>
     public string? Lookup(string text, string? reading)
     {
-        if (!text.Any(c => KanaChars.IsKanji(c) || KanaChars.IsKatakana(c))) return null;
+        if (!text.Any(KanaChars.IsKanjiOrKatakana)) return null;
         for (var length = Math.Min(_maxLength, text.Length); length >= 1; length--)
         {
             var head = text[..length];
@@ -52,7 +52,7 @@ public sealed class MeaningDictionary
             {
                 if (!_stems.TryGetValue(head, out var word) || !_entries.TryGetValue(word, out senses)) continue;
             }
-            if (text[length..].Any(c => KanaChars.IsKanji(c) || KanaChars.IsKatakana(c))) return null;
+            if (text[length..].Any(KanaChars.IsKanjiOrKatakana)) return null;
             return Format(Choose(senses, reading));
         }
         return null;
@@ -73,5 +73,4 @@ public sealed class MeaningDictionary
         if (shown.Count == 1) return shown[0];
         return string.Join("\n", shown.Select((g, i) => $"{(char)('①' + i)} {g}"));
     }
-
 }
