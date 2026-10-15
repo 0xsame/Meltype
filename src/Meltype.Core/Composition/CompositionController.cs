@@ -361,19 +361,11 @@ public sealed class CompositionController
             if (_reconversion is not null) ClearComposition();
             // 送らずにいた Shift (押したまま) は、横取りをやめる前に送る。送らないと、次に打つキーが Shift なしでアプリに届く
             // (英数状態で判定中の語を Shift で打ち切ったとき、(bow) の ) が 0 になっていた)。
-            foreach (var shift in _swallowedShift)
-            {
-                _host.Replay(new KeyEvent(shift, 0, false, false, false, 0));
-                _replayedDown.Add(shift);
-            }
-            _swallowedShift.Clear();
+            ReplaySwallowed(_swallowedShift);
             if (_gate.TryRelease())
             {
                 // 以降のキーアップはフックを素通りしてアプリに直接届くので、追跡をやめる。
-                _swallowedShift.Clear();
-                _swallowedControl.Clear();
-                _replayedDown.Clear();
-                _capturedDown.Clear();
+                ForgetTrackedKeys();
                 return;
             }
             // 解放しようとした間に新しい入力が届いた。続けて処理する。
@@ -461,6 +453,23 @@ public sealed class CompositionController
     {
         ClearComposition();
         ClearHeld();
+        ForgetTrackedKeys();
+    }
+
+    /// <summary>送らずにいた Shift / Ctrl を (押したままとして) アプリに送り、送ったものとして覚える。</summary>
+    private void ReplaySwallowed(HashSet<int> swallowed, long timeMs = 0)
+    {
+        foreach (var vk in swallowed)
+        {
+            _host.Replay(new KeyEvent(vk, 0, false, false, false, timeMs));
+            _replayedDown.Add(vk);
+        }
+        swallowed.Clear();
+    }
+
+    /// <summary>追跡中のキー (送らずにいた修飾キー・送ったキー・横取りしたキー) をすべて忘れる。</summary>
+    private void ForgetTrackedKeys()
+    {
         _swallowedShift.Clear();
         _swallowedControl.Clear();
         _replayedDown.Clear();
@@ -508,18 +517,8 @@ public sealed class CompositionController
         // クリックで別の場所に移る前に、今の位置へ確定しておく。
         CommitPending();
         // 送らずにいた Shift / Ctrl は、クリックと一緒に送る (Shift+クリックの範囲選択、Ctrl+クリック)。
-        foreach (var shift in _swallowedShift)
-        {
-            _host.Replay(new KeyEvent(shift, 0, false, false, false, 0));
-            _replayedDown.Add(shift);
-        }
-        _swallowedShift.Clear();
-        foreach (var control in _swallowedControl)
-        {
-            _host.Replay(new KeyEvent(control, 0, false, false, false, 0));
-            _replayedDown.Add(control);
-        }
-        _swallowedControl.Clear();
+        ReplaySwallowed(_swallowedShift);
+        ReplaySwallowed(_swallowedControl);
         _correctable.Clear();
         _host.Replay(e);
     }
@@ -594,12 +593,7 @@ public sealed class CompositionController
             {
                 // ほかのショートカット (Ctrl+C・Ctrl+Z …) は、確定してから Ctrl と一緒にアプリへ送る。
                 CommitIfAny();
-                foreach (var control in _swallowedControl)
-                {
-                    _host.Replay(new KeyEvent(control, 0, false, false, false, e.TimeMs));
-                    _replayedDown.Add(control);
-                }
-                _swallowedControl.Clear();
+                ReplaySwallowed(_swallowedControl, e.TimeMs);
                 ReplayDown(e);
                 return;
             }
@@ -2440,12 +2434,7 @@ public sealed class CompositionController
         // Meltype を通らないキーを送る = キャレットが動くかもしれないので、直前の語はもう確定し直さない。
         _correctable.Clear();
         // 握りつぶしていた Shift を先に送る (Shift+矢印 の範囲選択、Ctrl+Shift+Z など)。
-        foreach (var shift in _swallowedShift)
-        {
-            _host.Replay(new KeyEvent(shift, 0, false, false, false, e.TimeMs));
-            _replayedDown.Add(shift);
-        }
-        _swallowedShift.Clear();
+        ReplaySwallowed(_swallowedShift, e.TimeMs);
         _host.Replay(e);
         _replayedDown.Add(e.Vk);
     }
