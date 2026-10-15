@@ -163,10 +163,7 @@ public sealed class ConversionHistory
         if (_path is null) return;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Config.ConversionJsonContext.Default.Conversions));
-            File.Move(temp, _path, overwrite: true);
+            Config.AtomicFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Config.ConversionJsonContext.Default.Conversions)));
         }
         catch (Exception ex)
         {

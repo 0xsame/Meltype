@@ -156,10 +156,7 @@ public sealed class LanguageMemory
         if (_path is null) return;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Config.LearningJsonContext.Default.Languages));
-            File.Move(temp, _path, overwrite: true);
+            Config.AtomicFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Config.LearningJsonContext.Default.Languages)));
         }
         catch (Exception ex)
         {
