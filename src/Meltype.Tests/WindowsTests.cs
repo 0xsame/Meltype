@@ -127,23 +127,26 @@ internal static class WindowsTests
     public static void FirstLetter_AfterClickAndAutofill()
     {
         // クリックの直後 (1 秒以内) の打ち始めだけ、フォーカスを調べ直す
-        Assert.True(MeltypeEngine.IsRightAfterClick(1500, 1000), "クリックの 0.5 秒後");
-        Assert.True(!MeltypeEngine.IsRightAfterClick(2500, 1000), "クリックの 1.5 秒後は調べ直さない");
-        Assert.True(!MeltypeEngine.IsRightAfterClick(1500, 0), "クリックしていない (1 回使った後) は調べ直さない");
+        Assert.True(Composition.FocusInspector.IsRightAfterClick(1500, 1000), "クリックの 0.5 秒後");
+        Assert.True(!Composition.FocusInspector.IsRightAfterClick(2500, 1000), "クリックの 1.5 秒後は調べ直さない");
+        Assert.True(!Composition.FocusInspector.IsRightAfterClick(1500, 0), "クリックしていない (1 回使った後) は調べ直さない");
 
         // Chrome・Edge・Vivaldi のフォームの自動入力の候補の行は、入力欄として扱う
         Assert.True(Composition.FocusInspector.IsSuggestionRow("PopupRowContentView"), "自動入力の候補");
         Assert.True(Composition.FocusInspector.IsSuggestionRow("OmniLinkItem"), "Vivaldi のアドレスバーの候補");
         Assert.True(!Composition.FocusInspector.IsSuggestionRow("PopupView"), "候補の行ではない");
 
-        // 候補を閉じた直後の、種類も名前も無い要素: 同じウィンドウで直前が入力欄なら、入力欄のまま
-        var input = new Composition.FocusInfo(true, false, null, "Edit");
-        Assert.True(Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", input, sameForeground: true), "直前が入力欄");
-        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", input, sameForeground: false), "別のウィンドウ");
-        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", new Composition.FocusInfo(true, true, null, "Edit"), sameForeground: true), "直前がパスワード欄");
-        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", new Composition.FocusInfo(false, false, null, "Pane"), sameForeground: true), "直前が入力欄でない");
-        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(50033, "", "", input, sameForeground: true), "種類のある要素");
-        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "メニュー", "", input, sameForeground: true), "名前のある要素");
+        // 候補を閉じた直後の、種類も名前も無い要素: 同じウィンドウで直前 (2 秒以内) が候補の行なら、入力欄として扱う
+        var row = new Composition.FocusInfo(true, false, null, "候補", "35000", "PopupRowContentView");
+        Assert.True(Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", row, sameForeground: true, sincePreviousMs: 660), "候補の行の 0.7 秒後");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", row, sameForeground: true, sincePreviousMs: 2500), "候補の行から 2 秒より後");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", row, sameForeground: false, sincePreviousMs: 100), "別のウィンドウ");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", new Composition.FocusInfo(true, false, null, "Edit", "", "Edit"), sameForeground: true, sincePreviousMs: 100), "直前がふつうの入力欄 (候補を閉じた直後ではない)");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", new Composition.FocusInfo(true, false, null, "直前の入力欄のまま"), sameForeground: true, sincePreviousMs: 100), "直前がこの判定で入力欄にした要素 (引き継ぎは続かない)");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", new Composition.FocusInfo(true, true, null, "候補", "", "PopupRowContentView"), sameForeground: true, sincePreviousMs: 100), "直前がパスワード");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(50000, "", "", row, sameForeground: true, sincePreviousMs: 100), "ボタン (種類のある要素)");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "メニュー", "", row, sameForeground: true, sincePreviousMs: 100), "名前のある要素");
+        Assert.True(!Composition.FocusInspector.KeepsPreviousTextInput(0, "", "Chrome_WidgetWin_1", row, sameForeground: true, sincePreviousMs: 100), "クラス名のある要素");
     }
 
     [Test]
