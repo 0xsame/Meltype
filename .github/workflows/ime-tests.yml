@@ -1,0 +1,59 @@
+# テストページと記録処理の基盤テストを検査する。
+name: ime-tests
+
+on:
+  pull_request:
+    paths:
+      - 'tools/ime-tests/**'
+      - '.github/workflows/ime-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/ime-tests/**'
+      - '.github/workflows/ime-tests.yml'
+  workflow_dispatch:
+
+# ソースの読取りだけを許可する。
+permissions:
+  contents: read
+
+concurrency:
+  group: ime-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    name: IME CI tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools/ime-tests
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/ime-tests/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Typecheck and test-page contracts
+        run: |
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/checkout-sha.txt
+          # teeでログを残しても、テストの非0終了をジョブの失敗として伝える。
+          set -o pipefail
+          npm run test:ci 2>&1 | tee artifacts/ci.log
+      - name: Results and failure traces
+        # テスト失敗時にも観測・traceを取得できるよう、成果物保存は成功条件にしない。
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: ime-tests
+          path: tools/ime-tests/artifacts/
+          if-no-files-found: warn
+          retention-days: 14
