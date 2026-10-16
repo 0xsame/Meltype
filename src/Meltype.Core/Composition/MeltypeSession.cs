@@ -243,6 +243,7 @@ public sealed class MeltypeSession
             CursorIntoBrackets = () => settings.CursorIntoBrackets,
             ControlKeyBindings = () => settings.ControlKeyBindings,
             CalculatorCandidates = () => settings.CalculatorCandidates,
+            LogKeyIntervals = () => settings.LogKeyIntervals,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

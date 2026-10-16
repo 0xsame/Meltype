@@ -182,6 +182,7 @@ internal static class CompositionTests
         public bool CursorIntoBrackets { get; set; }
         public string ControlKeyBindings { get; set; } = "";
         public bool CalculatorCandidates { get; set; }
+        public bool LogKeyIntervals { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -266,6 +267,7 @@ internal static class CompositionTests
                 CursorIntoBrackets = () => CursorIntoBrackets,
                 ControlKeyBindings = () => ControlKeyBindings,
                 CalculatorCandidates = () => CalculatorCandidates,
+                LogKeyIntervals = () => LogKeyIntervals,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2037,6 +2039,18 @@ internal static class CompositionTests
         var off = new Keyboard();
         off.Type("1+2*3 ");
         Assert.True(off.Host.View is null || !off.Host.View.Candidates.Contains("7"), "OFF は候補に出さない");
+    }
+
+    [Test]
+    public static void Issue286_KeyIntervalsAreLoggedWithoutText()
+    {
+        var k = new Keyboard { LogKeyIntervals = true };
+        var before = Diagnostics.Log.Snapshot().Length;
+        var version = Diagnostics.Log.Version;
+        k.Type("hello");
+        var added = Diagnostics.Log.Snapshot().Select(x => x.Message).Where(x => x.Contains("打鍵の間隔")).ToList();
+        Assert.True(added.Count >= 3, "間隔を残す: " + added.Count);
+        Assert.True(added.All(x => !x.Contains("hello")), "打った文字は残さない");
     }
 
     [Test]
