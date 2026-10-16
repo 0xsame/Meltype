@@ -197,6 +197,7 @@ public sealed record CompositionOptions
     public Func<bool> SquareBrackets { get; init; } = () => false;
     public Func<bool> EscStepsBack { get; init; } = () => false;
     public Func<bool> EscRevertsSelectedClause { get; init; } = () => false;
+    public Func<bool> FunctionKeysAffectSelectedClause { get; init; } = () => false;
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
@@ -1196,6 +1197,9 @@ public sealed class CompositionController
             case VirtualKeys.Return:
                 Commit();
                 return true;
+            case VirtualKeys.F6 or VirtualKeys.F7 or VirtualKeys.F8 or VirtualKeys.F9 or VirtualKeys.F10
+                when _options.FunctionKeysAffectSelectedClause() && _clauses.Count > 1 && ApplyFunctionKeyToClause(vk):
+                return true;
             case VirtualKeys.Tab when FindMisspelling() is { } typo:
                 // もしかして: 書き間違いを直して変換し直す。
                 _converting = false;
@@ -1302,6 +1306,33 @@ public sealed class CompositionController
 
     // Esc で戻した語は、判定として覚えない
     private bool _escReverted;
+
+    /// <summary>
+    /// 設定「変換中の F6〜F10 は選んだ文節だけに効かせる」: 選んでいる文節だけを、ひらがな / カタカナ / 半角カタカナ / 全角英数 / 半角英数にする。
+    /// 英語の文節や、打った英字が分からない文節の F9 / F10 は何もしない (false を返し、今までどおり全体に効かせる)。issue #678
+    /// </summary>
+    private bool ApplyFunctionKeyToClause(int vk)
+    {
+        var clause = _clauses[_selectedClause];
+        if (clause.IsEnglish) return false;
+        var text = vk switch
+        {
+            VirtualKeys.F6 => clause.Reading,
+            VirtualKeys.F7 => CompositionText.ToKatakana(clause.Reading),
+            VirtualKeys.F8 => CompositionText.ToHalfWidthKatakana(CompositionText.ToKatakana(clause.Reading)),
+            VirtualKeys.F9 => clause.Raw is { } full ? CompositionText.ToFullWidth(full) : null,
+            _ => clause.Raw,
+        };
+        if (text is null) return false;
+        var index = clause.Candidates.IndexOf(text);
+        if (index < 0)
+        {
+            clause.Candidates.Add(text);
+            index = clause.Candidates.Count - 1;
+        }
+        clause.Index = index;
+        return true;
+    }
 
     private void SetMode(DisplayMode mode)
     {

@@ -236,6 +236,7 @@ public sealed class MeltypeSession
             SquareBrackets = () => settings.SquareBrackets,
             EscStepsBack = () => settings.EscStepsBack,
             EscRevertsSelectedClause = () => settings.EscRevertsSelectedClause,
+            FunctionKeysAffectSelectedClause = () => settings.FunctionKeysAffectSelectedClause,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
