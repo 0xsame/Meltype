@@ -67,8 +67,12 @@ const isKeys = text => text.length > 0 && /^[\x20-\x7e]+$/.test(text);
 
 async function upsertComment(issue, kind, text) {
   const marker = `${Marker}<!-- ${kind} -->`;
-  const comments = await gh('GET', `/issues/${issue}/comments?per_page=100`);
-  const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+  let mine;
+  for (let page = 1; ; page++) {
+    const comments = await gh('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
+    mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+    if (mine || comments.length < 100) break;
+  }
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
