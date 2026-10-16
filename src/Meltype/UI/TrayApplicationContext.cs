@@ -92,6 +92,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             GitHubIssueCandidates = () => _engine.Settings.GitHubIssueCandidates,
             GitHubRepository = () => _engine.Settings.GitHubRepository,
             GitHubTitles = () => GitHubTitlesShared,
+            ClipboardCandidates = () => _engine.Settings.ClipboardCandidates,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

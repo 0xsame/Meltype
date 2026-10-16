@@ -255,6 +255,7 @@ public sealed class MeltypeSession
             GitHubIssueCandidates = () => settings.GitHubIssueCandidates,
             GitHubRepository = () => settings.GitHubRepository,
             GitHubTitles = () => s_githubTitles,
+            ClipboardCandidates = () => settings.ClipboardCandidates,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

@@ -313,6 +313,10 @@ public sealed class Settings
      Description("「#番号で GitHub の Issue・PR のタイトルを候補に出す」で問い合わせるリポジトリ。「所有者/名前」の形で書きます (例: yksr-melt/Meltype)。")]
     public string GitHubRepository { get; set; } = "";
 
+    [Category("1. 全般"), DisplayName("クリップボードの文字を変換候補に出す"),
+     Description("「くりっぷぼーど」「ぺーすと」を変換したとき、クリップボードにある 1 行の文字 (200 文字まで) を候補に出します。変換した瞬間に 1 回だけ読み、監視・保存・送信はしません。パスワード管理ソフトなど、履歴に残さない印のついた内容は読みません。Windows のみ。既定は OFF です。")]
+    public bool ClipboardCandidates { get; set; }
+
     [Category("1. 全般"), DisplayName("句読点"),
      Description("日本語の中で , と . を打ったときに出す句読点です (Microsoft IME と同じ 4 通り)。論文などで「，．」「，。」「、．」を使うときに変えます。かな入力の 、 。 のキーにも効きます。数字の間の . , (1.5、1,000) や英単語の中の . (tetr.io) は半角のままです。")]
     public PunctuationStyle Punctuation { get; set; } = PunctuationStyle.Japanese;

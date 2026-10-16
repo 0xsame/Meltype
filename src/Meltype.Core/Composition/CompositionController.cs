@@ -77,6 +77,12 @@ public interface ICompositionHost
     bool SurroundingTextIsCurrent => false;
 
     /// <summary>
+    /// クリップボードの文字 (設定「クリップボードの文字を変換候補に出す」のときだけ、変換した瞬間に 1 回読む)。
+    /// 読めない・文字ではない・履歴に残さない印がある (パスワード管理ソフトなど) ときは null。
+    /// </summary>
+    string? ClipboardText => null;
+
+    /// <summary>
     /// 入力欄のキャレットの前後の文字列 (確定済みの文字) を取りに行く。結果は後から UI スレッドで callback(前, 後ろ) に渡す。
     /// 取れなければ null を渡す。
     /// </summary>
@@ -213,6 +219,7 @@ public sealed record CompositionOptions
     public Func<bool> GitHubIssueCandidates { get; init; } = () => false;
     public Func<string> GitHubRepository { get; init; } = () => "";
     public Func<GitHubIssueTitles?> GitHubTitles { get; init; } = () => null;
+    public Func<bool> ClipboardCandidates { get; init; } = () => false;
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
@@ -1989,6 +1996,7 @@ public sealed class CompositionController
         if (reading is "じこう" or "じこうのあいさつ") return SeasonalGreetings(_options.Now().Month);
         if (EraToYear(reading) is { } year) return year;
         if (TypedUnitCandidates(reading) is { } units) return units;
+        if (ClipboardReadings.Contains(reading) && _options.ClipboardCandidates() && ClipboardLine(_host.ClipboardText) is { } clip) return [clip];
         var isNow = NowReadings.Contains(reading);
         if (!isNow && reading != "きょう") return [];
         var now = _options.Now();
@@ -2083,6 +2091,16 @@ public sealed class CompositionController
         var text = size >= 100 ? Math.Round(size).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
             : Math.Round(size, 2).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         return [$"{digits}{unit.Unit}", $"約{text}{unit.Metric}"];
+    }
+
+    /// <summary>クリップボードの文字を候補に出す読み。</summary>
+    private static readonly HashSet<string> ClipboardReadings = ["くりっぷぼーど", "ぺーすと"];
+
+    /// <summary>クリップボードの文字が、候補に出してよい 1 行 (200 文字まで・制御文字なし) なら、その文字。前後の空白は除く。</summary>
+    internal static string? ClipboardLine(string? text)
+    {
+        var line = text?.Trim();
+        return line is { Length: > 0 and <= 200 } && !line.Any(char.IsControl) ? line : null;
     }
 
     /// <summary>打った日付 (10がつ9にち) と時刻 (3じ15ふん) の読み。数字は全角でもよい。</summary>

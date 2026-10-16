@@ -137,6 +137,7 @@ internal static class CompositionTests
 
         /// <summary>入力欄の文字を、キーを処理しているその場で読めているか (Mac と同じ環境にするとき true)。</summary>
         public bool SurroundingTextIsCurrent { get; set; }
+        public string? ClipboardText { get; set; }
 
         public void Show(CompositionView view) => View = view;
         public void Hide() => View = null;
@@ -191,6 +192,7 @@ internal static class CompositionTests
         public bool GitHubIssueCandidates { get; set; }
         public string GitHubRepository { get; set; } = "";
         public GitHubIssueTitles? GitHubTitles { get; set; }
+        public bool ClipboardCandidates { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -284,6 +286,7 @@ internal static class CompositionTests
                 GitHubIssueCandidates = () => GitHubIssueCandidates,
                 GitHubRepository = () => GitHubRepository,
                 GitHubTitles = () => GitHubTitles,
+                ClipboardCandidates = () => ClipboardCandidates,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2171,6 +2174,20 @@ internal static class CompositionTests
         Assert.True(off.Host.View is null || !off.Host.View.Candidates.Contains("#123 変換ボックスが隠れる"), "OFF は問い合わせない");
         Assert.True(GitHubIssueTitles.IsRepository("a-b/c_d.e") && !GitHubIssueTitles.IsRepository("a/b/c") && !GitHubIssueTitles.IsRepository("a b/c"), "リポジトリの形");
         Assert.True(new GitHubIssueTitles((_, _) => throw new InvalidOperationException()).Lookup("a/b", 1) is null, "失敗は null");
+    }
+
+    [Test]
+    public static void Issue281_ClipboardTextIsOfferedOnlyWhenEnabled()
+    {
+        var k = new Keyboard { ClipboardCandidates = true };
+        k.Host.ClipboardText = "  コピーした語  ";
+        k.Type("kurippubo-do ");
+        Assert.True(k.Host.View!.Candidates.Contains("コピーした語"), "候補に出る: " + string.Join(",", k.Host.View.Candidates));
+        var off = new Keyboard();
+        off.Host.ClipboardText = "コピーした語";
+        off.Type("kurippubo-do ");
+        Assert.True(off.Host.View is null || !off.Host.View.Candidates.Contains("コピーした語"), "OFF はクリップボードを読まない");
+        Assert.True(CompositionController.ClipboardLine("a\nb") is null && CompositionController.ClipboardLine(new string('あ', 201)) is null && CompositionController.ClipboardLine(" ") is null, "複数行・長い・空は出さない");
     }
 
     [Test]
