@@ -59,6 +59,22 @@ test('ignores generic issue-form phrases when scoring body-only overlap', () => 
   assert.ok(scoreCandidate(current, titleMatch));
 });
 
+test('keeps candidates supported by distinctive body terms even when titles differ', () => {
+  const current = {
+    number: 40,
+    title: 'Input stops after startup',
+    body: '### Details\nKensington trackball firmware reset sequence fails',
+  };
+  const related = {
+    number: 41,
+    title: 'Unexpected reset behavior',
+    body: '### Details\nKensington trackball firmware reset sequence fails intermittently',
+  };
+  const result = scoreCandidate(current, related);
+  assert.ok(result);
+  assert.ok(result.score >= 2);
+});
+
 test('explicit references and identifiers rank above weak overlap', () => {
   const current = { number: 10, title: 'Win32Error on launch', body: '### 詳細\n0x80004005 launch failure #12', labels: [{ name: 'bug' }] };
   const referenced = { number: 12, title: 'Win32Error 0x80004005 launch failure', body: '', labels: [{ name: 'bug' }] };
