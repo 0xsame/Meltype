@@ -27,8 +27,7 @@ function searchableBody(body = '') {
   }
   let text = kept.join('\n').replace(/<!--[^]*?-->/g, ' ').replace(/https?:\/\/\S+/g, ' ');
   for (const phrase of GENERIC_BODY_PHRASES) {
-    const escaped = phrase.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
-    text = text.replace(new RegExp(escaped, 'gi'), ' ');
+    text = text.split(phrase).join(' ');
   }
   return text;
 }
