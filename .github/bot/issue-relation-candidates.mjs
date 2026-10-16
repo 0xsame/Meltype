@@ -25,9 +25,9 @@ function searchableBody(body = '') {
     const heading = (newline < 0 ? section : section.slice(0, newline)).trim();
     if (!IGNORED_HEADINGS.test(heading)) kept.push(newline < 0 ? '' : section.slice(newline + 1));
   }
-  let text = kept.join('\\n').replace(/<!--[^]*?-->/g, ' ').replace(/https?:\\/\\/\\S+/g, ' ');
+  let text = kept.join('\n').replace(/<!--[^]*?-->/g, ' ').replace(/https?:\/\/\S+/g, ' ');
   for (const phrase of GENERIC_BODY_PHRASES) {
-    const escaped = phrase.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+    const escaped = phrase.replace(/[.*+?^\${}()|[\]\\]/g, '\\$&');
     text = text.replace(new RegExp(escaped, 'gi'), ' ');
   }
   return text;
