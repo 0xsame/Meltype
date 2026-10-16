@@ -222,3 +222,5 @@ website websites campsite worksite onsite offsite
 whois
 # Issue #683
 guesstimation
+# Issue #686
+enshittification
