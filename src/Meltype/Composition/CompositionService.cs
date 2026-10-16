@@ -88,6 +88,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             MacControlKeys = options.MacControlKeys,
             CursorIntoBrackets = options.CursorIntoBrackets,
             ControlKeyBindings = options.ControlKeyBindings,
+            CalculatorCandidates = options.CalculatorCandidates,
             Punctuation = options.Punctuation,
             TranslationHistory = options.TranslationHistory ?? new TranslationHistory(Config.AppPaths.TranslationHistoryFile),
             Predictor = options.Predictor ?? new Predictor(new PhraseHistory(Config.AppPaths.PhraseHistoryFile), UserDictionary, History),

@@ -242,6 +242,7 @@ public sealed class MeltypeSession
             MacControlKeys = () => settings.MacControlKeys,
             CursorIntoBrackets = () => settings.CursorIntoBrackets,
             ControlKeyBindings = () => settings.ControlKeyBindings,
+            CalculatorCandidates = () => settings.CalculatorCandidates,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
