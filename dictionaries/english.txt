@@ -234,3 +234,5 @@ openstreetmap
 malvertising
 # Issue #730
 adtech
+# Issue #731
+robonomics
