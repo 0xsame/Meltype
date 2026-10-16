@@ -247,6 +247,7 @@ public sealed class MeltypeSession
             LaughterAfterKana = () => settings.LaughterAfterKana,
             ContextualLearning = () => settings.ContextualLearning,
             FullWidthSpaceByDefault = () => settings.FullWidthSpaceByDefault,
+            ShowCandidatesWhileTyping = () => settings.ShowCandidatesWhileTyping,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

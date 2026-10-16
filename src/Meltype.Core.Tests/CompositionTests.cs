@@ -186,6 +186,7 @@ internal static class CompositionTests
         public bool LaughterAfterKana { get; set; }
         public bool ContextualLearning { get; set; }
         public bool FullWidthSpaceByDefault { get; set; }
+        public bool ShowCandidatesWhileTyping { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -274,6 +275,7 @@ internal static class CompositionTests
                 LaughterAfterKana = () => LaughterAfterKana,
                 ContextualLearning = () => ContextualLearning,
                 FullWidthSpaceByDefault = () => FullWidthSpaceByDefault,
+                ShowCandidatesWhileTyping = () => ShowCandidatesWhileTyping,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2121,6 +2123,18 @@ internal static class CompositionTests
         k.Key(VirtualKeys.LShift, up: true);
         k.Host.PhysicalShift = false;
         Assert.Equal("たなか　たろう ", k.Host.Document, "Shift+Space が半角");
+    }
+
+    [Test]
+    public static void Issue666_CandidatesCanBeShownWhileTyping()
+    {
+        var k = new Keyboard { ShowCandidatesWhileTyping = true };
+        k.Type("kyouha");
+        Assert.True(!k.Host.View!.Converting, "変換はまだ始めていない");
+        Assert.True(k.Host.View.Candidates.Count >= 2, "入力中も候補を出す: " + string.Join(",", k.Host.View.Candidates));
+        var off = new Keyboard();
+        off.Type("kyouha");
+        Assert.Equal(0, off.Host.View!.Candidates.Count, "OFF は出さない");
     }
 
     [Test]
