@@ -228,3 +228,5 @@ enshittification
 finfluencer
 # Issue #692
 greedflation
+# Issue #725
+openstreetmap
