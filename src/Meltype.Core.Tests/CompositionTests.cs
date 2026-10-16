@@ -1467,6 +1467,196 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue616_WhoisStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("whois\n");
+        Assert.Equal("whois", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue653_ShotaOffersKatakana()
+    {
+        var dictionary = CandidateDictionary.Load(null);
+        Assert.True(dictionary.Lookup("しょた").Contains("ショタ"), "しょた → ショタ");
+    }
+
+    [Test]
+    public static void Issue654_LatticeOffersKatakana()
+    {
+        var dictionary = CandidateDictionary.Load(null);
+        Assert.True(dictionary.Lookup("らてぃす").Contains("ラティス"), "らてぃす → ラティス");
+    }
+
+    [Test]
+    public static void Issue656_SiriHyphenIsLongVowel()
+    {
+        var k = new Keyboard();
+        k.Type("siri-zu\n");
+        Assert.Equal("しりーず", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue669_OpenStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("imaopenshita\n");
+        Assert.Equal("いまopenした", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue674_FyuIsFuxyu()
+    {
+        var k = new Keyboard();
+        k.Type("fyu\n");
+        Assert.Equal("ふゅ", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue683_GuesstimationStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("guesstimation\n");
+        Assert.Equal("guesstimation", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue686_EnshittificationStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("enshittification\n");
+        Assert.Equal("enshittification", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue689_FinfluencerStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("Finfluencer\n");
+        Assert.Equal("Finfluencer", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue690_DatamationStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("datamation\n");
+        Assert.Equal("datamation", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue691_AdwareStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("adware\n");
+        Assert.Equal("adware", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue692_GreedflationStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("greedflation\n");
+        Assert.Equal("greedflation", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue706_AonishikiOffersName()
+    {
+        var dictionary = CandidateDictionary.Load(null);
+        Assert.True(dictionary.Lookup("あおにしき").Contains("安青錦"), "あおにしき → 安青錦");
+    }
+
+    [Test]
+    public static void Issue710_UserDictionaryAcceptsOneCharacterReading()
+    {
+        var dictionary = new UserDictionary(null);
+        Assert.True(dictionary.Add("お", "お父さん") is null, "1 文字の読みも登録できる");
+        Assert.Equal("お父さん", dictionary.Split("お")?.Single().Word, "その 1 文字だけを変換するときは登録した単語");
+        Assert.True(dictionary.Split("おかね") is null, "ほかの語の途中の 1 文字は巻き込まない");
+    }
+
+    [Test]
+    public static void Issue712_JapaneseStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("englishtojapanesewomazeteuteru\n");
+        Assert.Equal("englishとjapaneseをまぜてうてる", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue724_BingeWatchStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("binge-watch\n");
+        Assert.Equal("binge-watch", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue725_OpenStreetMapStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("openstreetmap\n");
+        Assert.Equal("openstreetmap", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue726_MalvertisingStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("malvertising\n");
+        Assert.Equal("malvertising", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue727_AdBlockerStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("ad-blocker\n");
+        Assert.Equal("ad-blocker", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue730_AdtechStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("adtech\n");
+        Assert.Equal("adtech", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue731_RobonomicsStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("robonomics\n");
+        Assert.Equal("robonomics", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue732_MobisodeStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("mobisode\n");
+        Assert.Equal("mobisode", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue733_NetizenryStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("netizenry\n");
+        Assert.Equal("netizenry", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue735_TverStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("tver\n");
+        Assert.Equal("tver", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue535_OverchoiceStaysEnglish()
     {
         var k = new Keyboard();
