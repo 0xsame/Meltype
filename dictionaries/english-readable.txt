@@ -26,3 +26,5 @@ fatigue
 open
 # Issue #690
 datamation
+# Issue #691
+adware
