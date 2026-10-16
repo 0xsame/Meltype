@@ -232,6 +232,8 @@ public sealed class MeltypeSession
             EnterCommitsAsShown = () => settings.EnterCommitsAsShown,
             AlphanumericKeyStartsAsTyped = () => settings.AlphanumericKeyStartsAsTyped,
             FullWidthParentheses = () => settings.FullWidthParentheses,
+            FullWidthSlash = () => settings.FullWidthSlash,
+            SquareBrackets = () => settings.SquareBrackets,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

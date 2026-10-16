@@ -71,6 +71,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             EnterCommitsAsShown = () => _engine.Settings.EnterCommitsAsShown,
             AlphanumericKeyStartsAsTyped = () => _engine.Settings.AlphanumericKeyStartsAsTyped,
             FullWidthParentheses = () => _engine.Settings.FullWidthParentheses,
+            FullWidthSlash = () => _engine.Settings.FullWidthSlash,
+            SquareBrackets = () => _engine.Settings.SquareBrackets,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

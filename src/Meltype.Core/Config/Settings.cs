@@ -237,6 +237,14 @@ public sealed class Settings
      Description("日本語入力中の ( ) を全角の（ ）にします。英字の直後でも全角のままです (OFF のときは、打った幅の半角のままで、英語の中では半角です)。")]
     public bool FullWidthParentheses { get; set; }
 
+    [Category("1. 全般"), DisplayName("/ を全角のスラッシュ／にする"),
+     Description("かなのすぐ後ろで打った / を、中黒「・」ではなく全角のスラッシュ／にします。「/ キーで中黒「・」」が ON のときは、そちらが優先です。")]
+    public bool FullWidthSlash { get; set; }
+
+    [Category("1. 全般"), DisplayName("[ ] を角括弧［ ］にする"),
+     Description("日本語入力中の [ ] を「」ではなく全角の角括弧［ ］にします (Google 日本語入力の「記号」の設定と同じ)。")]
+    public bool SquareBrackets { get; set; }
+
     [Category("1. 全般"), DisplayName("句読点"),
      Description("日本語の中で , と . を打ったときに出す句読点です (Microsoft IME と同じ 4 通り)。論文などで「，．」「，。」「、．」を使うときに変えます。かな入力の 、 。 のキーにも効きます。数字の間の . , (1.5、1,000) や英単語の中の . (tetr.io) は半角のままです。")]
     public PunctuationStyle Punctuation { get; set; } = PunctuationStyle.Japanese;
