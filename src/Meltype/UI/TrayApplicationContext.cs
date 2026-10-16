@@ -83,6 +83,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ControlKeyBindings = () => _engine.Settings.ControlKeyBindings,
             CalculatorCandidates = () => _engine.Settings.CalculatorCandidates,
             LogKeyIntervals = () => _engine.Settings.LogKeyIntervals,
+            LaughterAfterKana = () => _engine.Settings.LaughterAfterKana,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

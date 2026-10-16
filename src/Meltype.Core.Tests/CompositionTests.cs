@@ -183,6 +183,7 @@ internal static class CompositionTests
         public string ControlKeyBindings { get; set; } = "";
         public bool CalculatorCandidates { get; set; }
         public bool LogKeyIntervals { get; set; }
+        public bool LaughterAfterKana { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -268,6 +269,7 @@ internal static class CompositionTests
                 ControlKeyBindings = () => ControlKeyBindings,
                 CalculatorCandidates = () => CalculatorCandidates,
                 LogKeyIntervals = () => LogKeyIntervals,
+                LaughterAfterKana = () => LaughterAfterKana,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2051,6 +2053,20 @@ internal static class CompositionTests
         var added = Diagnostics.Log.Snapshot().Select(x => x.Message).Where(x => x.Contains("打鍵の間隔")).ToList();
         Assert.True(added.Count >= 3, "間隔を残す: " + added.Count);
         Assert.True(added.All(x => !x.Contains("hello")), "打った文字は残さない");
+    }
+
+    [Test]
+    public static void Issue713_SingleKanaThenWIsLaughter()
+    {
+        var k = new Keyboard { LaughterAfterKana = true };
+        k.Type("naruhodonew\n");
+        Assert.Equal("なるほどねw", k.Host.Document, "なるほどnew → なるほどねw");
+        var saw = new Keyboard { LaughterAfterKana = true };
+        saw.Type("saw\n");
+        Assert.Equal("さw", saw.Host.Document, "saw → さw");
+        var normal = new Keyboard();
+        normal.Type("naruhodonew\n");
+        Assert.Equal("なるほどnew", normal.Host.Document, "OFF は今までどおり");
     }
 
     [Test]

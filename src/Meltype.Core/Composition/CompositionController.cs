@@ -205,6 +205,7 @@ public sealed record CompositionOptions
     public Func<string> ControlKeyBindings { get; init; } = () => "";
     public Func<bool> CalculatorCandidates { get; init; } = () => false;
     public Func<bool> LogKeyIntervals { get; init; } = () => false;
+    public Func<bool> LaughterAfterKana { get; init; } = () => false;
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
@@ -985,6 +986,7 @@ public sealed class CompositionController
         _text.FullWidthParentheses = _options.FullWidthParentheses();
         _text.SquareBrackets = _options.SquareBrackets();
         _text.FullWidthSlash = _options.FullWidthSlash();
+        _text.LaughterAfterKana = _options.LaughterAfterKana();
         var id = ++_compositionId;
         // 自分が確定した直後は、アプリ側のテキストがまだ更新されていないかもしれないので自分の記録を信じる。
         var recentOwnCommit = Environment.TickCount64 - _lastCommitTime < OwnCommitTrustMs;

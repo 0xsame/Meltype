@@ -244,6 +244,7 @@ public sealed class MeltypeSession
             ControlKeyBindings = () => settings.ControlKeyBindings,
             CalculatorCandidates = () => settings.CalculatorCandidates,
             LogKeyIntervals = () => settings.LogKeyIntervals,
+            LaughterAfterKana = () => settings.LaughterAfterKana,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

@@ -285,6 +285,10 @@ public sealed class Settings
      Description("判定の記録 (ログ) に、キーとキーの間の時間 (ミリ秒) だけを残します (打った文字は残しません)。英語と日本語の見分けに打鍵のリズムが使えるかを調べるための実験用です。")]
     public bool LogKeyIntervals { get; set; }
 
+    [Category("1. 全般"), DisplayName("かな + w を笑い (ねw・さw) にする"),
+     Description("ね・さ などの 1 文字のかなの後ろの w を、英単語 (new・saw) にせず笑いの w にします (なるほどnew → なるほどねw)。英単語の new や saw を打つ人は OFF のままにしてください。")]
+    public bool LaughterAfterKana { get; set; }
+
     [Category("1. 全般"), DisplayName("句読点"),
      Description("日本語の中で , と . を打ったときに出す句読点です (Microsoft IME と同じ 4 通り)。論文などで「，．」「，。」「、．」を使うときに変えます。かな入力の 、 。 のキーにも効きます。数字の間の . , (1.5、1,000) や英単語の中の . (tetr.io) は半角のままです。")]
     public PunctuationStyle Punctuation { get; set; } = PunctuationStyle.Japanese;
