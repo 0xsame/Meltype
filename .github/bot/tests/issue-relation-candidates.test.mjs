@@ -39,6 +39,30 @@ test('builds repository-scoped queries with at most five OR operators', () => {
 });
 
 
+test('caps body-only overlap so repeated boilerplate cannot dominate ranking', () => {
+  const current = {
+    number: 20,
+    title: 'Alpha startup failure',
+    body: '### Details\nThe shared boilerplate sentence contains common template details and generic description for all issues.',
+  };
+  const boilerplateOnly = {
+    number: 21,
+    title: 'Unrelated printer behavior',
+    body: '### Details\nThe shared boilerplate sentence contains common template details and generic description for all issues.',
+  };
+  const titleMatch = {
+    number: 22,
+    title: 'Alpha startup failure',
+    body: '### Details\nA different explanation with no shared boilerplate.',
+  };
+  const weak = scoreCandidate(current, boilerplateOnly);
+  const strong = scoreCandidate(current, titleMatch);
+  assert.ok(weak);
+  assert.ok(weak.score <= 4);
+  assert.ok(strong);
+  assert.ok(strong.score > weak.score);
+});
+
 test('explicit references and identifiers rank above weak overlap', () => {
   const current = { number: 10, title: 'Win32Error on launch', body: '### 詳細\n0x80004005 launch failure #12', labels: [{ name: 'bug' }] };
   const referenced = { number: 12, title: 'Win32Error 0x80004005 launch failure', body: '', labels: [{ name: 'bug' }] };
