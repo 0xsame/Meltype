@@ -188,6 +188,9 @@ internal static class CompositionTests
         public bool FullWidthSpaceByDefault { get; set; }
         public bool ShowCandidatesWhileTyping { get; set; }
         public string ToggleKeyboardShortcuts { get; set; } = "";
+        public bool GitHubIssueCandidates { get; set; }
+        public string GitHubRepository { get; set; } = "";
+        public GitHubIssueTitles? GitHubTitles { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -278,6 +281,9 @@ internal static class CompositionTests
                 FullWidthSpaceByDefault = () => FullWidthSpaceByDefault,
                 ShowCandidatesWhileTyping = () => ShowCandidatesWhileTyping,
                 ToggleKeyboardShortcuts = () => ToggleKeyboardShortcuts,
+                GitHubIssueCandidates = () => GitHubIssueCandidates,
+                GitHubRepository = () => GitHubRepository,
+                GitHubTitles = () => GitHubTitles,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2150,6 +2156,21 @@ internal static class CompositionTests
         Assert.True(list[3].Matches(0x1D, false, false, false, false), "Muhenkan");
         Assert.Equal(0, KeyShortcut.ParseList("").Count, "空");
         Assert.True(!KeyShortcut.TryParse("Ctrl+", out _) && !KeyShortcut.TryParse("A+B", out _), "キーが無い・2 つ");
+    }
+
+    [Test]
+    public static void Issue291_HashNumberOffersGitHubTitle()
+    {
+        var titles = new GitHubIssueTitles((repository, number) => Task.FromResult<string?>(repository == "yksr-melt/Meltype" && number == 123 ? "変換ボックスが隠れる" : null));
+        var k = new Keyboard { GitHubIssueCandidates = true, GitHubRepository = "yksr-melt/Meltype", GitHubTitles = titles };
+        k.Type("#123 ");
+        var candidates = k.Host.View!.Candidates;
+        Assert.True(candidates.Contains("#123 変換ボックスが隠れる") && candidates.Contains("yksr-melt/Meltype#123"), string.Join(",", candidates));
+        var off = new Keyboard { GitHubRepository = "yksr-melt/Meltype", GitHubTitles = titles };
+        off.Type("#123 ");
+        Assert.True(off.Host.View is null || !off.Host.View.Candidates.Contains("#123 変換ボックスが隠れる"), "OFF は問い合わせない");
+        Assert.True(GitHubIssueTitles.IsRepository("a-b/c_d.e") && !GitHubIssueTitles.IsRepository("a/b/c") && !GitHubIssueTitles.IsRepository("a b/c"), "リポジトリの形");
+        Assert.True(new GitHubIssueTitles((_, _) => throw new InvalidOperationException()).Lookup("a/b", 1) is null, "失敗は null");
     }
 
     [Test]
