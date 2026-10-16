@@ -229,6 +229,10 @@ public sealed class Settings
      Description("Enter で確定するとき、打ち間違いの自動修正をせず、変換ボックスに見えているとおりに確定します (Space で変換するときの修正は今までどおりです)。")]
     public bool EnterCommitsAsShown { get; set; }
 
+    [Category("1. 全般"), DisplayName("F9 / F10 の 1 回目は打ったまま"),
+     Description("入力中の表示が英字でも、F10 (Ctrl+O) の 1 回目は常に打ったまま (小文字) の英字にして、2 回目以降で すべて大文字 → 先頭だけ大文字 と切り替えます (Microsoft IME・Google 日本語入力と同じ)。OFF のときは、英字で見えている語の 1 回目の F10 で すべて大文字になります。")]
+    public bool AlphanumericKeyStartsAsTyped { get; set; }
+
     [Category("1. 全般"), DisplayName("句読点"),
      Description("日本語の中で , と . を打ったときに出す句読点です (Microsoft IME と同じ 4 通り)。論文などで「，．」「，。」「、．」を使うときに変えます。かな入力の 、 。 のキーにも効きます。数字の間の . , (1.5、1,000) や英単語の中の . (tetr.io) は半角のままです。")]
     public PunctuationStyle Punctuation { get; set; } = PunctuationStyle.Japanese;

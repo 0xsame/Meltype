@@ -230,6 +230,7 @@ public sealed class MeltypeSession
             SpaceAroundEnglish = () => settings.SpaceAroundEnglish,
             ShiftSpaceHalfWidth = () => settings.ShiftSpaceHalfWidth,
             EnterCommitsAsShown = () => settings.EnterCommitsAsShown,
+            AlphanumericKeyStartsAsTyped = () => settings.AlphanumericKeyStartsAsTyped,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

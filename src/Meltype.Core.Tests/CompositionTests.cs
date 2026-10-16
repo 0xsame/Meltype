@@ -169,6 +169,7 @@ internal static class CompositionTests
         public bool SpaceAroundEnglish { get; set; }
         public bool ShiftSpaceHalfWidth { get; set; }
         public bool EnterCommitsAsShown { get; set; }
+        public bool AlphanumericKeyStartsAsTyped { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -240,6 +241,7 @@ internal static class CompositionTests
                 SpaceAroundEnglish = () => SpaceAroundEnglish,
                 ShiftSpaceHalfWidth = () => ShiftSpaceHalfWidth,
                 EnterCommitsAsShown = () => EnterCommitsAsShown,
+                AlphanumericKeyStartsAsTyped = () => AlphanumericKeyStartsAsTyped,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -1725,6 +1727,24 @@ internal static class CompositionTests
         shownKeyboard.Type("\n");
         Assert.Equal(shown, shownKeyboard.Host.Document, "見えているとおりに確定");
         Assert.True(normal.Host.Document != shown, "既定は確定するとき直す: " + normal.Host.Document + " / " + shown);
+    }
+
+    [Test]
+    public static void Issue515_F10FirstPressCanStayAsTyped()
+    {
+        var k = new Keyboard { AlphanumericKeyStartsAsTyped = true };
+        k.Type("hello");
+        k.Press(VirtualKeys.F10);
+        Assert.Equal("hello", k.Showing, "1 回目は打ったまま");
+        k.Press(VirtualKeys.F10);
+        Assert.Equal("HELLO", k.Showing);
+        k.Press(VirtualKeys.F10);
+        Assert.Equal("Hello", k.Showing);
+        var kana = new Keyboard { AlphanumericKeyStartsAsTyped = true };
+        kana.Type("hoge");
+        kana.Press(VirtualKeys.F6);
+        kana.Press(VirtualKeys.F10);
+        Assert.Equal("hoge", kana.Showing, "かなに見えているときも 1 回目は打ったまま");
     }
 
     [Test]

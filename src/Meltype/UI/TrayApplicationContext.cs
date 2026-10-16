@@ -69,6 +69,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             SpaceAroundEnglish = () => _engine.Settings.SpaceAroundEnglish,
             ShiftSpaceHalfWidth = () => _engine.Settings.ShiftSpaceHalfWidth,
             EnterCommitsAsShown = () => _engine.Settings.EnterCommitsAsShown,
+            AlphanumericKeyStartsAsTyped = () => _engine.Settings.AlphanumericKeyStartsAsTyped,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },
