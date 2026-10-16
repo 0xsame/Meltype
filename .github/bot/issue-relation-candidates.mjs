@@ -96,14 +96,29 @@ export function scoreCandidate(currentIssue, candidate) {
     score.value += 12 * sharedIds.length;
     score.reasons.push('エラー識別子が一致: ' + sharedIds.slice(0, 3).join(', '));
   }
+  const titleMatches = [];
+  const bodyMatches = [];
+  const otherBody = other.text.slice(other.title.length + 1);
   for (const [term, weight] of current.terms) {
     if (term.length < 3 || STOPWORDS.has(term)) continue;
-    if (other.text.includes(term)) {
-      score.matchedTerms.push({ term, weight });
-      score.value += other.title.toLowerCase().includes(term) ? 2 : 1;
+    if (other.title.toLowerCase().includes(term)) {
+      titleMatches.push({ term, weight });
+    } else if (term.length >= 5 && otherBody.includes(term)) {
+      bodyMatches.push({ term, weight });
     }
   }
-  score.matchedTerms.sort((a, b) => b.weight - a.weight || b.term.length - a.term.length);
+  const allMatches = [...titleMatches, ...bodyMatches];
+  const meaningfulMatches = matches => matches.filter(match =>
+    !allMatches.some(otherMatch =>
+      otherMatch.term.length >= match.term.length + 2 && otherMatch.term.includes(match.term)
+    )
+  );
+  const distinctTitleMatches = meaningfulMatches(titleMatches);
+  const distinctBodyMatches = meaningfulMatches(bodyMatches);
+  score.matchedTerms = [...distinctTitleMatches, ...distinctBodyMatches]
+    .sort((a, b) => b.weight - a.weight || b.term.length - a.term.length);
+  score.value += Math.min(3, distinctTitleMatches.length) * 2;
+  score.value += Math.min(4, distinctBodyMatches.length);
   if (score.matchedTerms.length >= 2) score.reasons.push('特徴語が一致: ' + score.matchedTerms.slice(0, 3).map(item => item.term).join('、'));
   const sharedLabels = [...current.labels].filter(label => other.labels.has(label) && CATEGORY_LABELS.has(label));
   if (sharedLabels.length) {
