@@ -88,6 +88,28 @@ test('skips pull requests/current issue and caps candidates', async () => {
   assert.equal(found[0].issue.number, 11);
 });
 
+test('returns an empty list when search finds no candidates', async () => {
+  const current = { number: 30, title: 'Alpha startup failure', body: '### Details\nUnique launch sequence.' };
+  const found = await findRelatedIssues(current, {
+    repo: 'yksr-melt/Meltype',
+    search: async () => ({ items: [] }),
+    getIssue: async () => null,
+  });
+  assert.deepEqual(found, []);
+});
+
+test('propagates search API failures to the caller', async () => {
+  const current = { number: 31, title: 'Alpha startup failure', body: '### Details\nUnique launch sequence.' };
+  await assert.rejects(
+    findRelatedIssues(current, {
+      repo: 'yksr-melt/Meltype',
+      search: async () => { throw new Error('Issue search failed: 429'); },
+      getIssue: async () => null,
+    }),
+    /Issue search failed: 429/,
+  );
+});
+
 test('comment explains evidence and requires human review', () => {
   const comment = formatRelatedIssueComment({ number: 10 }, [{
     issue: { number: 11, title: 'Related issue', html_url: 'https://github.com/yksr-melt/Meltype/issues/11' },
