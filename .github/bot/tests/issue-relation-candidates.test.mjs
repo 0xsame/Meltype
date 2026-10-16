@@ -39,28 +39,24 @@ test('builds repository-scoped queries with at most five OR operators', () => {
 });
 
 
-test('caps body-only overlap so repeated boilerplate cannot dominate ranking', () => {
+test('ignores generic issue-form phrases when scoring body-only overlap', () => {
   const current = {
     number: 20,
     title: 'Alpha startup failure',
-    body: '### Details\nThe shared boilerplate sentence contains common template details and generic description for all issues.',
+    body: '### 何をしたら\n入力欄でローマ字を打つ\n### どうなったか\n変換されない\n### どうなってほしかったか\n日本語になってほしい',
   };
   const boilerplateOnly = {
     number: 21,
     title: 'Unrelated printer behavior',
-    body: '### Details\nThe shared boilerplate sentence contains common template details and generic description for all issues.',
+    body: '### 何をしたら\n入力欄でローマ字を打つ\n### どうなったか\n変換されない\n### どうなってほしかったか\n日本語になってほしい',
   };
   const titleMatch = {
     number: 22,
     title: 'Alpha startup failure',
-    body: '### Details\nA different explanation with no shared boilerplate.',
+    body: '### Details\nA distinct explanation with no generic form phrases.',
   };
-  const weak = scoreCandidate(current, boilerplateOnly);
-  const strong = scoreCandidate(current, titleMatch);
-  assert.ok(weak);
-  assert.ok(weak.score <= 4);
-  assert.ok(strong);
-  assert.ok(strong.score > weak.score);
+  assert.equal(scoreCandidate(current, boilerplateOnly), null);
+  assert.ok(scoreCandidate(current, titleMatch));
 });
 
 test('explicit references and identifiers rank above weak overlap', () => {
