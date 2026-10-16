@@ -87,6 +87,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ContextualLearning = () => _engine.Settings.ContextualLearning,
             FullWidthSpaceByDefault = () => _engine.Settings.FullWidthSpaceByDefault,
             ShowCandidatesWhileTyping = () => _engine.Settings.ShowCandidatesWhileTyping,
+            ToggleKeyboardShortcuts = () => _engine.Settings.ToggleKeyboardShortcuts,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

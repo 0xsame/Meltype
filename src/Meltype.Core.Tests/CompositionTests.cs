@@ -187,6 +187,7 @@ internal static class CompositionTests
         public bool ContextualLearning { get; set; }
         public bool FullWidthSpaceByDefault { get; set; }
         public bool ShowCandidatesWhileTyping { get; set; }
+        public string ToggleKeyboardShortcuts { get; set; } = "";
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -276,6 +277,7 @@ internal static class CompositionTests
                 ContextualLearning = () => ContextualLearning,
                 FullWidthSpaceByDefault = () => FullWidthSpaceByDefault,
                 ShowCandidatesWhileTyping = () => ShowCandidatesWhileTyping,
+                ToggleKeyboardShortcuts = () => ToggleKeyboardShortcuts,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2135,6 +2137,19 @@ internal static class CompositionTests
         var off = new Keyboard();
         off.Type("kyouha");
         Assert.Equal(0, off.Host.View!.Candidates.Count, "OFF は出さない");
+    }
+
+    [Test]
+    public static void Issue530_ToggleShortcutsAreParsed()
+    {
+        var list = KeyShortcut.ParseList("Ctrl+Space; Alt+Backquote, Shift+F10, bad+key, Muhenkan");
+        Assert.Equal(4, list.Count, "読める 4 つだけ");
+        Assert.True(list[0].Matches(0x20, true, false, false, false) && !list[0].Matches(0x20, false, false, false, false), "Ctrl+Space");
+        Assert.True(list[1].Matches(0xC0, false, true, false, false), "Alt+Backquote");
+        Assert.True(list[2].Matches(0x79, false, false, true, false), "Shift+F10");
+        Assert.True(list[3].Matches(0x1D, false, false, false, false), "Muhenkan");
+        Assert.Equal(0, KeyShortcut.ParseList("").Count, "空");
+        Assert.True(!KeyShortcut.TryParse("Ctrl+", out _) && !KeyShortcut.TryParse("A+B", out _), "キーが無い・2 つ");
     }
 
     [Test]

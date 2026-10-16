@@ -248,6 +248,7 @@ public sealed class MeltypeSession
             ContextualLearning = () => settings.ContextualLearning,
             FullWidthSpaceByDefault = () => settings.FullWidthSpaceByDefault,
             ShowCandidatesWhileTyping = () => settings.ShowCandidatesWhileTyping,
+            ToggleKeyboardShortcuts = () => settings.ToggleKeyboardShortcuts,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

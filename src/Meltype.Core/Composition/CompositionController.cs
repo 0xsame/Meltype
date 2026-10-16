@@ -209,6 +209,7 @@ public sealed record CompositionOptions
     public Func<bool> ContextualLearning { get; init; } = () => false;
     public Func<bool> FullWidthSpaceByDefault { get; init; } = () => false;
     public Func<bool> ShowCandidatesWhileTyping { get; init; } = () => false;
+    public Func<string> ToggleKeyboardShortcuts { get; init; } = () => "";
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
