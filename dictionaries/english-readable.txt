@@ -30,3 +30,5 @@ datamation
 adware
 # Issue #712
 japanese
+# Issue #732
+mobisode
