@@ -53,6 +53,37 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void AllowTyping_FollowsRecreatedHandles()
+    {
+        // ハンドルを作り直したら (ShowInTaskbar などを変えたとき) 新しいハンドルに替え、閉じたら外す。外すときに新しいハンドルを作らない。表示はしない
+        var before = (ForegroundTracker.TypingAllowedWindows.Count, ForegroundTracker.DirectInputControls.Count);
+        var form = new RecreatableForm();
+        var name = new RecreatableTextBox();
+        form.Controls.Add(name);
+        ForegroundTracker.AllowTyping(form, name);
+        var (oldForm, oldName) = (form.Handle, name.Handle);
+        Assert.True(ForegroundTracker.TypingAllowedWindows.ContainsKey(oldForm), "窓を登録");
+        Assert.True(ForegroundTracker.DirectInputControls.ContainsKey(oldName), "欄を登録");
+        form.Recreate();
+        name.Recreate();
+        Assert.True(form.Handle != oldForm && name.Handle != oldName, "作り直すとハンドルが変わる");
+        Assert.True(!ForegroundTracker.TypingAllowedWindows.ContainsKey(oldForm) && ForegroundTracker.TypingAllowedWindows.ContainsKey(form.Handle), "窓は新しいハンドルだけ");
+        Assert.True(!ForegroundTracker.DirectInputControls.ContainsKey(oldName) && ForegroundTracker.DirectInputControls.ContainsKey(name.Handle), "欄は新しいハンドルだけ");
+        form.Dispose();
+        Assert.True((ForegroundTracker.TypingAllowedWindows.Count, ForegroundTracker.DirectInputControls.Count) == before, "閉じたら何も残らない");
+    }
+
+    private sealed class RecreatableForm : Form
+    {
+        public void Recreate() => RecreateHandle();
+    }
+
+    private sealed class RecreatableTextBox : TextBox
+    {
+        public void Recreate() => RecreateHandle();
+    }
+
+    [Test]
     public static void MsIme_LongReading_IsSplitBeforeTheEngineLimit()
     {
         // #221: Microsoft IME の変換エンジンは 100 文字を超える読みを受け付けない (E_LARGEINPUT)。区切って渡す
