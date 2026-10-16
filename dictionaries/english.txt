@@ -230,3 +230,5 @@ finfluencer
 greedflation
 # Issue #725
 openstreetmap
+# Issue #726
+malvertising
