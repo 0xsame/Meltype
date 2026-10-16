@@ -234,6 +234,7 @@ public sealed class MeltypeSession
             FullWidthParentheses = () => settings.FullWidthParentheses,
             FullWidthSlash = () => settings.FullWidthSlash,
             SquareBrackets = () => settings.SquareBrackets,
+            EscStepsBack = () => settings.EscStepsBack,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
