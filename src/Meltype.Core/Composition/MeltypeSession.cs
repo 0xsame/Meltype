@@ -241,6 +241,7 @@ public sealed class MeltypeSession
             PartialCommit = () => settings.PartialCommit,
             MacControlKeys = () => settings.MacControlKeys,
             CursorIntoBrackets = () => settings.CursorIntoBrackets,
+            ControlKeyBindings = () => settings.ControlKeyBindings,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

@@ -180,6 +180,7 @@ internal static class CompositionTests
         public bool PartialCommit { get; set; }
         public bool MacControlKeys { get; set; }
         public bool CursorIntoBrackets { get; set; }
+        public string ControlKeyBindings { get; set; } = "";
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -262,6 +263,7 @@ internal static class CompositionTests
                 PartialCommit = () => PartialCommit,
                 MacControlKeys = () => MacControlKeys,
                 CursorIntoBrackets = () => CursorIntoBrackets,
+                ControlKeyBindings = () => ControlKeyBindings,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -1992,6 +1994,23 @@ internal static class CompositionTests
         var normal = new Keyboard();
         normal.Type("[]\n");
         Assert.True(!normal.Host.Events.Contains("down:25"), "OFF は送らない");
+    }
+
+    [Test]
+    public static void Issue63_ControlKeysCanBeBound()
+    {
+        var k = new Keyboard { ControlKeyBindings = "T=F7; Y=F6" };
+        k.Type("toukyou");
+        k.Key(VirtualKeys.LControl);
+        k.Key('T');
+        k.Key('T', up: true);
+        k.Key(VirtualKeys.LControl, up: true);
+        Assert.Equal("トウキョウ", k.Showing, "Control+T = F7 (カタカナ)");
+        k.Key(VirtualKeys.LControl);
+        k.Key('Y');
+        k.Key('Y', up: true);
+        k.Key(VirtualKeys.LControl, up: true);
+        Assert.Equal("とうきょう", k.Showing, "Control+Y = F6 (ひらがな)");
     }
 
     [Test]
