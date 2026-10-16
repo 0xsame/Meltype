@@ -34,3 +34,5 @@ japanese
 mobisode
 # Issue #411
 change
+# Issue #485
+open
