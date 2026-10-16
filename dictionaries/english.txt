@@ -232,3 +232,5 @@ greedflation
 openstreetmap
 # Issue #726
 malvertising
+# Issue #730
+adtech
