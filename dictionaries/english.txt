@@ -240,3 +240,5 @@ robonomics
 netizenry
 # Issue #735
 tver
+# Issue #249
+mozc
