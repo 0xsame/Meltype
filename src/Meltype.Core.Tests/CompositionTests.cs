@@ -167,6 +167,7 @@ internal static class CompositionTests
         public bool Kana { get; set; }
         public bool CorrectTypos { get; set; } = true;
         public bool SpaceAroundEnglish { get; set; }
+        public bool ShiftSpaceHalfWidth { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -236,6 +237,7 @@ internal static class CompositionTests
                 RomajiTypos = Typos,
                 CorrectTypos = () => CorrectTypos,
                 SpaceAroundEnglish = () => SpaceAroundEnglish,
+                ShiftSpaceHalfWidth = () => ShiftSpaceHalfWidth,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -1693,6 +1695,20 @@ internal static class CompositionTests
         var k = new Keyboard();
         k.Type("imaopenno\n");
         Assert.Equal("いまopenの", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue708_ShiftSpaceCanBeHalfWidth()
+    {
+        var k = new Keyboard { ShiftSpaceHalfWidth = true };
+        k.Type("tanaka\n");
+        k.Host.PhysicalShift = true;
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Space);
+        k.Key(VirtualKeys.LShift, up: true);
+        k.Host.PhysicalShift = false;
+        k.Type("tarou\n");
+        Assert.Equal("たなか たろう", k.Host.Document);
     }
 
     [Test]
