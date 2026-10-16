@@ -206,6 +206,7 @@ public sealed record CompositionOptions
     public Func<bool> CalculatorCandidates { get; init; } = () => false;
     public Func<bool> LogKeyIntervals { get; init; } = () => false;
     public Func<bool> LaughterAfterKana { get; init; } = () => false;
+    public Func<bool> ContextualLearning { get; init; } = () => false;
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
@@ -976,6 +977,14 @@ public sealed class CompositionController
         return output.ToString().TrimEnd();
     }
 
+    /// <summary>設定「英語 / 日本語の学習を前の文脈ごとに分ける」: 学習の文脈 (前が英語か日本語か) を今の入力に合わせる。</summary>
+    private void UpdateLearningContext()
+    {
+        if (_options.Languages is not { } memory) return;
+        memory.ContextSensitive = _options.ContextualLearning();
+        memory.Context = _text.PrecedingEnglish;
+    }
+
     private void BeginComposition()
     {
         _keptChoices.Clear();
@@ -994,6 +1003,7 @@ public sealed class CompositionController
         _followingText = null;
         _caretBefore = null; // 読み直せなければ (返ってこなければ) キャレットの位置は確かめない = 今までどおり直す
         _text.PrecedingEnglish = _lastCommitEnglish;
+        UpdateLearningContext();
         _text.PrecedingEnglishSentence = _lastCommitEnglish == true && IsEnglishSentence(_lastCommitText);
         _text.PrecedingEnglishName = _lastCommitEnglish == true && IsEnglishNameContext(_lastCommitText);
         _text.FollowingEnglish = null;
@@ -1007,6 +1017,7 @@ public sealed class CompositionController
             {
                 _precedingText = before;
                 if (LanguageOf(before) is { } english) _text.PrecedingEnglish = english;
+                UpdateLearningContext();
                 _text.PrecedingEnglishSentence = IsEnglishSentence(before);
                 _text.PrecedingEnglishName = IsEnglishNameContext(before);
             }

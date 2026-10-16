@@ -245,6 +245,7 @@ public sealed class MeltypeSession
             CalculatorCandidates = () => settings.CalculatorCandidates,
             LogKeyIntervals = () => settings.LogKeyIntervals,
             LaughterAfterKana = () => settings.LaughterAfterKana,
+            ContextualLearning = () => settings.ContextualLearning,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

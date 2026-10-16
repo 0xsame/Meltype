@@ -184,6 +184,7 @@ internal static class CompositionTests
         public bool CalculatorCandidates { get; set; }
         public bool LogKeyIntervals { get; set; }
         public bool LaughterAfterKana { get; set; }
+        public bool ContextualLearning { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -270,6 +271,7 @@ internal static class CompositionTests
                 CalculatorCandidates = () => CalculatorCandidates,
                 LogKeyIntervals = () => LogKeyIntervals,
                 LaughterAfterKana = () => LaughterAfterKana,
+                ContextualLearning = () => ContextualLearning,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2067,6 +2069,26 @@ internal static class CompositionTests
         var normal = new Keyboard();
         normal.Type("naruhodonew\n");
         Assert.Equal("なるほどnew", normal.Host.Document, "OFF は今までどおり");
+    }
+
+    [Test]
+    public static void Issue491_LearningCanBeSeparatedByContext()
+    {
+        var memory = new LanguageMemory(null) { ContextSensitive = true };
+        memory.Context = false;
+        memory.Remember("nw", english: false, explicitChoice: true);
+        memory.Context = true;
+        memory.Remember("nw", english: true, explicitChoice: true);
+        memory.Context = false;
+        Assert.Equal(false, memory.Get("nw"), "日本語の後では日本語");
+        memory.Context = true;
+        Assert.Equal(true, memory.Get("nw"), "英語の後では英語");
+        memory.Context = null;
+        Assert.True(memory.Get("nw") is null, "文脈が分からなければ、文脈ごとの学習は使わない");
+        var plain = new LanguageMemory(null);
+        plain.Remember("nw", english: true, explicitChoice: true);
+        plain.Context = false;
+        Assert.Equal(true, plain.Get("nw"), "OFF は今までどおり 1 つだけ");
     }
 
     [Test]
