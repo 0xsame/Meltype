@@ -178,6 +178,7 @@ internal static class CompositionTests
         public bool FunctionKeysAffectSelectedClause { get; set; }
         public bool CompatibleShortcuts { get; set; }
         public bool PartialCommit { get; set; }
+        public bool MacControlKeys { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -258,6 +259,7 @@ internal static class CompositionTests
                 FunctionKeysAffectSelectedClause = () => FunctionKeysAffectSelectedClause,
                 CompatibleShortcuts = () => CompatibleShortcuts,
                 PartialCommit = () => PartialCommit,
+                MacControlKeys = () => MacControlKeys,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -1925,6 +1927,30 @@ internal static class CompositionTests
         k.Press(0x2E); // Delete
         Assert.True(!phrases.StartingWith("kyo").Contains("今日") && !phrases.StartingWith("きょ").Contains("今日"), "学習から消える");
         Assert.True(k.Host.View!.Predictions?.Contains("今日") != true, "予測の候補から消える");
+    }
+
+    [Test]
+    public static void Issue643_MacControlKeysConvertLikeKotoeri()
+    {
+        var k = new Keyboard { MacControlKeys = true };
+        k.Type("toukyou");
+        k.Key(VirtualKeys.LControl);
+        k.Key('K');
+        k.Key('K', up: true);
+        k.Key(VirtualKeys.LControl, up: true);
+        Assert.Equal("トウキョウ", k.Showing, "Control+K でカタカナ");
+        k.Key(VirtualKeys.LControl);
+        k.Key('J');
+        k.Key('J', up: true);
+        k.Key(VirtualKeys.LControl, up: true);
+        Assert.Equal("とうきょう", k.Showing, "Control+J でひらがな");
+        var normal = new Keyboard();
+        normal.Type("toukyou");
+        normal.Key(VirtualKeys.LControl);
+        normal.Key('K');
+        normal.Key('K', up: true);
+        normal.Key(VirtualKeys.LControl, up: true);
+        Assert.True(normal.Showing != "トウキョウ", "OFF は今までどおり");
     }
 
     [Test]

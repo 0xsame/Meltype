@@ -78,6 +78,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             FunctionKeysAffectSelectedClause = () => _engine.Settings.FunctionKeysAffectSelectedClause,
             CompatibleShortcuts = () => _engine.Settings.CompatibleShortcuts,
             PartialCommit = () => _engine.Settings.PartialCommit,
+            MacControlKeys = () => _engine.Settings.MacControlKeys,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

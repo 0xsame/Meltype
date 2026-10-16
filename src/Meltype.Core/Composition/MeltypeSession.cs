@@ -239,6 +239,7 @@ public sealed class MeltypeSession
             FunctionKeysAffectSelectedClause = () => settings.FunctionKeysAffectSelectedClause,
             CompatibleShortcuts = () => settings.CompatibleShortcuts,
             PartialCommit = () => settings.PartialCommit,
+            MacControlKeys = () => settings.MacControlKeys,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
