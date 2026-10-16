@@ -185,6 +185,7 @@ internal static class CompositionTests
         public bool LogKeyIntervals { get; set; }
         public bool LaughterAfterKana { get; set; }
         public bool ContextualLearning { get; set; }
+        public bool FullWidthSpaceByDefault { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -272,6 +273,7 @@ internal static class CompositionTests
                 LogKeyIntervals = () => LogKeyIntervals,
                 LaughterAfterKana = () => LaughterAfterKana,
                 ContextualLearning = () => ContextualLearning,
+                FullWidthSpaceByDefault = () => FullWidthSpaceByDefault,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -299,7 +301,7 @@ internal static class CompositionTests
             var letter = VirtualKeys.IsLetter(k.Vk);
             if (Direct) return letter && !_directEnglishWord && Level != Meltype.Config.DetectionLevel.Manual;
             if (Kana && Detection.KanaDetector.IsKanaKey(k.Vk)) return true;
-            if (k.Vk == VirtualKeys.Space && _shiftHeld) return true;
+            if (k.Vk == VirtualKeys.Space && (_shiftHeld || FullWidthSpaceByDefault && !Direct)) return true;
             return letter || k.Vk is >= 0x30 and <= 0x39 or >= 0xBA and <= 0xC0 or >= 0xDB and <= 0xDF or 0xE2;
         }
 
@@ -2103,6 +2105,22 @@ internal static class CompositionTests
         k.Press(VirtualKeys.Return);
         k.Type("1 ");
         Assert.Equal(chosen, k.Host.View!.Candidates[k.Host.View.SelectedIndex], "次に同じ数字を変換したら、選んだ候補が先に出る");
+    }
+
+    [Test]
+    public static void Issue259_SpaceCanBeFullWidthByDefault()
+    {
+        var k = new Keyboard { FullWidthSpaceByDefault = true };
+        k.Type("tanaka\n");
+        k.Press(VirtualKeys.Space);
+        k.Type("tarou\n");
+        Assert.Equal("たなか　たろう", k.Host.Document, "Space が全角");
+        k.Host.PhysicalShift = true;
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Space);
+        k.Key(VirtualKeys.LShift, up: true);
+        k.Host.PhysicalShift = false;
+        Assert.Equal("たなか　たろう ", k.Host.Document, "Shift+Space が半角");
     }
 
     [Test]

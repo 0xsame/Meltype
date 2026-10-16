@@ -207,6 +207,7 @@ public sealed record CompositionOptions
     public Func<bool> LogKeyIntervals { get; init; } = () => false;
     public Func<bool> LaughterAfterKana { get; init; } = () => false;
     public Func<bool> ContextualLearning { get; init; } = () => false;
+    public Func<bool> FullWidthSpaceByDefault { get; init; } = () => false;
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
@@ -832,10 +833,13 @@ public sealed class CompositionController
             return;
         }
         // 日本語入力のときの Shift+Space は全角スペース (Microsoft IME と同じ: issue #24)。英数状態では普通の空白のまま。
-        if (e.Vk == VirtualKeys.Space && !_options.DirectMode() && (_swallowedShift.Count > 0 || _host.IsShiftDown()))
+        // 設定「スペースを全角で入力」では、Space が全角で Shift+Space が半角 (issue #259)
+        if (e.Vk == VirtualKeys.Space && !_options.DirectMode() && (_options.FullWidthSpaceByDefault() || _swallowedShift.Count > 0 || _host.IsShiftDown()))
         {
-            // 設定「Shift + Space で半角スペース」(issue #708)
-            CommitText(_options.ShiftSpaceHalfWidth() ? " " : "　", english: false);
+            // 設定「Shift + Space で半角スペース」(issue #708)、「スペースを全角で入力」では Space が全角・Shift+Space が半角 (issue #259)
+            var shifted = _swallowedShift.Count > 0 || _host.IsShiftDown();
+            var halfWidth = _options.FullWidthSpaceByDefault() ? shifted : _options.ShiftSpaceHalfWidth();
+            CommitText(halfWidth ? " " : "　", english: false);
             return;
         }
         // かな入力: かなのキーならすべて入力を始める (英数状態でなければ)。

@@ -85,6 +85,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             LogKeyIntervals = () => _engine.Settings.LogKeyIntervals,
             LaughterAfterKana = () => _engine.Settings.LaughterAfterKana,
             ContextualLearning = () => _engine.Settings.ContextualLearning,
+            FullWidthSpaceByDefault = () => _engine.Settings.FullWidthSpaceByDefault,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },
