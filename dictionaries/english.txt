@@ -220,3 +220,5 @@ online
 website websites campsite worksite onsite offsite
 # Issue #616
 whois
+# Issue #683
+guesstimation
