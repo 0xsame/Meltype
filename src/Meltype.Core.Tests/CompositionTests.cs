@@ -179,6 +179,7 @@ internal static class CompositionTests
         public bool CompatibleShortcuts { get; set; }
         public bool PartialCommit { get; set; }
         public bool MacControlKeys { get; set; }
+        public bool CursorIntoBrackets { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -260,6 +261,7 @@ internal static class CompositionTests
                 CompatibleShortcuts = () => CompatibleShortcuts,
                 PartialCommit = () => PartialCommit,
                 MacControlKeys = () => MacControlKeys,
+                CursorIntoBrackets = () => CursorIntoBrackets,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -1978,6 +1980,18 @@ internal static class CompositionTests
         var k = new Keyboard();
         k.Type("DeVitode\n");
         Assert.Equal("DeVitoで", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue72_CursorMovesIntoBrackets()
+    {
+        var k = new Keyboard { CursorIntoBrackets = true };
+        k.Type("[]\n");
+        Assert.Equal("「」", k.Host.Document);
+        Assert.True(k.Host.Events.Contains("down:25"), "← を送って中に入る: " + string.Join(",", k.Host.Events));
+        var normal = new Keyboard();
+        normal.Type("[]\n");
+        Assert.True(!normal.Host.Events.Contains("down:25"), "OFF は送らない");
     }
 
     [Test]

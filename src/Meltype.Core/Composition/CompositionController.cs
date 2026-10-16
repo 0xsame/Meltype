@@ -201,6 +201,7 @@ public sealed record CompositionOptions
     public Func<bool> CompatibleShortcuts { get; init; } = () => false;
     public Func<bool> PartialCommit { get; init; } = () => false;
     public Func<bool> MacControlKeys { get; init; } = () => false;
+    public Func<bool> CursorIntoBrackets { get; init; } = () => false;
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>
@@ -2590,6 +2591,8 @@ public sealed class CompositionController
     }
 
     /// <summary>確定して入力する。英語だったか日本語だったか・確定した文字列を、次の入力の文脈として覚えておく。</summary>
+    private static readonly HashSet<string> BracketPairs = ["「」", "『』", "（）", "()", "［］", "[]", "｛｝", "{}", "【】", "〈〉", "《》", "〔〕", "\"\"", "“”"];
+
     private void CommitText(string text, bool english, string raw = "", bool chosen = false, bool preserveText = false)
     {
         var formatEnglish = _options.AutomaticEnglishSpacing() && _text.Mode == DisplayMode.Auto;
@@ -2629,6 +2632,12 @@ public sealed class CompositionController
             _host.ReplaceBackward(count, replacement + text);
         }
         else _host.CommitText(text);
+        // 設定「カッコを打ったら中にカーソルを移動」: カッコの組だけを確定したら、← を送って中に入る (issue #72)
+        if (_options.CursorIntoBrackets() && text.Length == 2 && BracketPairs.Contains(text))
+        {
+            _host.Replay(new KeyEvent(VirtualKeys.Left, 0, false, false, false, Environment.TickCount64));
+            _host.Replay(new KeyEvent(VirtualKeys.Left, 0, false, true, false, Environment.TickCount64));
+        }
         Committed?.Invoke(text);
     }
 

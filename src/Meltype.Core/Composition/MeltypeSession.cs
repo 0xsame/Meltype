@@ -240,6 +240,7 @@ public sealed class MeltypeSession
             CompatibleShortcuts = () => settings.CompatibleShortcuts,
             PartialCommit = () => settings.PartialCommit,
             MacControlKeys = () => settings.MacControlKeys,
+            CursorIntoBrackets = () => settings.CursorIntoBrackets,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
