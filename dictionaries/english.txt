@@ -226,3 +226,5 @@ guesstimation
 enshittification
 # Issue #689
 finfluencer
+# Issue #692
+greedflation
