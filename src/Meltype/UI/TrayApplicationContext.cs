@@ -74,6 +74,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             FullWidthSlash = () => _engine.Settings.FullWidthSlash,
             SquareBrackets = () => _engine.Settings.SquareBrackets,
             EscStepsBack = () => _engine.Settings.EscStepsBack,
+            EscRevertsSelectedClause = () => _engine.Settings.EscRevertsSelectedClause,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

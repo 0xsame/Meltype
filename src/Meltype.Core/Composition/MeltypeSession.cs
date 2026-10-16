@@ -235,6 +235,7 @@ public sealed class MeltypeSession
             FullWidthSlash = () => settings.FullWidthSlash,
             SquareBrackets = () => settings.SquareBrackets,
             EscStepsBack = () => settings.EscStepsBack,
+            EscRevertsSelectedClause = () => settings.EscRevertsSelectedClause,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
