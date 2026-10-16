@@ -24,3 +24,5 @@ enumerate
 fatigue
 # Issue #669
 open
+# Issue #690
+datamation
