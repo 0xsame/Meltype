@@ -229,6 +229,7 @@ public sealed class MeltypeSession
             SlashAsMiddleDot = () => settings.SlashAsMiddleDot,
             SpaceAroundEnglish = () => settings.SpaceAroundEnglish,
             ShiftSpaceHalfWidth = () => settings.ShiftSpaceHalfWidth,
+            EnterCommitsAsShown = () => settings.EnterCommitsAsShown,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };

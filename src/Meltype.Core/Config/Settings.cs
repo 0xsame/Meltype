@@ -225,6 +225,10 @@ public sealed class Settings
      Description("日本語入力のときの Shift + Space を、全角スペースではなく半角スペースにします (プログラミングの癖で Shift + Space を半角スペースに使う人向け)。")]
     public bool ShiftSpaceHalfWidth { get; set; }
 
+    [Category("1. 全般"), DisplayName("Enter は見えているとおりに確定"),
+     Description("Enter で確定するとき、打ち間違いの自動修正をせず、変換ボックスに見えているとおりに確定します (Space で変換するときの修正は今までどおりです)。")]
+    public bool EnterCommitsAsShown { get; set; }
+
     [Category("1. 全般"), DisplayName("句読点"),
      Description("日本語の中で , と . を打ったときに出す句読点です (Microsoft IME と同じ 4 通り)。論文などで「，．」「，。」「、．」を使うときに変えます。かな入力の 、 。 のキーにも効きます。数字の間の . , (1.5、1,000) や英単語の中の . (tetr.io) は半角のままです。")]
     public PunctuationStyle Punctuation { get; set; } = PunctuationStyle.Japanese;

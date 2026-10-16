@@ -168,6 +168,7 @@ internal static class CompositionTests
         public bool CorrectTypos { get; set; } = true;
         public bool SpaceAroundEnglish { get; set; }
         public bool ShiftSpaceHalfWidth { get; set; }
+        public bool EnterCommitsAsShown { get; set; }
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -238,6 +239,7 @@ internal static class CompositionTests
                 CorrectTypos = () => CorrectTypos,
                 SpaceAroundEnglish = () => SpaceAroundEnglish,
                 ShiftSpaceHalfWidth = () => ShiftSpaceHalfWidth,
+                EnterCommitsAsShown = () => EnterCommitsAsShown,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -1709,6 +1711,20 @@ internal static class CompositionTests
         k.Host.PhysicalShift = false;
         k.Type("tarou\n");
         Assert.Equal("たなか たろう", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue677_EnterCanCommitAsShown()
+    {
+        // 打ち間違い (onegaishimsu) は、既定では確定するときに直す。設定 ON なら見えているとおりに確定する
+        var normal = new Keyboard();
+        normal.Type("onegaishimsu\n");
+        var shownKeyboard = new Keyboard { EnterCommitsAsShown = true };
+        shownKeyboard.Type("onegaishimsu");
+        var shown = shownKeyboard.Showing;
+        shownKeyboard.Type("\n");
+        Assert.Equal(shown, shownKeyboard.Host.Document, "見えているとおりに確定");
+        Assert.True(normal.Host.Document != shown, "既定は確定するとき直す: " + normal.Host.Document + " / " + shown);
     }
 
     [Test]
