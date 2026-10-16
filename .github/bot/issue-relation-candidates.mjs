@@ -10,6 +10,11 @@ const STOPWORDS = new Set([
 ]);
 const CATEGORY_LABELS = new Set(['bug', '誤判定', '提案', '機能提案']);
 const IGNORED_HEADINGS = /ログ|実行環境|前後の文|スクリーンショット/i;
+const GENERIC_BODY_PHRASES = [
+  '入力欄でローマ字を打つ',
+  '変換されない',
+  '日本語になってほしい',
+];
 
 function searchableBody(body = '') {
   const withoutFences = body.replace(/\x60{3}[\s\S]*?\x60{3}/g, ' ');
@@ -20,7 +25,12 @@ function searchableBody(body = '') {
     const heading = (newline < 0 ? section : section.slice(0, newline)).trim();
     if (!IGNORED_HEADINGS.test(heading)) kept.push(newline < 0 ? '' : section.slice(newline + 1));
   }
-  return kept.join('\n').replace(/<!--[^]*?-->/g, ' ').replace(/https?:\/\/\S+/g, ' ');
+  let text = kept.join('\\n').replace(/<!--[^]*?-->/g, ' ').replace(/https?:\\/\\/\\S+/g, ' ');
+  for (const phrase of GENERIC_BODY_PHRASES) {
+    const escaped = phrase.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+    text = text.replace(new RegExp(escaped, 'gi'), ' ');
+  }
+  return text;
 }
 function extractIdentifiers(text) {
   return [...new Set([
