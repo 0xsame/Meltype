@@ -28,3 +28,5 @@ open
 datamation
 # Issue #691
 adware
+# Issue #712
+japanese
