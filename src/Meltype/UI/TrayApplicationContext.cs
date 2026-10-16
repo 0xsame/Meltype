@@ -77,6 +77,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             EscRevertsSelectedClause = () => _engine.Settings.EscRevertsSelectedClause,
             FunctionKeysAffectSelectedClause = () => _engine.Settings.FunctionKeysAffectSelectedClause,
             CompatibleShortcuts = () => _engine.Settings.CompatibleShortcuts,
+            PartialCommit = () => _engine.Settings.PartialCommit,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },

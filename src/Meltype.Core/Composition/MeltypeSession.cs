@@ -238,6 +238,7 @@ public sealed class MeltypeSession
             EscRevertsSelectedClause = () => settings.EscRevertsSelectedClause,
             FunctionKeysAffectSelectedClause = () => settings.FunctionKeysAffectSelectedClause,
             CompatibleShortcuts = () => settings.CompatibleShortcuts,
+            PartialCommit = () => settings.PartialCommit,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
         };
