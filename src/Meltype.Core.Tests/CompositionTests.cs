@@ -323,6 +323,17 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue674_ExtendedYoonSpellings()
+    {
+        foreach (var (typed, expected) in new[] { ("kyi", "きぃ"), ("kye", "きぇ"), ("gwi", "ぐぃ"), ("swa", "すぁ"), ("hwa", "ふぁ"), ("fya", "ふゃ"), ("mye", "みぇ") })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Showing, typed);
+        }
+    }
+
+    [Test]
     public static void Reconversion_RomajiTextBecomesJapanese()
     {
         // #288: ローマ字のまま入った文を選んで変換キー → Meltype の判定で日本語の所だけを日本語にして候補に出す。Enter で置き換える
