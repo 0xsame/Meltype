@@ -53,6 +53,37 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void AllowTyping_FollowsRecreatedHandles()
+    {
+        // ハンドルを作り直したら (ShowInTaskbar などを変えたとき) 新しいハンドルに替え、閉じたら外す。外すときに新しいハンドルを作らない。表示はしない
+        var before = (ForegroundTracker.TypingAllowedWindows.Count, ForegroundTracker.DirectInputControls.Count);
+        var form = new RecreatableForm();
+        var name = new RecreatableTextBox();
+        form.Controls.Add(name);
+        ForegroundTracker.AllowTyping(form, name);
+        var (oldForm, oldName) = (form.Handle, name.Handle);
+        Assert.True(ForegroundTracker.TypingAllowedWindows.ContainsKey(oldForm), "窓を登録");
+        Assert.True(ForegroundTracker.DirectInputControls.ContainsKey(oldName), "欄を登録");
+        form.Recreate();
+        name.Recreate();
+        Assert.True(form.Handle != oldForm && name.Handle != oldName, "作り直すとハンドルが変わる");
+        Assert.True(!ForegroundTracker.TypingAllowedWindows.ContainsKey(oldForm) && ForegroundTracker.TypingAllowedWindows.ContainsKey(form.Handle), "窓は新しいハンドルだけ");
+        Assert.True(!ForegroundTracker.DirectInputControls.ContainsKey(oldName) && ForegroundTracker.DirectInputControls.ContainsKey(name.Handle), "欄は新しいハンドルだけ");
+        form.Dispose();
+        Assert.True((ForegroundTracker.TypingAllowedWindows.Count, ForegroundTracker.DirectInputControls.Count) == before, "閉じたら何も残らない");
+    }
+
+    private sealed class RecreatableForm : Form
+    {
+        public void Recreate() => RecreateHandle();
+    }
+
+    private sealed class RecreatableTextBox : TextBox
+    {
+        public void Recreate() => RecreateHandle();
+    }
+
+    [Test]
     public static void MsIme_LongReading_IsSplitBeforeTheEngineLimit()
     {
         // #221: Microsoft IME の変換エンジンは 100 文字を超える読みを受け付けない (E_LARGEINPUT)。区切って渡す
@@ -121,6 +152,17 @@ internal static class WindowsTests
         Assert.True(!MeltypeEngine.SwitchesToTsf(InputMode.Tsf, InputMode.Tsf), "ほかの設定だけ変えたときは切り替えない");
         Assert.True(!MeltypeEngine.SwitchesToTsf(InputMode.Keyboard, InputMode.Keyboard), "Meltype IME を使えずに元のモードに戻したときは切り替えない");
         Assert.True(!MeltypeEngine.SwitchesToTsf(InputMode.Tsf, InputMode.Keyboard), "Meltype IME から外したときは切り替えない");
+    }
+
+    [Test]
+    public static void AltTap_ReleaseIsSentAfterMaskKey()
+    {
+        // 右 Alt (拡張キー) の単独押しの解放: 0xE8 の押下・解放のあとに、解放をそのまま送り直す (先に解放が届くとメニューバーに移る)
+        var release = new KeyEvent(VirtualKeys.RMenu, 0x38, Extended: true, IsUp: true, Injected: false, TimeMs: 0);
+        var events = MeltypeEngine.MaskedAltRelease(release);
+        Assert.Equal(3, events.Length);
+        Assert.True(events[0] is { Vk: 0xE8, IsUp: false } && events[1] is { Vk: 0xE8, IsUp: true }, "先に 0xE8 を押して離す");
+        Assert.True(events[2] is { Vk: VirtualKeys.RMenu, Scan: 0x38, Extended: true, IsUp: true }, "解放は右 Alt の拡張キーのまま");
     }
 
     [Test]

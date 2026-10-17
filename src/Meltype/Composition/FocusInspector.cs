@@ -80,6 +80,11 @@ public sealed class FocusInspector : IDisposable
     /// </summary>
     public bool CanCaptureWaiting(int waitMs = 80)
     {
+        // Meltype 自身の画面 (プロファイルの名前の入力など) では、自分のプロセスの WinEvent を受けないので、窓やフォーカスが移っても通知が来ない。
+        // 前に調べたのが別のウィンドウ・別の欄 (Tab で移ったとき) なら、移った直後として調べ直す。
+        var foreground = Native.GetForegroundWindow();
+        if (Input.ForegroundTracker.TypingAllowedWindows.ContainsKey(foreground) && Interlocked.Read(ref _resolvedSequence) == Interlocked.Read(ref _focusSequence) &&
+            (foreground != _inspectedForeground || FocusedWindow(foreground) != _inspectedFocus)) InvalidateForeground();
         // 待つのは、同じウィンドウで直前に調べた所が入力欄だったときだけ (Discord の # の候補)。
         // ゲームなど入力欄の無いウィンドウでは待たない: クリックのたびに調べ直すので、
         // キーを押すたびにフックで最大 waitMs 止まり、ゲームの操作が遅れていた (PSO2 NGS)。
@@ -395,8 +400,16 @@ public sealed class FocusInspector : IDisposable
         return _automation;
     }
 
-    /// <summary>最後に調べたときの前面のウィンドウ。</summary>
+    /// <summary>最後に調べたときの前面のウィンドウと、その中でフォーカスのあったウィンドウ (欄)。</summary>
     private IntPtr _inspectedForeground;
+    private IntPtr _inspectedFocus;
+
+    /// <summary>そのウィンドウのスレッドでフォーカスのあるウィンドウ。取れなければ IntPtr.Zero。</summary>
+    private static IntPtr FocusedWindow(IntPtr foreground)
+    {
+        var info = new Native.GUITHREADINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.GUITHREADINFO>() };
+        return Native.GetGUIThreadInfo(Native.GetWindowThreadProcessId(foreground, out _), ref info) ? info.hwndFocus : IntPtr.Zero;
+    }
 
     /// <summary>その前に調べたときの前面のウィンドウと、調べた時刻。</summary>
     private IntPtr _inspectedForegroundBefore;
@@ -424,6 +437,7 @@ public sealed class FocusInspector : IDisposable
         {
             _inspectedForegroundBefore = _inspectedForeground;
             _inspectedForeground = Native.GetForegroundWindow();
+            _inspectedFocus = FocusedWindow(_inspectedForeground);
             _inspectedAtBefore = _inspectedAt;
             _inspectedAt = Environment.TickCount64;
             // Meltype 自身の画面 (設定のドロップダウンなど) には UI Automation で問い合わせない。
@@ -432,6 +446,9 @@ public sealed class FocusInspector : IDisposable
             var forced = TreatsAsTextInput?.Invoke() == true;
             var element = Automation()?.Focused();
             if (element is null) return forced ? new FocusInfo(true, false, null, "フォーカスなし (入力欄とみなすアプリ)") : new FocusInfo(false, false, null, "フォーカスなし");
+            // クリックで調べ始めたときは、フォーカスがまだ前の欄にあることがあるので、UI Automation で取った欄の窓で見る
+            if (Input.ForegroundTracker.TypingAllowedWindows.ContainsKey(_inspectedForeground) &&
+                Input.ForegroundTracker.DirectInputControls.ContainsKey(new IntPtr(element.NativeWindowHandle))) return new FocusInfo(false, false, null, "Meltype の画面 (横取りしない欄)");
             var type = element.ControlType;
             var description = $"{ControlTypeName(type)} \"{Trim(element.Name)}\" ({element.ClassName})";
             if (element.IsPassword) return new FocusInfo(true, true, element.Bounds, description);
