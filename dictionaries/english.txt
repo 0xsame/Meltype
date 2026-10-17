@@ -242,3 +242,9 @@ netizenry
 tver
 # Issue #249
 mozc
+
+# Issue #822
+autoclicker
+clicker
+# Issue #826
+ext

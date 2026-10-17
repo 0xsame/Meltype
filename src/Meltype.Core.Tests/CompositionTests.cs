@@ -1983,6 +1983,25 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue821_LongJapaneseWithTwoCamelCaseNames()
+    {
+        var k = new Keyboard();
+        k.Type("korewoiPhonedesatueisi,YouTubeniappuro-dosiyou");
+        Assert.Equal("これをiPhoneでさつえいし、YouTubeにあっぷろーどしよう", k.Showing, "iPhone と YouTube を含む長い文も日本語");
+    }
+
+    [Test]
+    public static void Issue822_826_AutoclickerAndExtStayEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("autoclicker");
+        Assert.Equal("autoclicker", k.Showing, "autoclicker は英字");
+        var e = new Keyboard();
+        e.Type("ext");
+        Assert.Equal("ext", e.Showing, "ext は英字");
+    }
+
+    [Test]
     public static void Issue127_EnterKeepsWhatIsShownAsEnglish()
     {
         var k = new Keyboard();
