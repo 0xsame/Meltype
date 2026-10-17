@@ -21,6 +21,7 @@ internal static class CompositionTests
             "きょうは" => "今日は",
             "でけんさく" => "で検索",
             "たんい" => "単位",
+            "かんたん" => "簡単",
             _ => null,
         };
 
@@ -1474,9 +1475,25 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue677_EnterAsShown_KeepsKanaBeforeFinalN()
+    {
+        // かんたn と見えていた入力は、Enter でかんたんに確定する (語末の n が ん になったところで漢字にしない)
+        var shown = new Keyboard(live: true) { EnterCommitsAsShown = true };
+        shown.Type("kantan");
+        shown.Type("\n");
+        Assert.Equal("かんたん", shown.Host.Document, "設定 ON: 見えていたかなのまま");
+        var normal = new Keyboard(live: true);
+        normal.Type("kantan\n");
+        Assert.Equal("簡単", normal.Host.Document, "既定は今までどおり");
+        var done = new Keyboard(live: true) { EnterCommitsAsShown = true };
+        done.Type("kantann\n");
+        Assert.Equal("簡単", done.Host.Document, "nn まで打てば漢字");
+    }
+
+    [Test]
     public static void Issue535_OverchoiceStaysEnglish()
     {
-        var k = new Keyboard();
+        var k = new Keyboard(live: true);
         k.Type("overchoice\n");
         Assert.Equal("overchoice", k.Host.Document);
     }
