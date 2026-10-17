@@ -249,6 +249,19 @@ Meltype キーボードを使っている間は、Windows の IME (Microsoft IME
 
 「コード」のアプリのコードの行では、変換 / 右 Alt で 半角/全角 と同じくその行を日本語にし、無変換 / 左 Alt で英数に戻します。
 
+### Zenzai (ニューラルかな漢字変換) を使う (Windows・実験)
+
+[Zenzai](https://github.com/ensan-hcl/azooKey) (azooKey の zenz モデル) で、文脈を見てかな漢字変換します。設定の「Zenzai を使う (Windows・実験)」を ON にして、次の 2 つの場所を指定してください (既定は OFF。どちらも Meltype には同梱しません)。
+
+1. **llama-server**: zenz のモデルは前処理が特殊 (`gpt2-small-japanese-char`) で、本家の llama.cpp では読み込めません。azooKey の fork ([ensan-hcl/llama.cpp](https://github.com/ensan-hcl/llama.cpp) の `ku-nlp/gpt2-japanese-char` ブランチ) をビルドした `server` / `llama-server` (Windows では .exe) を使います。
+2. **モデル (GGUF)**: [Miwa-Keita/zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) の `ggml-model-Q5_K_M.gguf` など (ライセンスは CC-BY-SA 4.0)。
+
+Meltype が llama-server を自分で起動して (127.0.0.1 の空いているポートだけ)、読みと直前の確定済みの文字列を渡して変換します。使えないとき・0.8 秒で返らないときは、今までの変換エンジン (Mozc / Microsoft IME) で変換します。
+
+- 変換結果は、読み全体で 1 つの文節になります (Mozc の結果と同じ文字列のときだけ、Mozc の文節の区切りを使います)。
+- 短い読み (きょう → 強 など) は、文を丸ごと打ったときより外れやすいです。
+- 動きは、モデルを CPU で動かしたとき 1 回の変換で 20〜100 ミリ秒ほどでした (zenz-v3.1-small、ローカルでの計測)。
+
 英数状態でも、単語の打ち始めの数文字でローマ字 (日本語) かを判定します。打った文字は判定を待たずにそのまま入り、ローマ字だと分かったら、入れた文字を消して日本語入力に戻し、変換ボックスに入れ直します。Meltype IME では入力欄に届いた文字を判定し、日本語なら変換中の文字に切り替えます。英語と分かった単語の続きと、0.7 秒打たなかった後は判定しません (設定「英数状態でもローマ字を検知」で OFF にできます)。
 
 <a name="---で始まる語-ai-エージェントのコマンドファイル名"></a>

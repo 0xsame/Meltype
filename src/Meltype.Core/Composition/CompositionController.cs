@@ -98,6 +98,11 @@ public sealed record CompositionOptions
     /// <summary>かな漢字変換のエンジン (Windows の CompositionService が Mozc / Microsoft IME を選ぶのに使う)。</summary>
     public Func<Config.ConversionEngine> Engine { get; init; } = () => Config.ConversionEngine.System;
 
+    /// <summary>設定「Zenzai を使う」と、llama-server・モデル (GGUF) の場所 (Windows)。</summary>
+    public Func<bool> UseZenzai { get; init; } = () => false;
+    public Func<string> ZenzaiServerPath { get; init; } = () => "";
+    public Func<string> ZenzaiModelPath { get; init; } = () => "";
+
     /// <summary>英数 (直接入力) 状態か。</summary>
     public Func<bool> DirectMode { get; init; } = () => false;
 
