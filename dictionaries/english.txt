@@ -248,3 +248,6 @@ autoclicker
 clicker
 # Issue #826
 ext
+
+# Issue #835
+docs
