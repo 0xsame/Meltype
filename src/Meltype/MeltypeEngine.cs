@@ -716,7 +716,8 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         if (!_foreground.Check(settings).Allowed) return false;
         // 文字入力欄 (パスワード以外) にフォーカスがあるときだけ。ショートカットキーやゲームの操作を横取りしない。
         if (_composition?.Focus.CanCaptureWaiting() != true &&
-            !(RechecksStaleFocus(_foreground.Current.ProcessName) && _composition?.Focus.RecheckStale() == true)) return false;
+            !(RechecksStaleFocus(_foreground.Current.ProcessName) && _composition?.Focus.RecheckStale() == true) &&
+            !RecheckAfterClick()) return false;
         // コードエディター・ターミナル: コードの中は英数のまま通す (補完もそのまま効く)。コメント・文字列の中は日本語を判定する。
         if (!reconvert && !_keyboardDirect && IsCodeApp(settings))
         {
@@ -754,6 +755,18 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         else _directEnglishWord = true;
     }
 
+    /// <summary>
+    /// クリックの直後に、入力欄ではない所で打ち始めた: クリックで移るはずのフォーカスが、まだ前の場所のまま調べ終わっていることがある
+    /// (入力欄をクリックしてすぐ打つと、最初の文字が変換ボックスを通らずに消えていた)。今のフォーカスを調べ直させて、最大 100 ms 待つ。
+    /// </summary>
+    private bool RecheckAfterClick()
+    {
+        if (_composition is not { } composition) return false;
+        var capture = composition.Focus.RecheckAfterClick(out var waited);
+        if (waited >= 0) Log.Info($"クリック直後の打ち始め: フォーカスを調べ直した ({waited} ms) → {(capture ? "入力欄なので変換ボックスに入れる" : "入力欄ではない")}");
+        return capture;
+    }
+
     private bool OnMouseButton(Composition.MouseButtonEvent e)
     {
         if (IsButtonDown(e.Message)) _altTap.Cancel();
@@ -763,6 +776,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             if (composition.Gate.OnMouseButton(e)) return true;
             if (IsButtonDown(e.Message))
             {
+                composition.Focus.NoteClick();
                 composition.Focus.Invalidate();
                 composition.ResetContext();
                 InvalidateLine();
