@@ -227,6 +227,7 @@ public sealed class MeltypeSession
             ContinueAfterConversion = () => settings.ContinueAfterConversion,
             Learning = () => settings.LearningEnabled,
             SeparateKeyRoles = () => settings.SeparateKeyRoles,
+            EnglishFirstInput = () => settings.EnglishFirstInput,
             CandidateMeanings = () => settings.ShowCandidateMeanings,
             CorrectTypos = () => settings.CorrectTypos,
             SlashAsMiddleDot = () => settings.SlashAsMiddleDot,
