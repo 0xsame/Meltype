@@ -228,6 +228,7 @@ public sealed class MeltypeSession
             Learning = () => settings.LearningEnabled,
             SeparateKeyRoles = () => settings.SeparateKeyRoles,
             EnglishFirstInput = () => settings.EnglishFirstInput,
+            ConsonantAbbreviations = () => settings.ConsonantAbbreviations,
             CandidateMeanings = () => settings.ShowCandidateMeanings,
             CorrectTypos = () => settings.CorrectTypos,
             SlashAsMiddleDot = () => settings.SlashAsMiddleDot,

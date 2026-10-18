@@ -169,6 +169,9 @@ public sealed record CompositionOptions
     /// <summary>設定「英字を主に入力」: 自動判定をせず英字のまま入力中にし、変換キー / ↓ で日本語にする (issue #839)。</summary>
     public Func<bool> EnglishFirstInput { get; init; } = () => false;
 
+    /// <summary>設定「子音の略入力を候補に出す」: ast → 明日 (issue #62)。</summary>
+    public Func<bool> ConsonantAbbreviations { get; init; } = () => false;
+
     /// <summary>選んだ英訳の記録 (普通の変換の学習より弱く効かせる)。</summary>
     public TranslationHistory? TranslationHistory { get; init; }
 
@@ -1504,7 +1507,7 @@ public sealed class CompositionController
         _tabStartedConversion = false;
         // 子音の略入力 (ast → 明日): 打った英字全体が candidates.txt の英字の読みにあれば、それを 1 つの文節の候補にする (issue #62)
         if (!_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is { Length: >= 2 } typedRaw && typedRaw.All(char.IsAsciiLetter) &&
-            _options.Candidates?.Lookup(typedRaw.ToLowerInvariant()) is { Count: > 0 } abbreviation)
+            _options.ConsonantAbbreviations() && _options.Candidates?.Lookup(typedRaw.ToLowerInvariant()) is { Count: > 0 } abbreviation)
         {
             _clauses = [new Clause(typedRaw, true, Distinct([.. abbreviation, typedRaw, .. EnglishCandidates(typedRaw)])) { Raw = typedRaw }];
             _selectedClause = 0;
@@ -1545,7 +1548,7 @@ public sealed class CompositionController
                 }
                 var english = EnglishCandidates(segment.Raw);
                 // 子音の略入力 (ast → 明日): 英字のまま見える語にも、candidates.txt の英字の読みの候補を足す (issue #62)
-                if (segment.Raw.Length >= 2 && segment.Raw.All(char.IsAsciiLetter) && _options.Candidates is { } abbreviations)
+                if (_options.ConsonantAbbreviations() && segment.Raw.Length >= 2 && segment.Raw.All(char.IsAsciiLetter) && _options.Candidates is { } abbreviations)
                 {
                     foreach (var word in abbreviations.Lookup(segment.Raw.ToLowerInvariant()))
                     {
@@ -1609,7 +1612,7 @@ public sealed class CompositionController
     private void AddRawCandidates(Clause clause)
     {
         // 子音の略入力 (ast → 明日): 打った英字を読みとする候補 (candidates.txt の英字の読み) を足す (issue #62)
-        if (clause.Raw is { Length: >= 2 } abbreviation && abbreviation.All(char.IsAsciiLetter) && _options.Candidates is { } abbreviations)
+        if (_options.ConsonantAbbreviations() && clause.Raw is { Length: >= 2 } abbreviation && abbreviation.All(char.IsAsciiLetter) && _options.Candidates is { } abbreviations)
         {
             foreach (var word in abbreviations.Lookup(abbreviation.ToLowerInvariant()))
             {
