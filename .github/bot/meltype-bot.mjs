@@ -310,8 +310,9 @@ async function parse() {
   const prOnly = ['test', 'pack', 'test-repro', 'test-jht', 'test-explain'];
 
   if (command === 'release' || command === 'pre-release') {
-    await releaseCommand(issue, command, rest.trim().replace(/^`|`$/g, '').replace(/^v/, ''));
-    return output({ action: 'none' });
+    // 権限の広い処理は parse では行わない (parse はだれのコメントでも動くので、権限は contents: read のまま)。
+    // 別の job (release) に頼む。管理者かどうかの確認は release の中で、書き込みの前に行う
+    return output({ action: 'none', release_command: command, release_version: rest.trim().replace(/^`|`$/g, '').replace(/^v/, '').slice(0, 40) });
   }
   if (command === 'help') {
     await upsertComment(issue, `help-${event.comment.id}`, Help);
@@ -558,6 +559,10 @@ async function report() {
 const mode = process.argv[2];
 try {
   if (mode === 'parse') await parse();
+  else if (mode === 'release') {
+    const command = process.env.BOT_RELEASE_COMMAND;
+    if (command === 'release' || command === 'pre-release') await releaseCommand(event.issue.number, command, process.env.BOT_RELEASE_VERSION ?? '');
+  }
   else if (mode === 'report') {
     await report();
     await react(process.env.BOT_JOB_RESULT === 'success' ? 'rocket' : 'confused');
