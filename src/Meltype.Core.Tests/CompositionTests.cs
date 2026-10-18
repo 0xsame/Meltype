@@ -169,6 +169,7 @@ internal static class CompositionTests
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
+        public bool ConsonantAbbreviations { get; set; }
 
         /// <summary>句読点の組み合わせ (設定)。</summary>
         public Meltype.Config.PunctuationStyle Punctuation { get; set; }
@@ -245,6 +246,7 @@ internal static class CompositionTests
                 ContinueAfterConversion = () => ContinueAfterConversion,
                 Learning = () => Learning,
                 SeparateKeyRoles = () => SeparateKeyRoles,
+                ConsonantAbbreviations = () => ConsonantAbbreviations,
             });
             Controller.Committed += Sigil.Append;
             Host.Replayed += e =>
@@ -1460,10 +1462,14 @@ internal static class CompositionTests
     [Test]
     public static void Issue62_ConsonantAbbreviationOffersWord()
     {
-        var k = new Keyboard();
+        var k = new Keyboard { ConsonantAbbreviations = true };
         k.Type("ast ");
         var candidates = k.Host.View!.Candidates;
         Assert.True(candidates.Contains("明日"), "ast → 明日: " + string.Join(",", candidates));
+        // 設定が OFF (既定) なら、略入力の候補は出さない
+        var off = new Keyboard();
+        off.Type("ast ");
+        Assert.True(!off.Host.View!.Candidates.Contains("明日"), "OFF は出さない: " + string.Join(",", off.Host.View.Candidates));
     }
 
     [Test]
