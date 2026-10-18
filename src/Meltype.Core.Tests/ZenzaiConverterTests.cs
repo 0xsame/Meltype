@@ -91,23 +91,16 @@ internal static class ZenzaiConverterTests
     }
 
     [Test]
-    public static void LowConfidenceAnswers_AreLeftToOtherEngines()
+    public static void NoContext_UsesNeutralSentenceStart()
     {
-        // 文脈の無い きょう → 強 のように、モデルが迷っている (確率が低い) 答えは使わない。確かなら短くても使う
-        using var unsure = new FakeServer { Answer = p => "強", Probability = 0.13 };
-        using var zenzai = new ZenzaiConverter(unsure.Endpoint);
-        Assert.True(zenzai.ConvertClauses("きょう") is null, "自信が低ければ null");
-        Assert.Equal(1, unsure.Prompts.Count, "聞いた");
-        Assert.True(zenzai.ConvertClauses("きょう") is null && unsure.Prompts.Count == 1, "使わないと決めた答えも覚えていて、聞き直さない");
-        Assert.True(zenzai.IsAvailable, "自信が低いだけでは諦めない");
-        using var sure = new FakeServer { Answer = p => "今日", Probability = 0.97 };
-        using var confident = new ZenzaiConverter(sure.Endpoint);
-        Assert.True(confident.ConvertClauses("きょう", "明日は") is [{ Text: "今日" }], "確かなら短くても使う");
-        // 2 文字の答えの確率は積 (0.7 × 0.7 = 0.49 なら使う、0.6 × 0.6 = 0.36 なら使わない)
-        using var two = new FakeServer { Answer = p => "公園", Probability = 0.7 };
-        Assert.True(new ZenzaiConverter(two.Endpoint).ConvertClauses("こうえん") is [{ Text: "公園" }], "積が下限以上");
-        two.Probability = 0.6;
-        Assert.True(new ZenzaiConverter(two.Endpoint).ConvertClauses("こうえん") is null, "積が下限未満");
+        // 前の文脈が無い入力は、モデルが迷う (文脈なしの きょう → 強) ので、文の始まりの合図「。」を文脈として渡す
+        using var server = new FakeServer { Answer = p => "今日" };
+        using var zenzai = new ZenzaiConverter(server.Endpoint);
+        Assert.True(zenzai.ConvertClauses("きょう") is [{ Text: "今日" }], "文脈なしでも Zenzai で変換する");
+        Assert.True(zenzai.ConvertClauses("きょう", "") is [{ Text: "今日" }], "空の文脈も同じ");
+        Assert.Equal("\uEE00キョウ\uEE02。\uEE01", server.Prompts[0], "渡した文: " + server.Prompts[0]);
+        zenzai.ConvertClauses("あした", "昨日は");
+        Assert.Equal("\uEE00アシタ\uEE02昨日は\uEE01", server.Prompts[^1], "文脈があればそれを渡す");
     }
 
     [Test]
@@ -182,8 +175,8 @@ internal static class ZenzaiConverterTests
         var bridge = zenzai.ConvertClauses("はし", "みずうみにかかる");
         Assert.Equal("箸", chopsticks is [var a] ? a.Text : "", "文脈 (食べる) で 箸");
         Assert.Equal("橋", bridge is [var b] ? b.Text : "", "文脈 (湖にかかる) で 橋");
-        // 文脈の無い きょう は、モデルが迷う (強 / 今 / 鏡 / 京がほぼ同じ確率) ので使わず、Mozc などに任せる。文脈があれば今日
-        Assert.True(zenzai.ConvertClauses("きょう") is null, "文脈なしの きょう は使わない");
+        // 文脈の無い きょう は、何も渡すと モデルが迷って 強 になる。「。」を文脈にして 今日 にする
+        Assert.Equal("今日", zenzai.ConvertClauses("きょう") is [var bare] ? bare.Text : "", "文脈なしでも きょう は 今日 (「。」を文脈にする: 何も渡さないと 強)");
         Assert.Equal("今日", zenzai.ConvertClauses("きょう", "あしたは") is [var today] ? today.Text : "", "文脈 (あしたは) で 今日");
     }
 }
