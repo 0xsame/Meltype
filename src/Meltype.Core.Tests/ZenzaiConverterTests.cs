@@ -96,6 +96,19 @@ internal static class ZenzaiConverterTests
     }
 
     [Test]
+    public static void SlowServer_PausesZenzaiForAWhile()
+    {
+        using var server = new FakeServer { Answer = p => { Thread.Sleep(300); return "遅い"; } };
+        using var zenzai = new ZenzaiConverter(server.Endpoint, timeoutMs: 100);
+        Assert.True(zenzai.ConvertClauses("あ") is null, "間に合わなければ null");
+        var before = server.Prompts.Count;
+        Assert.True(zenzai.ConvertClauses("い") is null, "しばらくは頼まない");
+        Thread.Sleep(50);
+        Assert.Equal(before, server.Prompts.Count, "遅いあいだはサーバーに頼まない");
+        Assert.True(zenzai.IsAvailable, "遅いだけでは諦めない (また使える)");
+    }
+
+    [Test]
     public static void Hybrid_PrefersZenzaiAndKeepsOtherClausesWhenSame()
     {
         using var server = new FakeServer { Answer = p => p.Contains("タンイヲトル") ? "単位を取る" : "ひらがな" };

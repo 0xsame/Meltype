@@ -256,9 +256,10 @@ Meltype キーボードを使っている間は、Windows の IME (Microsoft IME
 1. **llama-server**: zenz のモデルは前処理が特殊 (`gpt2-small-japanese-char`) で、本家の llama.cpp では読み込めません。azooKey の fork ([ensan-hcl/llama.cpp](https://github.com/ensan-hcl/llama.cpp) の `ku-nlp/gpt2-japanese-char` ブランチ) をビルドした `server` / `llama-server` (Windows では .exe) を使います。
 2. **モデル (GGUF)**: [Miwa-Keita/zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) の `ggml-model-Q5_K_M.gguf` など (ライセンスは CC-BY-SA 4.0)。
 
-Meltype が llama-server を自分で起動して (127.0.0.1 の空いているポートだけ)、読みと直前の確定済みの文字列を渡して変換します。使えないとき・0.8 秒で返らないときは、今までの変換エンジン (Mozc / Microsoft IME) で変換します。
+Meltype が llama-server を自分で起動して (127.0.0.1 の空いているポートだけ)、読みと直前の確定済みの文字列を渡して変換します。使えないとき・0.4 秒で返らないときは、今までの変換エンジン (Mozc / Microsoft IME) で変換します。
 
 - 変換結果は、読み全体で 1 つの文節になります (Mozc の結果と同じ文字列のときだけ、Mozc の文節の区切りを使います)。
+- CPU の負荷が高いときは、1 回の変換が 0.4 秒を超えることがあります。そのときは 5 秒間 Zenzai を使わず、今までの変換エンジンで変換します。常に使うと CPU の負荷が増えるので、改善を感じない場合は OFF のままにしてください (Mac 版の fork の作者からも、「ものによって改善・改善なしがあり、処理が増えると遅延が出る」という報告をいただいています)。
 - 短い読み (きょう → 強 など) は、文を丸ごと打ったときより外れやすいです。
 - 動きは、モデルを CPU で動かしたとき 1 回の変換で 20〜100 ミリ秒ほどでした (zenz-v3.1-small、ローカルでの計測)。
 

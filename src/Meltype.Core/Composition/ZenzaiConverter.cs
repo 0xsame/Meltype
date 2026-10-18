@@ -42,10 +42,15 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     private bool _disposed;
     private int _failures;
 
+    // 応答が遅かった (CPU の負荷が高いなど) ときは、しばらく使わず今までの変換エンジンに任せる。
+    // ライブ変換は 1 打鍵ごとに UI スレッドで変換を頼むので、遅いままだと入力が止まる
+    private const int BackoffMs = 5000;
+    private long _pausedUntil;
+
     /// <param name="serverPath">llama-server の実行ファイル。</param>
     /// <param name="modelPath">zenz の GGUF ファイル。</param>
     /// <param name="timeoutMs">1 回の変換を待つ時間。</param>
-    public ZenzaiConverter(string serverPath, string modelPath, int timeoutMs = 800)
+    public ZenzaiConverter(string serverPath, string modelPath, int timeoutMs = 400)
     {
         _serverPath = serverPath;
         _modelPath = modelPath;
@@ -53,7 +58,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     }
 
     /// <summary>すでに動いている llama-server を使う (テスト用)。</summary>
-    internal ZenzaiConverter(Uri endpoint, int timeoutMs = 800) : this("", "", timeoutMs)
+    internal ZenzaiConverter(Uri endpoint, int timeoutMs = 400) : this("", "", timeoutMs)
     {
         _fixedEndpoint = endpoint;
         _endpoint = endpoint;
@@ -78,7 +83,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
 
     public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null)
     {
-        if (string.IsNullOrEmpty(hiragana) || hiragana.Length > MaxReading || !IsAvailable) return null;
+        if (string.IsNullOrEmpty(hiragana) || hiragana.Length > MaxReading || !IsAvailable || Environment.TickCount64 < Interlocked.Read(ref _pausedUntil)) return null;
         context = context is { Length: > MaxContext } ? context[^MaxContext..] : context;
         var key = context + "\u0000" + hiragana;
         lock (_gate)
@@ -87,11 +92,14 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             EnsureStarting();
             if (!_ready || _endpoint is null) return null;
         }
+        var started = Environment.TickCount64;
         var text = Complete(Prompt(hiragana, context));
+        var slow = Environment.TickCount64 - started >= _timeoutMs;
         lock (_gate)
         {
-            if (text is null) _failures++;
-            else _failures = 0;
+            if (slow) Interlocked.Exchange(ref _pausedUntil, Environment.TickCount64 + BackoffMs);
+            if (text is null && !slow) _failures++;
+            else if (text is not null) _failures = 0;
             if (_cache.Count >= MaxCache) _cache.Clear();
             if (text is not null) _cache[key] = text;
         }
