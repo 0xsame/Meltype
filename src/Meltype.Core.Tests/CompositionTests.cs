@@ -1925,6 +1925,12 @@ internal static class CompositionTests
         Assert.Equal("kyou", k.Showing, "2 回目: 打ったローマ字");
         k.Press(VirtualKeys.Escape);
         Assert.True(string.IsNullOrEmpty(k.Showing), "3 回目: 消える: " + k.Showing);
+        // 英字のまま見えている入力 (hello) は、かな (へっぉ) に変えず、そのまま全部消す
+        var english = new Keyboard { EscStepsBack = true };
+        english.Type("hello");
+        Assert.Equal("hello", english.Showing);
+        english.Press(VirtualKeys.Escape);
+        Assert.True(string.IsNullOrEmpty(english.Showing), "英字は一段戻さず消える: " + english.Showing);
         var normal = new Keyboard();
         normal.Type("kyou");
         normal.Press(VirtualKeys.Escape);
