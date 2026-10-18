@@ -380,6 +380,20 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue666_ClickingATypingCandidate_SelectsThatWord()
+    {
+        // 入力中の候補は読み全体の候補。クリックしたとき、文節に分かれて一覧が変わっても、見えていた語が選ばれる
+        var k = new Keyboard(live: true) { ShowCandidatesWhileTyping = true };
+        k.Type("tanniwotoru");
+        var shown = k.Host.View!.Candidates.ToList();
+        Assert.True(shown.Count >= 2, "候補が出ている: " + string.Join(",", shown));
+        k.Controller.SelectCandidate(1);
+        Assert.Equal(shown[1], k.Showing, "クリックした語が選ばれる");
+        k.Type("\n");
+        Assert.Equal(shown[1], k.Host.Document, "その語で確定");
+    }
+
+    [Test]
     public static void Issue835_DocsSlashStaysEnglish()
     {
         var k = new Keyboard();
