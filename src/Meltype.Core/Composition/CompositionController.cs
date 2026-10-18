@@ -1521,7 +1521,7 @@ public sealed class CompositionController
         // 設定「#番号で GitHub の Issue・PR のタイトルを候補に出す」なら、タイトルも候補に出す (issue #291)
         if (!_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is ['#', .. { Length: > 0 } digits] && digits.All(char.IsAsciiDigit) && digits.Length <= 7)
         {
-            var repository = _options.GitHubRepository();
+            var repository = GitHubIssueTitles.Normalize(_options.GitHubRepository());
             var hashCandidates = new List<string> { _text.Raw };
             if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits)) is { Length: > 0 } title)
                 hashCandidates.AddRange([$"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"]);
