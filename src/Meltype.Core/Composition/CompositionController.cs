@@ -1522,7 +1522,7 @@ public sealed class CompositionController
             _text.Raw is ['#', .. { Length: > 0 } digits] && digits.All(char.IsAsciiDigit) && digits.Length <= 7 &&
             titles.Lookup(_options.GitHubRepository(), int.Parse(digits)) is { Length: > 0 } title)
         {
-            var repository = _options.GitHubRepository();
+            var repository = GitHubIssueTitles.Normalize(_options.GitHubRepository());
             _clauses = [new Clause(_text.Raw, true, Distinct([_text.Raw, $"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"])) { Raw = _text.Raw }];
             _selectedClause = 0;
             _converting = true;
