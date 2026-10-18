@@ -94,7 +94,8 @@ TSF の IME は、入力するアプリ全部のプロセスに読み込まれ�
   種類は Windows が持つもの (`GetProperty`) と、アプリが知らせるもの (`GetAppProperty`) の両方を読み、どちらかがパスワードならパスワード欄とする。どちらも無い入力欄は、種類を決めていないふつうの入力欄とする
   (ブラウザーはこれで、パスワード欄では IME を無効にする)。種類の値はあるのに中身を読めないときは、パスワード欄として扱う (問い合わせ自体ができないときは、種類を決めていない入力欄と同じ)。
   変換中に入力欄がパスワード欄になったとき (IME を無効にした・種類を変えた) は、変換中の文字を確定して、次のキーから受け取らない
-  入力を覚えないように求める入力欄 (InputScope が IS_PRIVATE。ブラウザーのシークレット / InPrivate ウィンドウ) も、学習しないで使う仕組みが無いので何もしない
+  入力を覚えないように求める入力欄 (InputScope が IS_PRIVATE。ブラウザーのシークレット / InPrivate ウィンドウ) はパスワード欄にしない。
+  キーの要求に `"private":true` を付け、Meltype.exe はその入力欄では学習しない
 - Meltype.exe が動いていない・一時停止中・動作モードが Meltype IME でない・アプリ別設定で OFF か「ゲーム」のアプリ (サーバーが active: false を返す)
 
 <br>
@@ -132,7 +133,7 @@ DLL の中で、Direct2D + DirectWrite で描く (絵文字もカラーで出る
 <img src="images/headings/tsf-design/05.svg" alt="Meltype.exe 側" height="53"><br>
 
 
-- 動作モードに `Tsf` (Meltype IME) を足した。Tsf のときは、キーボードフックは何もしない。今までの方式 (変換ボックス・IME 自動切替) も残している
+- 動作モードに `Tsf` (Meltype IME) を足した。Tsf のときは、キーボードフックは何もしない。今までの方式 (変換ボックス) も残している
 - Meltype IME が登録されていて、このユーザーのキーボードの一覧にも入っていれば、一度だけ自動で Tsf にする。
   そのとき (とトレイで Meltype IME を選んだとき) は、いま使う入力方式も Meltype IME にする (ITfInputProcessorProfileMgr::ActivateProfile の TF_IPPMF_FORSESSION)
 - Meltype.exe 自身の画面 (はじめに・設定など) でも使える。そこでは UI スレッドが DLL の中で応答を待って止まるので、

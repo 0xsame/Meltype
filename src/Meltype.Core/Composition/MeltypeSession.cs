@@ -74,6 +74,10 @@ public sealed record SessionResult(bool Consumed, IReadOnlyList<TextEdit> Commit
         builder.Append(",\"predictions\":");
         AppendArray(builder, view.Predictions ?? []);
         builder.Append(",\"selectedPrediction\":").Append(view.SelectedPrediction);
+        // 打ったキー (設定「打ったキーを表示」が OFF なら null)
+        builder.Append(",\"typed\":");
+        if (view.Typed is { } typed) AppendString(builder, typed);
+        else builder.Append("null");
         builder.Append("}}");
         return builder.ToString();
     }
@@ -150,6 +154,8 @@ public sealed class MeltypeSession
                 DirectHoldCleared = _host.ResetDirectReplay,
             }
             : options;
+        // 入力を覚えないように求める入力欄 (Private) では学習しない
+        controllerOptions = controllerOptions with { Learning = () => !Private && options.Learning() };
         _host.DeferCurrentReplayOnDelete = directModeDetection;
         _controller = new CompositionController(_gate, detector, converter, _host, controllerOptions);
     }
@@ -161,47 +167,98 @@ public sealed class MeltypeSession
     public static MeltypeSession CreateDefault(IKanjiConverter converter, Func<string, IReadOnlyList<string>>? moreCandidates, IWordChecker? wordChecker, bool autoSpacing = false)
     {
         AppPaths.MigrateFromOldName();
-        Directory.CreateDirectory(AppPaths.DataDirectory);
-        var settings = Settings.Load(AppPaths.ConfigFile);
+        return CreateDefault(AppPaths.DataDirectory, converter, moreCandidates, wordChecker, autoSpacing);
+    }
+
+    // 辞書・検出器・学習データは、入力欄 (セッション) がいくつあってもプロセスで 1 つだけ作って共有する (Windows 版の CompositionService.CreateSession と同じ)。
+    // 入力欄ごとに作ると、学習データを保存するときにほかの入力欄で覚えたものを上書きし、辞書も入力欄の数だけメモリに持つ。
+    // Input Method Kit・fcitx5・IBus はどれも 1 つのスレッド (メインループ) から呼ぶので、排他はしない。
+    private static (string Directory, CompositionDetector Detector, CompositionOptions Options)? s_shared;
+
+    // #123 の候補で調べた GitHub のタイトル (設定「#番号で GitHub の Issue・PR のタイトルを候補に出す」)。セッションの間だけ覚える
+    private static readonly GitHubIssueTitles s_githubTitles = new();
+
+    /// <summary>dataDirectory に置いた設定・辞書・学習データで作る (テストでは一時フォルダーを渡す)。</summary>
+    internal static MeltypeSession CreateDefault(string dataDirectory, IKanjiConverter converter, Func<string, IReadOnlyList<string>>? moreCandidates, IWordChecker? wordChecker, bool autoSpacing = false)
+    {
+        Directory.CreateDirectory(dataDirectory);
+        // 設定は入力欄を作るたびに読み直す (設定の変更は、次に開いた入力欄から効く)。
+        var settings = Settings.Load(Path.Combine(dataDirectory, "config.json"));
         // 設定で「ファイルにログを書く」を ON にしていれば、Mac でも meltype.log に書く (動かないときの調査用)。
-        Diagnostics.Log.SetFileOutput(settings.FileLog ? AppPaths.LogFile : null);
+        Diagnostics.Log.SetFileOutput(settings.FileLog ? Path.Combine(dataDirectory, "meltype.log") : null);
         Diagnostics.Log.RecordText = settings.LogTypedText;
-        var userDirectory = AppPaths.UserDictionaryDirectory;
-        var detector = CompositionDetector.CreateDefault(userDirectory);
+        var userDirectory = Path.Combine(dataDirectory, "dictionaries");
+        if (s_shared is not { } shared || shared.Directory != dataDirectory)
+        {
+            var created = CompositionDetector.CreateDefault(userDirectory);
+            var languages = new LanguageMemory(Path.Combine(dataDirectory, "languages.json"));
+            created.Memory = languages;
+            shared = (dataDirectory, created, new CompositionOptions
+            {
+                Candidates = CandidateDictionary.Load(userDirectory),
+                ContextRules = ContextRules.Load(userDirectory),
+                History = new ConversionHistory(Path.Combine(dataDirectory, "conversions.json")),
+                Misspellings = MisspellingDictionary.Load(userDirectory),
+                Languages = languages,
+                Translations = TranslationDictionary.Load(),
+                Meanings = MeaningDictionary.Load(),
+                RomajiTypos = RomajiTypoCorrector.Load(created.Romaji),
+                TranslationHistory = new TranslationHistory(Path.Combine(dataDirectory, "translations.json")),
+            });
+            s_shared = shared;
+        }
+        var detector = shared.Detector;
+        // 検出器は入力欄で共有するので、検出器が見る設定は最後に作った入力欄で読んだもの。
         // OS のスペルチェッカーが無ければ (Linux)、同梱のよく使う英単語の一覧を使う (meeting を英語と分かるように)。
         detector.SpellChecker = wordChecker is { IsAvailable: true } ? wordChecker : Detection.BuiltInWordChecker.Shared;
-        var languages = new LanguageMemory(AppPaths.LanguageMemoryFile);
-        detector.Memory = languages;
         detector.UseScoredSegmentation = () => settings.ScoredSegmentation;
         detector.UseJapanesePunctuationAfterEnglish = () => settings.JapanesePunctuationAfterEnglish;
-        var options = new CompositionOptions
+        var options = shared.Options with
         {
             LiveConversion = () => settings.LiveConversion,
             AutoCorrect = () => settings.AutoCorrectAfterCommit && settings.DetectionLevel != DetectionLevel.Manual,
             Level = () => settings.DetectionLevel,
-            Candidates = CandidateDictionary.Load(userDirectory),
-            ContextRules = ContextRules.Load(userDirectory),
-            History = new ConversionHistory(AppPaths.ConversionHistoryFile),
+            // ユーザー辞書は入力欄を作るたびに読み直す (Mac は辞書を取り込んだ後に入力欄を作り直して反映する)。
             // dictionaries/ に置いた macOS の「ユーザ辞書」の .plist も読む (#40)
-            UserDictionary = new UserDictionary(AppPaths.UserDictionaryFile, importDirectory: userDirectory),
+            UserDictionary = new UserDictionary(Path.Combine(dataDirectory, "userdict.txt"), importDirectory: userDirectory),
             MoreCandidates = moreCandidates,
-            Misspellings = MisspellingDictionary.Load(userDirectory),
-            Languages = languages,
-            Translations = TranslationDictionary.Load(),
             TranslationCandidates = () => settings.TranslationCandidates,
             TabConversion = () => settings.TabConversion,
             ContinueAfterConversion = () => settings.ContinueAfterConversion,
             Learning = () => settings.LearningEnabled,
             SeparateKeyRoles = () => settings.SeparateKeyRoles,
-            Meanings = MeaningDictionary.Load(),
+            EnglishFirstInput = () => settings.EnglishFirstInput,
+            ConsonantAbbreviations = () => settings.ConsonantAbbreviations,
             CandidateMeanings = () => settings.ShowCandidateMeanings,
-            RomajiTypos = RomajiTypoCorrector.Load(detector.Romaji),
             CorrectTypos = () => settings.CorrectTypos,
             SlashAsMiddleDot = () => settings.SlashAsMiddleDot,
             SpaceAroundEnglish = () => settings.SpaceAroundEnglish,
+            ShiftSpaceHalfWidth = () => settings.ShiftSpaceHalfWidth,
+            EnterCommitsAsShown = () => settings.EnterCommitsAsShown,
+            AlphanumericKeyStartsAsTyped = () => settings.AlphanumericKeyStartsAsTyped,
+            FullWidthParentheses = () => settings.FullWidthParentheses,
+            FullWidthSlash = () => settings.FullWidthSlash,
+            SquareBrackets = () => settings.SquareBrackets,
+            EscStepsBack = () => settings.EscStepsBack,
+            EscRevertsSelectedClause = () => settings.EscRevertsSelectedClause,
+            FunctionKeysAffectSelectedClause = () => settings.FunctionKeysAffectSelectedClause,
+            CompatibleShortcuts = () => settings.CompatibleShortcuts,
+            PartialCommit = () => settings.PartialCommit,
+            MacControlKeys = () => settings.MacControlKeys,
+            CursorIntoBrackets = () => settings.CursorIntoBrackets,
+            ControlKeyBindings = () => settings.ControlKeyBindings,
+            CalculatorCandidates = () => settings.CalculatorCandidates,
+            LogKeyIntervals = () => settings.LogKeyIntervals,
+            LaughterAfterKana = () => settings.LaughterAfterKana,
+            ContextualLearning = () => settings.ContextualLearning,
+            FullWidthSpaceByDefault = () => settings.FullWidthSpaceByDefault,
+            ShowCandidatesWhileTyping = () => settings.ShowCandidatesWhileTyping,
+            GitHubIssueCandidates = () => settings.GitHubIssueCandidates,
+            GitHubRepository = () => settings.GitHubRepository,
+            GitHubTitles = () => s_githubTitles,
+            ClipboardCandidates = () => settings.ClipboardCandidates,
             AutomaticEnglishSpacing = () => autoSpacing,
             Punctuation = () => settings.Punctuation,
-            TranslationHistory = new TranslationHistory(AppPaths.TranslationHistoryFile),
         };
         return new MeltypeSession(detector, converter, options, () => settings);
     }
@@ -223,6 +280,9 @@ public sealed class MeltypeSession
     }
 
     public bool DirectEnglishWord => _directEnglishWord;
+
+    /// <summary>入力を覚えないように求める入力欄か (Windows のブラウザーのシークレット / InPrivate ウィンドウ)。true の間は学習しない。</summary>
+    public bool Private { get; set; }
 
     /// <summary>コードの入力欄ではコメント・文字列以外を直接入力する。</summary>
     private bool _codeInput;
@@ -371,7 +431,7 @@ public sealed class MeltypeSession
         if (shift && _controller.IsComposing) Feed(new KeyEvent(VirtualKeys.LShift, 0, false, false, false, down.TimeMs));
         if (modifier && _controller.IsComposing) Feed(new KeyEvent(control ? VirtualKeys.LControl : VirtualKeys.LMenu, 0, false, false, false, down.TimeMs));
 
-        var swallowed = Feed(down, e => !modifier && (StartsComposition(e, ch, shift) || e.Vk == VirtualKeys.Space && shift));
+        var swallowed = Feed(down, e => !modifier && (StartsComposition(e, ch, shift) || e.Vk == VirtualKeys.Space && (shift || !_direct && _settings().FullWidthSpaceByDefault)));
         // このキーをアプリに送り直した (= 使わなかった) なら、アプリに渡す。
         var consumed = swallowed && !_host.ReplayedCurrent;
         Feed(down with { IsUp = true });
