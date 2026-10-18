@@ -95,7 +95,6 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             ContextualLearning = options.ContextualLearning,
             FullWidthSpaceByDefault = options.FullWidthSpaceByDefault,
             ShowCandidatesWhileTyping = options.ShowCandidatesWhileTyping,
-            ToggleKeyboardShortcuts = options.ToggleKeyboardShortcuts,
             GitHubIssueCandidates = options.GitHubIssueCandidates,
             GitHubRepository = options.GitHubRepository,
             GitHubTitles = options.GitHubTitles,

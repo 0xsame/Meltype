@@ -189,7 +189,6 @@ internal static class CompositionTests
         public bool ContextualLearning { get; set; }
         public bool FullWidthSpaceByDefault { get; set; }
         public bool ShowCandidatesWhileTyping { get; set; }
-        public string ToggleKeyboardShortcuts { get; set; } = "";
         public bool GitHubIssueCandidates { get; set; }
         public string GitHubRepository { get; set; } = "";
         public GitHubIssueTitles? GitHubTitles { get; set; }
@@ -285,7 +284,6 @@ internal static class CompositionTests
                 ContextualLearning = () => ContextualLearning,
                 FullWidthSpaceByDefault = () => FullWidthSpaceByDefault,
                 ShowCandidatesWhileTyping = () => ShowCandidatesWhileTyping,
-                ToggleKeyboardShortcuts = () => ToggleKeyboardShortcuts,
                 GitHubIssueCandidates = () => GitHubIssueCandidates,
                 GitHubRepository = () => GitHubRepository,
                 GitHubTitles = () => GitHubTitles,

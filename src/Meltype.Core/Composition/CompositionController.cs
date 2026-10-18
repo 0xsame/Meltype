@@ -218,7 +218,6 @@ public sealed record CompositionOptions
     public Func<bool> ContextualLearning { get; init; } = () => false;
     public Func<bool> FullWidthSpaceByDefault { get; init; } = () => false;
     public Func<bool> ShowCandidatesWhileTyping { get; init; } = () => false;
-    public Func<string> ToggleKeyboardShortcuts { get; init; } = () => "";
     public Func<bool> GitHubIssueCandidates { get; init; } = () => false;
     public Func<string> GitHubRepository { get; init; } = () => "";
     public Func<GitHubIssueTitles?> GitHubTitles { get; init; } = () => null;

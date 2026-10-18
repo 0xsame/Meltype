@@ -89,7 +89,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ContextualLearning = () => _engine.Settings.ContextualLearning,
             FullWidthSpaceByDefault = () => _engine.Settings.FullWidthSpaceByDefault,
             ShowCandidatesWhileTyping = () => _engine.Settings.ShowCandidatesWhileTyping,
-            ToggleKeyboardShortcuts = () => _engine.Settings.ToggleKeyboardShortcuts,
             GitHubIssueCandidates = () => _engine.Settings.GitHubIssueCandidates,
             GitHubRepository = () => _engine.Settings.GitHubRepository,
             GitHubTitles = () => GitHubTitlesShared,

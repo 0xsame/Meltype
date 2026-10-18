@@ -252,7 +252,6 @@ public sealed class MeltypeSession
             ContextualLearning = () => settings.ContextualLearning,
             FullWidthSpaceByDefault = () => settings.FullWidthSpaceByDefault,
             ShowCandidatesWhileTyping = () => settings.ShowCandidatesWhileTyping,
-            ToggleKeyboardShortcuts = () => settings.ToggleKeyboardShortcuts,
             GitHubIssueCandidates = () => settings.GitHubIssueCandidates,
             GitHubRepository = () => settings.GitHubRepository,
             GitHubTitles = () => s_githubTitles,
