@@ -179,4 +179,27 @@ internal static class ZenzaiConverterTests
         Assert.Equal("今日", zenzai.ConvertClauses("きょう") is [var bare] ? bare.Text : "", "文脈なしでも きょう は 今日 (「。」を文脈にする: 何も渡さないと 強)");
         Assert.Equal("今日", zenzai.ConvertClauses("きょう", "あしたは") is [var today] ? today.Text : "", "文脈 (あしたは) で 今日");
     }
+
+    [Test]
+    public static void StaleServerFromAKilledMeltype_IsEndedOnNextStart()
+    {
+        // Meltype が強制終了されて llama-server が残ったときは、次に起動するときに終わらせる (PID ファイルの PID と名前が合うときだけ)
+        if (OperatingSystem.IsWindows() || !File.Exists("/bin/sleep")) return;
+        using var stale = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/bin/sleep", "120") { UseShellExecute = false })!;
+        var pidFile = Path.Combine(Path.GetTempPath(), "meltype-zenzai-server.pid");
+        File.WriteAllText(pidFile, $"{stale.Id}\nsleep");
+        var model = Path.GetTempFileName();
+        try
+        {
+            using var zenzai = new ZenzaiConverter("/bin/sleep", model);
+            zenzai.WarmUp();
+            Assert.True(stale.WaitForExit(5000), "残っていたサーバーが終わる");
+        }
+        finally
+        {
+            File.Delete(model);
+            if (!stale.HasExited) stale.Kill();
+            File.Delete(pidFile);
+        }
+    }
 }

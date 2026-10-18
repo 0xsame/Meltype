@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -113,7 +114,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             else if (answer is not null) _failures = 0;
             if (_cache.Count >= MaxCache) _cache.Clear();
             // 使わないと決めた答えも覚える (打鍵のたびに聞き直さない)。失敗・遅いときは覚えない
-            if (answer is not null) _cache[key] = text;
+            if (answer is not null && !slow) _cache[key] = text;
         }
         return text is null ? null : [new ConversionClause(hiragana, text)];
     }
@@ -195,8 +196,12 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             };
             foreach (var argument in new[] { "-m", _modelPath, "--host", "127.0.0.1", "--port", port.ToString(), "-c", "1024", "-ngl", "0", "--parallel", "1" })
                 info.ArgumentList.Add(argument);
+            KillStaleServer();
             var process = Process.Start(info);
             if (process is null) { Fail(); return; }
+            // Meltype が強制終了されても、llama-server が残らないようにする (Windows: ジョブに入れる。入れておくと、親が消えたとき OS が一緒に終わらせる)
+            BindToThisProcess(process);
+            WritePidFile(process.Id);
             // 出力を読み捨てる (読まないとパイプが詰まってサーバーが止まる)
             process.OutputDataReceived += static (_, _) => { };
             process.ErrorDataReceived += static (_, _) => { };
@@ -254,6 +259,104 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
         listener.Stop();
         return port;
     }
+
+    // ---- llama-server を残さない ----
+
+    private static string PidFile => Path.Combine(Path.GetTempPath(), "meltype-zenzai-server.pid");
+
+    private void WritePidFile(int pid)
+    {
+        try { File.WriteAllText(PidFile, $"{pid}\n{Path.GetFileNameWithoutExtension(_serverPath)}"); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// <summary>前の Meltype が強制終了されて残った llama-server (同じ名前で、PID ファイルに書いてあるもの) を終わらせる。</summary>
+    private void KillStaleServer()
+    {
+        try
+        {
+            if (!File.Exists(PidFile)) return;
+            var lines = File.ReadAllLines(PidFile);
+            File.Delete(PidFile);
+            if (lines.Length < 2 || !int.TryParse(lines[0], out var pid) || pid == Environment.ProcessId) return;
+            using var stale = Process.GetProcessById(pid);
+            if (string.Equals(stale.ProcessName, lines[1], StringComparison.OrdinalIgnoreCase)) Kill(stale);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+    }
+
+    private static IntPtr s_job;
+
+    /// <summary>Windows: Meltype が終わる (強制終了も含む) と、ジョブの中のプロセスも OS が終わらせる (KILL_ON_JOB_CLOSE)。</summary>
+    private static void BindToThisProcess(Process process)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try
+        {
+            lock (typeof(ZenzaiConverter))
+            {
+                if (s_job == IntPtr.Zero)
+                {
+                    var job = CreateJobObject(IntPtr.Zero, null);
+                    if (job == IntPtr.Zero) return;
+                    var limits = new JobExtendedLimits { BasicLimitInformation = new JobBasicLimits { LimitFlags = 0x2000 /* JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE */ } };
+                    var size = Marshal.SizeOf<JobExtendedLimits>();
+                    var buffer = Marshal.AllocHGlobal(size);
+                    try
+                    {
+                        Marshal.StructureToPtr(limits, buffer, false);
+                        if (!SetInformationJobObject(job, 9 /* JobObjectExtendedLimitInformation */, buffer, (uint)size)) return;
+                    }
+                    finally { Marshal.FreeHGlobal(buffer); }
+                    s_job = job;
+                }
+                AssignProcessToJobObject(s_job, process.Handle);
+            }
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JobBasicLimits
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize;
+        public UIntPtr MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JobIoCounters
+    {
+        public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct JobExtendedLimits
+    {
+        public JobBasicLimits BasicLimitInformation;
+        public JobIoCounters IoInfo;
+        public UIntPtr ProcessMemoryLimit;
+        public UIntPtr JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed;
+        public UIntPtr PeakJobMemoryUsed;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr CreateJobObject(IntPtr attributes, string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint size);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
 
     private static void Kill(Process process)
     {
