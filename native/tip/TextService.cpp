@@ -63,7 +63,21 @@ bool IsModifier(UINT vk) {
     return ToggleShortcut::IsModifier(vk) || vk == VK_CAPITAL;
 }
 
+// 半角/全角 キー (日本語キーボード)
+bool IsHankakuZenkaku(UINT vk) { return vk == VK_KANJI || vk == 0xF3 || vk == 0xF4; }
+
 bool KeyDown(int vk) { return (GetKeyState(vk) & 0x8000) != 0; }
+
+// US 配列の Alt + ` (半角/全角キー相当)。Alt はキーイベントの lParam も確認する。
+bool IsAltGraveToggle(UINT vk, LPARAM lParam) {
+    const ULONG_PTR message = static_cast<ULONG_PTR>(lParam);
+    const UINT scan = static_cast<UINT>((message >> 16) & 0xFF);
+    const bool graveKey = vk == VK_OEM_3 || (scan == 0x29 && (message & (static_cast<ULONG_PTR>(1) << 24)) == 0);
+    const bool altDown = (static_cast<ULONG_PTR>(lParam) & (static_cast<ULONG_PTR>(1) << 29)) != 0 ||
+                         KeyDown(VK_MENU);
+    return graveKey && altDown && !KeyDown(VK_CONTROL) && !KeyDown(VK_SHIFT) &&
+           !KeyDown(VK_LWIN) && !KeyDown(VK_RWIN);
+}
 
 UINT ShortcutKey(UINT vk, LPARAM lParam) {
     const auto bits = static_cast<ULONG_PTR>(lParam);
@@ -788,6 +802,10 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t&
         if ((KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) && !IsCompositionShortcut(vk) && CommitNow()) return false;
         return true;  // 変換中はほかのキーを全部受け取る (つながらなければ確定して通す)
     }
+    // 半角/全角: 未登録ならモードは切り替えず、誤入力だけを防ぐ。Meltype.exe が使えないときも受け取る
+    // (アプリに通すと、PowerShell (PSReadLine) は文字の無いキーを @ として入れる。管理者として動くアプリでは Meltype.exe につながらない)
+    if (IsAltGraveToggle(vk, lParam)) return true;
+    if (IsHankakuZenkaku(vk)) return !KeyDown(VK_CONTROL) && !KeyDown(VK_MENU);
     // 調べるとき用: 文字を生むキーを通した理由 (どのキーかは書かない)
     auto pass = [&](const wchar_t* reason) {
         if (passReason_ != reason) TipLog(L"キーを通します: %s", reason);
@@ -907,6 +925,13 @@ STDMETHODIMP TextService::OnKeyDown(ITfContext* context, WPARAM wParam, LPARAM l
         toggleDown_[slot] = true;
         if (composition_ == nullptr) ToggleInputMode(context);
         else HandleKey(context, VK_KANJI, 0, true);
+        MaskSystemModifier();
+        return S_OK;
+    }
+    // 登録キーの切り替えは上で処理済み。未登録の半角/全角は文字として送らない。
+    // 変換中は従来どおり HandleKey に渡す。
+    if (composition_ == nullptr && (IsAltGraveToggle(vk, lParam) ||
+        (IsHankakuZenkaku(vk) && !KeyDown(VK_CONTROL) && !KeyDown(VK_MENU)))) {
         MaskSystemModifier();
         return S_OK;
     }
