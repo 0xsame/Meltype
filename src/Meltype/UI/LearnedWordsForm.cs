@@ -102,9 +102,9 @@ internal sealed class LearnedWordsForm : Form
         _languageGrid.Rows.Clear();
         foreach (var entry in _languages.Entries().Where(e => filter.Length == 0 || e.Word.Contains(filter, StringComparison.OrdinalIgnoreCase)))
         {
-            var row = _languageGrid.Rows.Add(entry.Word, entry.English ? "英語 (英字のまま)" : "日本語 (かな)", entry.Count,
+            var row = _languageGrid.Rows.Add(entry.Word, (entry.English ? "英語 (英字のまま)" : "日本語 (かな)") + (entry.Context is { } context ? $"・{context}" : ""), entry.Count,
                 entry.Active ? "有効" : "もう一度で覚える", entry.Used.ToLocalTime().ToString("yyyy/MM/dd"));
-            _languageGrid.Rows[row].Tag = entry.Word;
+            _languageGrid.Rows[row].Tag = entry.EntryKey;
         }
         _conversionGrid.Rows.Clear();
         foreach (var (reading, text, used) in _conversions.Entries().Where(e => filter.Length == 0 || e.Reading.Contains(filter) || e.Text.Contains(filter)))
