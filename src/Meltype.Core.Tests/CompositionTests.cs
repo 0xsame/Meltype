@@ -2318,6 +2318,18 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue865_HashNumberIsOneClause()
+    {
+        // #123 は # と 123 を別々の文節に変換しない (タイトルが無い・設定 OFF でも)
+        var k = new Keyboard();
+        k.Type("#123 ");
+        Assert.True(k.Host.View is { } view && view.Candidates.Contains("#123") && view.Candidates.Contains("＃１２３"), string.Join(",", k.Host.View?.Candidates ?? []));
+        var none = new Keyboard { GitHubIssueCandidates = true, GitHubRepository = "a/b", GitHubTitles = new GitHubIssueTitles((_, _) => Task.FromResult<string?>(null)) };
+        none.Type("#45 ");
+        Assert.True(none.Host.View is { } v && v.Candidates.Contains("#45"), string.Join(",", none.Host.View?.Candidates ?? []));
+    }
+
+    [Test]
     public static void Issue281_ClipboardTextIsOfferedOnlyWhenEnabled()
     {
         var k = new Keyboard { ClipboardCandidates = true };
