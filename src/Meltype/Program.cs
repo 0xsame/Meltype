@@ -132,7 +132,7 @@ internal static class Program
         MeltypeEngine engine;
         try
         {
-            engine = new MeltypeEngine(settings, AppPaths.ConfigFile, AppPaths.ModelFile, AppPaths.UserDictionaryDirectory);
+            engine = new MeltypeEngine(settings, AppPaths.ConfigFile, AppPaths.UserDictionaryDirectory);
             engine.Start();
         }
         catch (Exception ex)
