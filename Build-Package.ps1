@@ -3,7 +3,8 @@
 
 # -Version を付けると、公開するリリースの名前 (dist\Meltype-<版>-windows.zip) にする (GitHub Actions がタグから付ける)。
 # -Portable を付けると、アプリ内にデータを保存するポータブル版 zip を作る。
-param([string]$Version = '', [switch]$Portable)
+# -ReuseBuild を -Portable と一緒に付けると、直前に作った通常版の app を再利用する (CI 用)。
+param([string]$Version = '', [switch]$Portable, [switch]$ReuseBuild)
 
 $ErrorActionPreference = 'Stop'
 
@@ -21,21 +22,44 @@ $stage = Join-Path $dist $packageName
 $app = Join-Path $stage 'app'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmm'
 $zip = if ($Version) {
-    if ($Portable) { Join-Path $dist "Meltype-portable-$Version-windows.zip" }
+    if ($Portable) { Join-Path $dist "Meltype-$Version-windows-portable.zip" }
     else { Join-Path $dist "Meltype-$Version-windows.zip" }
 }
-elseif ($Portable) { Join-Path $dist "Meltype-portable-$stamp-windows.zip" }
+elseif ($Portable) { Join-Path $dist "Meltype-$stamp-windows-portable.zip" }
 else { Join-Path $dist "Meltype-test-$stamp.zip" }
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
+$mozcBin = Join-Path $root 'native\mozc\bin'
+$dotnetRoot = Split-Path -Parent (Get-Command dotnet).Source
+$runtime = Join-Path $app 'dotnet'
+$version = $null
+$signtool = $null
+
+if ($Portable -and $ReuseBuild) {
+    $baseApp = Join-Path $dist 'Meltype\app'
+    if (-not (Test-Path -LiteralPath (Join-Path $baseApp 'Meltype.exe'))) {
+        throw '再利用できる通常版のビルドがありません。先に Build-Package.ps1 を実行してください。'
+    }
+    New-Item -ItemType Directory -Force -Path $app | Out-Null
+    Copy-Item -Path (Join-Path $baseApp '*') -Destination $app -Recurse -Force
+    $runtime = Join-Path $app 'dotnet'
+    $installedRuntime = Get-ChildItem (Join-Path $runtime 'shared\Microsoft.NETCore.App') -Directory |
+        Sort-Object { [version]$_.Name } | Select-Object -Last 1
+    if (-not $installedRuntime) { throw '通常版のビルドに同梱された .NET ランタイムが見つかりません。' }
+    $version = $installedRuntime.Name
+    # ポータブル版は Meltype キーボード固定。IME 登録・更新スクリプトは持たせない。
+    Remove-Item -LiteralPath (Join-Path $app 'tip') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $app 'meltype-ime.ps1'), (Join-Path $app 'update.ps1') -Force -ErrorAction SilentlyContinue
+    Write-Host '通常版のビルド済みアプリを再利用し、ポータブル版を作ります。'
+}
+else {
 dotnet publish (Join-Path $root 'src\Meltype\Meltype.csproj') -c Release -o $app -p:DebugType=none `
     -p:AppHostDotNetSearch=AppRelative -p:AppHostRelativeDotNet=dotnet
 if ($LASTEXITCODE -ne 0) { throw "ビルドに失敗しました (exit code $LASTEXITCODE)。" }
 
 # Mozc の変換ヘルパー (native\mozc\Build-MozcHelper.ps1 で作ったもの) を同梱する。無ければ Microsoft IME だけで動く。
-$mozcBin = Join-Path $root 'native\mozc\bin'
 if (Test-Path -LiteralPath (Join-Path $mozcBin 'meltype_mozc_helper.exe')) {
     # ヘルパーが使う Visual C++ のランタイム (MSVCP140.dll など) は、Build-MozcHelper.ps1 がビルドに使った Visual Studio から bin に置いている。
     # 前の版の Build-MozcHelper.ps1 で作った bin には無い。版がずれないよう、ほかから補わずに止める
@@ -58,7 +82,6 @@ else {
 # Meltype が使うランタイムの版 (runtimeconfig.json に書かれている) と同じものを、インストール済みの .NET から探してコピーする。
 $config = Get-Content -Raw (Join-Path $app 'Meltype.runtimeconfig.json') | ConvertFrom-Json
 $frameworks = @($config.runtimeOptions.frameworks) + @($config.runtimeOptions.framework) | Where-Object { $_ }
-$dotnetRoot = Split-Path -Parent (Get-Command dotnet).Source
 $runtime = Join-Path $app 'dotnet'
 $version = $null
 foreach ($framework in $frameworks) {
@@ -204,10 +227,13 @@ foreach ($arch in @(if ($imeBuilt) { 'x64', 'x86' })) {
     try { $hash = [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($dll))).Replace('-', '') } finally { $sha.Dispose() }
     [IO.File]::WriteAllText("$dll.package.sha256", $hash)
 }
+}
 
 if ($Portable) {
-    # The native launcher bundles the existing app folder and unpacks it to a temporary directory at runtime.
     [IO.File]::WriteAllText((Join-Path $app 'Meltype.portable'), 'portable', [Text.Encoding]::ASCII)
+    # ZIP 内で Meltype.exe を見つけやすくし、ランタイムや辞書を含むフォルダーごと持ち運べるようにする。
+    Copy-Item -Path (Join-Path $app '*') -Destination $stage -Recurse -Force
+    Remove-Item -LiteralPath $app -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $root 'packaging\README-portable.txt') -Destination (Join-Path $stage 'README.txt')
     if (Test-Path -LiteralPath (Join-Path $mozcBin 'meltype_mozc_helper.exe')) {
         Copy-Item -LiteralPath (Join-Path $mozcBin 'MOZC-LICENSE.txt') -Destination $stage
@@ -228,37 +254,6 @@ Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stag
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $stage 'THIRD-PARTY-NOTICES.txt')
 
 Remove-Item -LiteralPath (Join-Path $dist 'selftest.txt') -ErrorAction SilentlyContinue
-if ($Portable) {
-    $launcherWork = Join-Path $dist 'portable-launcher'
-    if (Test-Path -LiteralPath $launcherWork) { Remove-Item -LiteralPath $launcherWork -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $launcherWork | Out-Null
-    $payload = Join-Path $launcherWork 'payload.zip'
-    Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $payload -Force
-
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (-not $vs) { throw 'ポータブル版ランチャーのビルドには Visual Studio C++ ツールが必要です。' }
-    $devCmd = Join-Path $vs 'Common7\Tools\VsDevCmd.bat'
-    $rcFile = Join-Path $launcherWork 'portable.rc'
-    $payloadForRc = $payload.Replace('\', '\\')
-    $runnerForRc = (Join-Path $root 'packaging\portable\run.ps1').Replace('\', '\\')
-    Set-Content -LiteralPath $rcFile -Encoding ASCII -Value "101 RCDATA `"$payloadForRc`"`r`n102 RCDATA `"$runnerForRc`""
-
-    $launcherExe = Join-Path $stage 'Meltype.exe'
-    $launcherCpp = Join-Path $root 'packaging\portable\launcher.cpp'
-    $objFile = Join-Path $launcherWork 'launcher.obj'
-    $resFile = Join-Path $launcherWork 'portable.res'
-    $compileCommand = 'call "' + $devCmd + '" -arch=amd64 -host_arch=amd64 >nul && rc.exe /nologo /fo "' + $resFile + '" "' + $rcFile + '" && cl.exe /nologo /c /O2 /MT /EHsc /std:c++17 /utf-8 /DUNICODE /D_UNICODE /Fo"' + $objFile + '" "' + $launcherCpp + '" && link.exe /nologo /SUBSYSTEM:WINDOWS /OUT:"' + $launcherExe + '" "' + $objFile + '" "' + $resFile + '" kernel32.lib user32.lib'
-    & cmd.exe /d /s /c $compileCommand
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $launcherExe)) { throw 'ポータブル版の自己展開ランチャーをビルドできませんでした。' }
-
-    if ($env:MELTYPE_SIGN_PFX -and (Test-Path -LiteralPath $env:MELTYPE_SIGN_PFX)) {
-        & $signtool.FullName sign /f $env:MELTYPE_SIGN_PFX /p $env:MELTYPE_SIGN_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $launcherExe
-        if ($LASTEXITCODE -ne 0) { throw 'ポータブル版ランチャーの署名に失敗しました。' }
-    }
-    Remove-Item -LiteralPath (Join-Path $stage 'app') -Recurse -Force
-    Remove-Item -LiteralPath $launcherWork -Recurse -Force
-}
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 Write-Host "パッケージを作成しました: $zip ($size MB, .NET $version 同梱)"

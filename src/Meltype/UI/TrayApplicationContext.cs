@@ -95,7 +95,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(_enabledItem);
         if (!AppPaths.IsPortable) menu.Items.Add(_tsfModeItem);
         menu.Items.Add(_keyboardModeItem);
-        menu.Items.Add(_autoSwitchModeItem);
+        if (!AppPaths.IsPortable) menu.Items.Add(_autoSwitchModeItem);
         // 自動判定の強さ (積極的 / 標準 / 慎重 / 手動)
         _levelItem = new ToolStripMenuItem("自動判定の強さ");
         foreach (var level in Enum.GetValues<DetectionLevel>())
@@ -189,7 +189,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// </summary>
     private void IntroduceTsf()
     {
-        if (_engine.Settings.TsfIntroduced || !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList ||
+        if (AppPaths.IsPortable || _engine.Settings.TsfIntroduced || !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList ||
             RuntimeInformation.OSArchitecture == Architecture.Arm64) return;
         var wasTsf = _engine.Settings.Mode == InputMode.Tsf;
         var next = _engine.Settings.Clone();
@@ -461,6 +461,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void SetMode(InputMode mode)
     {
+        if (AppPaths.IsPortable && mode != InputMode.Keyboard) return;
         var wasTsf = _engine.Settings.Mode == InputMode.Tsf;
         var next = _engine.Settings.Clone();
         next.Mode = mode;

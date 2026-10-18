@@ -202,7 +202,7 @@ jobs:
         run: |
           $version = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.Substring(1) } else { '' }
           .\Build-Package.ps1 -Version $version
-          .\Build-Package.ps1 -Version $version -Portable
+          .\Build-Package.ps1 -Version $version -Portable -ReuseBuild
       # インストーラー (dist\Meltype-<版>-setup.exe)。zip と同じ app フォルダーから作る (issue #161)。
       - name: Installer
         shell: pwsh

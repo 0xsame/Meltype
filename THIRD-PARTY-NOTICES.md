@@ -7,10 +7,10 @@ Meltype のソースコード (このリポジトリ) には、他者の著作�
 | 部品 | ライセンス | 同梱先 |
 | --- | --- | --- |
 | .NET ランタイム (Microsoft.NETCore.App, Microsoft.WindowsDesktop.App) | MIT License | `app\dotnet\` (ライセンス: `app\dotnet\LICENSE.txt`、同梱部品の通知: `app\dotnet\ThirdPartyNotices.txt`) |
-| Microsoft Visual C++ のランタイム (Mozc の変換ヘルパー用 DLL と、自己展開ランチャーに静的リンクしたランタイム) | Microsoft Visual Studio ソフトウェア ライセンス条項の「再頒布可能コード」(許諾された Visual Studio に含まれる REDIST 対象) | `app\mozc\`、ポータブル EXE |
+| Microsoft Visual C++ のランタイム (Mozc の変換ヘルパー用 DLL) | Microsoft Visual Studio ソフトウェア ライセンス条項の「再頒布可能コード」(許諾された Visual Studio に含まれる REDIST 対象) | `app\mozc\` |
 | [Mozc](https://github.com/google/mozc) の変換エンジンと辞書 (`meltype_mozc_helper.exe`。Meltype 用の小さな入出力部分 `native/mozc/meltype_mozc_helper.cc` を足してビルドしたもの) | Mozc: BSD-3-Clause (Copyright Google Inc.)。辞書: IPAdic (NAIST)・ICOT・沖縄辞書 のライセンス。組み込みのライブラリ: Abseil (Apache-2.0)・Protocol Buffers (BSD-3-Clause)・Japanese Usage Dictionary など | `app\mozc\` (ライセンス: `app\mozc\MOZC-LICENSE.txt`、辞書とライブラリの全文: `app\mozc\MOZC-CREDITS.html`。Qt は使っていない) |
 
-ポータブル自己展開 EXE 版では、アプリ一式 (.NET ランタイムと、ビルドに含まれる場合は Mozc ヘルパーを含む) を実行ファイルにまとめます。起動時に一時フォルダーへ展開し、終了時に削除します。.NET のライセンスと第三者通知、Mozc のライセンスと辞書クレジットは、それぞれ配布物に含める `DOTNET-LICENSE.txt`・`DOTNET-THIRD-PARTY-NOTICES.txt`、`MOZC-LICENSE.txt`・`MOZC-CREDITS.html` を参照してください。Mozc の VC ランタイム DLL は元のバイナリを変更せずに実行し、対象ファイルの一覧を `VC-RUNTIME.txt` に記載します。
+ポータブル版も通常版と同じフォルダー構成で配布します。アプリと .NET ランタイムに関するライセンス・第三者通知、および Mozc をビルドに含める場合のライセンス・辞書クレジットは、各配布物に同梱します。Mozc の VC ランタイム DLL は元のバイナリを変更せずに実行し、対象ファイルの一覧を `VC-RUNTIME.txt` に記載します。
 
 ## Mac 版 (mac/) がビルド時に取り込むもの
 
