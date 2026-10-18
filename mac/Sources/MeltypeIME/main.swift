@@ -53,10 +53,12 @@ if CommandLine.arguments.contains("--self-test") || CommandLine.arguments.contai
             for edit in last?.commits ?? [] {
                 if edit.deleteBefore > 0 {
                     let current = output as NSString
-                    guard edit.deleteBefore <= current.length else { continue }
-                    let previous = current.substring(from: current.length - edit.deleteBefore)
-                    guard matchesExpectedText(previous, expected: edit.expect, deleteBefore: edit.deleteBefore) else { continue }
-                    output = current.substring(to: current.length - edit.deleteBefore)
+                    // 消す文字を確認できないときは、前の文字は消さずに edit.text だけを入れる (本体の状態とそろえる)。
+                    if edit.deleteBefore <= current.length,
+                       matchesExpectedText(current.substring(from: current.length - edit.deleteBefore),
+                                           expected: edit.expect, deleteBefore: edit.deleteBefore) {
+                        output = current.substring(to: current.length - edit.deleteBefore)
+                    }
                 }
                 output += edit.text
             }

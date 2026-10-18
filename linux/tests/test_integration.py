@@ -203,15 +203,42 @@ class IntegrationTests(unittest.TestCase):
         self.engine.do_focus_out()
         self.assertEqual(["@kuraido"], self.engine.commits)
 
-    def test_reconversion_does_not_delete_changed_pasted_text(self):
-        self.engine.document = "pasted sentence"
-        self.engine._apply({"commits": [{"deleteBefore": 4, "expect": "word", "text": "って"}], "view": None})
-        self.assertEqual("pasted sentence", self.engine.document)
-
     def test_reconversion_replaces_matching_previous_text(self):
         self.engine.document = "previous"
         self.engine._apply({"commits": [{"deleteBefore": 8, "expect": "previous", "text": "replacement"}], "view": None})
         self.assertEqual("replacement", self.engine.document)
+
+    def test_reconversion_keeps_typed_text_when_previous_text_changed(self):
+        # #516: 貼り付けなどで前の文字が変わっていたときは、前の文字は消さず、今打った文字だけを入れる
+        # (edit ごと捨てると、打った「って」も消えて、本体の状態とずれる)。
+        self.engine.document = "pasted sentence"
+        self.engine._apply({"commits": [{"deleteBefore": 4, "expect": "word", "text": "って"}], "view": None})
+        self.assertEqual("pasted sentenceって", self.engine.document)
+
+    def test_reconversion_without_expected_text_does_not_delete(self):
+        # 消す文字が分からない (expect が無い) ときも、消さずに今打った文字だけを入れる。
+        self.engine.document = "pasted"
+        self.engine._apply({"commits": [{"deleteBefore": 2, "text": "って"}], "view": None})
+        self.assertEqual("pastedって", self.engine.document)
+
+    def test_reconversion_counts_code_points(self):
+        # 本体の deleteBefore は UTF-16 単位 (😊 は 2) だが、IBus はコードポイント単位 (😊 は 1)。
+        # 消す文字数は、確認できた expect から数える。
+        self.engine.document = "pasted😊"
+        self.engine._apply({"commits": [{"deleteBefore": 2, "expect": "😊", "text": "笑"}], "view": None})
+        self.assertEqual("pasted笑", self.engine.document)
+
+    def test_typing_after_paste_keeps_pasted_text(self):
+        # #516: 貼り付けた後に、前の語を確定し直す流れになっても、貼り付けた文を消さない (実際の流れ)。
+        self.type_text("i")
+        self.special(IBus.KEY_space)
+        self.special(IBus.KEY_Return)
+        committed = self.engine.document
+        self.assertTrue(committed, "前の語が確定している")
+        self.engine.document += "pasted sentence"
+        self.type_text("want ")
+        self.assertTrue(self.engine.document.startswith(committed + "pasted sentence"), self.engine.document)
+        self.assertIn("want", self.engine.document)
 
     def test_manual_width_and_kana(self):
         self.type_text("@kuraido")
