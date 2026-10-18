@@ -8,7 +8,7 @@ param([string]$Version = '', [switch]$Portable, [switch]$ReuseBuild)
 
 $ErrorActionPreference = 'Stop'
 
-# 協力者に渡すテスト版の zip を作る: dist\Meltype-test-<日付>.zip
+# 協力者に渡すテスト版の zip を作る: dist\Meltype-test-<日付>-windows.zip
 # 中身は ビルド済みの app フォルダー (.NET ランタイム同梱) + Install.cmd / Uninstall.cmd + README.txt。
 #
 # .NET の同梱: この環境は NuGet が使えないので自己完結ビルド (--self-contained) の代わりに、
@@ -25,8 +25,8 @@ $zip = if ($Version) {
     if ($Portable) { Join-Path $dist "Meltype-$Version-windows-portable.zip" }
     else { Join-Path $dist "Meltype-$Version-windows.zip" }
 }
-elseif ($Portable) { Join-Path $dist "Meltype-$stamp-windows-portable.zip" }
-else { Join-Path $dist "Meltype-test-$stamp.zip" }
+elseif ($Portable) { Join-Path $dist "Meltype-test-$stamp-windows-portable.zip" }
+else { Join-Path $dist "Meltype-test-$stamp-windows.zip" }
 
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
@@ -36,6 +36,25 @@ $dotnetRoot = Split-Path -Parent (Get-Command dotnet).Source
 $runtime = Join-Path $app 'dotnet'
 $version = $null
 $signtool = $null
+
+# 同梱したランタイムで自己診断を走らせる。通常版・ポータブル版の両方の最終配置で使う。
+function Invoke-SelfTest([string]$label, [string]$executable) {
+    $report = Join-Path $dist 'selftest.txt'
+    if (Test-Path -LiteralPath $report) { Remove-Item -LiteralPath $report }
+    $env:DOTNET_DISABLE_GUI_ERRORS = '1'
+    try {
+        $process = Start-Process -FilePath $executable -ArgumentList '--selftest', "`"$report`"" -PassThru
+        if (-not $process.WaitForExit(120000)) { $process.Kill(); throw "自己診断 ($label) が終わりませんでした。" }
+    } finally {
+        Remove-Item Env:\DOTNET_DISABLE_GUI_ERRORS -ErrorAction SilentlyContinue
+    }
+    $lines = if (Test-Path -LiteralPath $report) { Get-Content -LiteralPath $report -Encoding UTF8 } else { @() }
+    Write-Host "--- 自己診断 ($label) ---"
+    $lines | Where-Object { $_ -notlike 'LOADED:*' } | Write-Host
+    if ($process.ExitCode -ne 0) { throw "自己診断 ($label) に失敗しました (exit code $($process.ExitCode))。ランタイムを削りすぎている可能性があります。" }
+    $loaded = $lines | Where-Object { $_ -like 'LOADED:*' } | Select-Object -First 1
+    return @(($loaded -replace '^LOADED:\s*', '') -split ' ' | Where-Object { $_ })
+}
 
 if ($Portable -and $ReuseBuild) {
     $baseApp = Join-Path $dist 'Meltype\app'
@@ -126,26 +145,6 @@ function Update-DepsJson {
     }
 }
 
-# 同梱したランタイムで自己診断を走らせ、読み込まれたアセンブリ名の一覧を返す。
-# (起動できないときに Windows のエラー画面で止まらないよう DOTNET_DISABLE_GUI_ERRORS を付け、時間も区切る)
-function Invoke-SelfTest([string]$label) {
-    $report = Join-Path $dist 'selftest.txt'
-    if (Test-Path -LiteralPath $report) { Remove-Item -LiteralPath $report }
-    $env:DOTNET_DISABLE_GUI_ERRORS = '1'
-    try {
-        $process = Start-Process -FilePath (Join-Path $app 'Meltype.exe') -ArgumentList '--selftest', "`"$report`"" -PassThru
-        if (-not $process.WaitForExit(120000)) { $process.Kill(); throw "自己診断 ($label) が終わりませんでした。" }
-    } finally {
-        Remove-Item Env:\DOTNET_DISABLE_GUI_ERRORS -ErrorAction SilentlyContinue
-    }
-    $lines = if (Test-Path -LiteralPath $report) { Get-Content -LiteralPath $report -Encoding UTF8 } else { @() }
-    Write-Host "--- 自己診断 ($label) ---"
-    $lines | Where-Object { $_ -notlike 'LOADED:*' } | Write-Host
-    if ($process.ExitCode -ne 0) { throw "自己診断 ($label) に失敗しました (exit code $($process.ExitCode))。ランタイムを削りすぎている可能性があります。" }
-    $loaded = $lines | Where-Object { $_ -like 'LOADED:*' } | Select-Object -First 1
-    return @(($loaded -replace '^LOADED:\s*', '') -split ' ' | Where-Object { $_ })
-}
-
 function Test-Managed([string]$path) {
     try { [System.Reflection.AssemblyName]::GetAssemblyName($path) | Out-Null; return $true } catch { return $false }
 }
@@ -167,7 +166,7 @@ foreach ($file in Get-ChildItem (Join-Path $runtime 'shared') -Recurse -File) {
     }
 }
 Update-DepsJson
-$loaded = Invoke-SelfTest '参照をたどって削った後'
+$loaded = Invoke-SelfTest '参照をたどって削った後' (Join-Path $app 'Meltype.exe')
 
 # 2. 読み込まれなかった大きなアセンブリを削る
 foreach ($file in Get-ChildItem (Join-Path $runtime 'shared') -Recurse -Filter '*.dll') {
@@ -180,7 +179,7 @@ foreach ($file in Get-ChildItem (Join-Path $runtime 'shared') -Recurse -Filter '
     }
 }
 Update-DepsJson
-Invoke-SelfTest '読み込まれない部品も削った後' | Out-Null
+Invoke-SelfTest '読み込まれない部品も削った後' (Join-Path $app 'Meltype.exe') | Out-Null
 
 # Meltype IME (入力欄に直接入力する TSF の DLL)。ポータブル版は登録を行わないので含めない。
 $tip = Join-Path $app 'tip'
@@ -244,7 +243,7 @@ if ($Portable) {
     Copy-Item -LiteralPath (Join-Path $dotnetRoot 'ThirdPartyNotices.txt') -Destination (Join-Path $stage 'DOTNET-THIRD-PARTY-NOTICES.txt')
 }
 else {
-    # Automatic updates and install scripts are only included in the regular package.
+    # 自動更新とインストール用スクリプトは通常版だけに含める。
     Copy-Item -LiteralPath (Join-Path $root 'packaging\update.ps1') -Destination $app
     foreach ($file in 'Install.cmd', 'Uninstall.cmd', 'install.ps1', 'uninstall.ps1', 'README.txt') {
         Copy-Item -LiteralPath (Join-Path $root "packaging\$file") -Destination $stage
@@ -252,6 +251,13 @@ else {
 }
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stage 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $root 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $stage 'THIRD-PARTY-NOTICES.txt')
+
+if ($Portable) {
+    # 配布時と同じ配置 (exe とマーカーが同じフォルダー) で起動し、data の保存先を含めて確認する。
+    Invoke-SelfTest 'ポータブル版の最終配置' (Join-Path $stage 'Meltype.exe') | Out-Null
+    # 自己診断が作ったデータは配布物に含めない。
+    Remove-Item -LiteralPath (Join-Path $stage 'data') -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Remove-Item -LiteralPath (Join-Path $dist 'selftest.txt') -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force

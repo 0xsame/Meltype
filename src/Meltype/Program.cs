@@ -97,7 +97,17 @@ internal static class Program
         };
 
         if (!AppPaths.IsPortable) AppPaths.MigrateFromOldName();
-        Directory.CreateDirectory(AppPaths.DataDirectory);
+        try
+        {
+            Directory.CreateDirectory(AppPaths.DataDirectory);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"データ保存先を作成できませんでした。保存先に書き込めることを確認してください。\n\n{AppPaths.DataDirectory}\n\n{ex.Message}",
+                "Meltype", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 1;
+        }
         if (restore is not null) RestoreBackup(restore);
         var settings = Settings.Load(AppPaths.ConfigFile);
         if (!File.Exists(AppPaths.ConfigFile))
@@ -108,7 +118,7 @@ internal static class Program
         // 動作モードが Meltype IME なのに使えない: どこでも何も起きなくなるので、Meltype キーボードに戻して保存する
         // (Meltype IME を入れ直したら、トレイで選び直す)。
         // 保存しておくと、あとで前の版 (動作モード「Meltype IME」を読めない) を入れても、設定が初期化されない
-        if ((AppPaths.IsPortable && settings.Mode != InputMode.Keyboard) || ShouldFallBackToKeyboard(settings, Tip.TipServer.IsKnownUnregistered, Tip.TipServer.IsInUserLanguageList, System.Runtime.InteropServices.RuntimeInformation.OSArchitecture))
+        if (ShouldUseKeyboardOnStartup(settings, AppPaths.IsPortable, Tip.TipServer.IsKnownUnregistered, Tip.TipServer.IsInUserLanguageList, System.Runtime.InteropServices.RuntimeInformation.OSArchitecture))
         {
             settings.Mode = InputMode.Keyboard;
             try { settings.Save(AppPaths.ConfigFile); } catch { }
@@ -152,6 +162,9 @@ internal static class Program
     internal static bool ShouldFallBackToKeyboard(Settings settings, bool knownUnregistered, bool inUserLanguageList, System.Runtime.InteropServices.Architecture architecture) =>
         settings.Mode == InputMode.Tsf &&
         (architecture == System.Runtime.InteropServices.Architecture.Arm64 || knownUnregistered || (!settings.TsfIntroduced && !inUserLanguageList));
+
+    internal static bool ShouldUseKeyboardOnStartup(Settings settings, bool isPortable, bool knownUnregistered, bool inUserLanguageList, System.Runtime.InteropServices.Architecture architecture) =>
+        (isPortable && settings.Mode != InputMode.Keyboard) || ShouldFallBackToKeyboard(settings, knownUnregistered, inUserLanguageList, architecture);
 
     /// <summary>
     /// 落ちたとき (起動できなかったとき) の例外を crash.log に書き足す。ファイルへのログ (設定) が OFF でも書く:

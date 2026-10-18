@@ -15,15 +15,19 @@ internal static class AppPaths
     /// 設定・学習データ・辞書の保存場所。MELTYPE_DATA_DIR は開発時の上書きに使う。
     /// ポータブル版は app の隣、通常版は LocalAppData を使う。
     /// </summary>
-    public static string DataDirectory { get; } = ResolveDataDirectory();
+    public static string DataDirectory { get; } = ResolveDataDirectory(
+        IsPortable,
+        Environment.GetEnvironmentVariable("MELTYPE_DATA_DIR"),
+        AppContext.BaseDirectory,
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
 
-    private static string ResolveDataDirectory()
+    internal static string ResolveDataDirectory(bool isPortable, string? overrideDirectory, string appBaseDirectory, string localAppDataDirectory)
     {
-        if (Environment.GetEnvironmentVariable("MELTYPE_DATA_DIR") is { Length: > 0 } overrideDirectory)
+        if (overrideDirectory is { Length: > 0 })
             return overrideDirectory;
-        if (IsPortable)
-            return Path.Combine(AppContext.BaseDirectory, "data");
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Meltype");
+        if (isPortable)
+            return Path.Combine(appBaseDirectory, "data");
+        return Path.Combine(localAppDataDirectory, "Meltype");
     }
 
     /// <summary>旧名 (AutoIME) のときの保存場所。</summary>

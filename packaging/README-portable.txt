@@ -10,6 +10,7 @@ ZIP をフォルダーごと展開し、フォルダー内の Meltype.exe を実
 Meltype キーボード方式で動作します。フォルダーごと移動すれば、設定やユーザー辞書も一緒に持ち運べます。
 アンインストールするときは Meltype を終了して、展開したフォルダーを削除してください。
 通常のインストール版のデータは %LOCALAPPDATA%\Meltype に保存されます。
+通常版とポータブル版は同時に起動できません。片方を終了してから、もう片方を起動してください。
 
 Meltype は GNU GPL v3 です。.NET ランタイムのライセンス・通知は、同梱の
 DOTNET-LICENSE.txt、DOTNET-THIRD-PARTY-NOTICES.txt と THIRD-PARTY-NOTICES.txt を参照してください。

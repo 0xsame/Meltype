@@ -138,7 +138,7 @@ powershell -ExecutionPolicy Bypass -File .\Build-Package.ps1
 powershell -ExecutionPolicy Bypass -File .\Build-Package.ps1 -Portable
 ```
 
-通常版と分けて `dist\Meltype-<日時>-windows-portable.zip` を作ります。リリースビルドでは版番号を含む `Meltype-<版>-windows-portable.zip` になります。ZIPをフォルダーごと展開し、その中の `Meltype.exe` を実行してください。アプリと.NETランタイムを同梱するため、.NET未導入のPCでも起動できます。ユーザーデータは `Meltype.exe` の隣の `data` に保存します。IME登録、自動起動、アプリ内更新は含めません。
+通常版と分けて `dist\Meltype-test-<日時>-windows-portable.zip` を作ります。リリースビルドでは版番号を含む `Meltype-<版>-windows-portable.zip` になります。ZIPをフォルダーごと展開し、その中の `Meltype.exe` を実行してください。アプリと.NETランタイムを同梱するため、.NET未導入のPCでも起動できます。ユーザーデータは `Meltype.exe` の隣の `data` に保存します。IME登録、自動起動、アプリ内更新は含めません。
 
 <a name="ウイルス対策ソフトの検査"></a>
 <img src="images/headings/development/s03.svg" alt="ウイルス対策ソフトの検査" height="40">
