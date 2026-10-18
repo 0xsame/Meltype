@@ -399,7 +399,15 @@ public sealed class CompositionController
     public void SelectCandidate(int index)
     {
         // 入力中に出した候補 (設定「入力中も変換候補をいくつか表示」) をクリックしたら、変換を始めてからその候補を選ぶ
-        if (!_converting && PreviewCandidates() is null && TypingCandidates() is not null) StartConversion();
+        // 入力中の候補は読み全体の候補なので、変換を始めて文節に分かれると一覧が変わり、番号が別の語を指す。
+        // 見えていた一覧のまま、読み全体 1 つの文節にして、クリックした語を選ぶ
+        if (!_converting && PreviewCandidates() is null && TypingCandidates() is { } typing)
+        {
+            if (index < 0 || index >= typing.Count) return;
+            _clauses = [new Clause(_text.AllKana(final: false), false, typing) { Raw = _text.Raw, Expanded = true }];
+            _selectedClause = 0;
+            _converting = true;
+        }
         if (!_converting && PreviewCandidates() is { } preview && index >= 0 && index < preview.Count)
         {
             _clauses = [new Clause("ご", false, preview) { Raw = _text.Raw, Expanded = true }];
