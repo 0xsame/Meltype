@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Yukishiro
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 
@@ -174,7 +175,13 @@ public sealed class WindowsSpellChecker : IWordChecker
         _done = false;
         _wake.Set();
         var spin = new SpinWait();
-        while (!_done) spin.SpinOnce(sleep1Threshold: -1);
+        var start = Stopwatch.GetTimestamp();
+        while (!_done)
+        {
+            // 長引いたとき (最初の生成など) は 1 コアを回し続けない。Thread.Sleep はメッセージを処理しない
+            if (Stopwatch.GetElapsedTime(start) > TimeSpan.FromMilliseconds(1)) Thread.Sleep(1);
+            else spin.SpinOnce(sleep1Threshold: -1);
+        }
         failure?.Throw();
         return result;
     }
@@ -202,7 +209,11 @@ public sealed class WindowsSpellChecker : IWordChecker
         {
             added = true;
             return _older.TryGetValue(lower, out var older) ? older.Merge(answer) : answer;
-        }, (_, earlier) => earlier.Merge(answer));
+        }, (_, earlier) =>
+        {
+            added = false;
+            return earlier.Merge(answer);
+        });
         if (added && Interlocked.Increment(ref _cached) > CacheLimit)
         {
             lock (_gate)
