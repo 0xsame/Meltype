@@ -1476,7 +1476,7 @@ internal static class CompositionTests
     {
         // 入力中の候補は読み全体の候補。クリックしたとき、文節に分かれて一覧が変わっても、見えていた語が選ばれる
         var k = new Keyboard(live: true) { ShowCandidatesWhileTyping = true };
-        k.Type("kyouha");
+        k.Type("tanniwotoru");
         var shown = k.Host.View!.Candidates.ToList();
         Assert.True(shown.Count >= 2, "候補が出ている: " + string.Join(",", shown));
         k.Controller.SelectCandidate(1);
