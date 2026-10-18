@@ -83,6 +83,24 @@ internal static class SessionFacadeTests
     }
 
     [Test]
+    public static void CtrlEnterDuringCompositionCommitsWithoutSending()
+    {
+        // 変換中の Ctrl+Enter (送信のショートカット) は確定だけ行い、キーはアプリへ渡さない。
+        // 渡すと、アプリが確定を反映する前に送信し、確定した文字が欠けた内容が送られる。
+        var session = Create();
+        Type(session, "tadokoro");
+        var chord = session.HandleKey(VirtualKeys.Return, null, false, true, false, false);
+        Assert.True(chord.Consumed, "変換中の Ctrl+Enter はアプリへ渡さない");
+        Assert.Equal("たどころ", chord.Commits.Single().Text);
+        Assert.True(chord.View is null, "確定したら変換ボックスを閉じる");
+
+        // 変換が無い状態の Ctrl+Enter はアプリへ渡す (アプリが送信できる)。
+        var again = session.HandleKey(VirtualKeys.Return, null, false, true, false, false);
+        Assert.True(!again.Consumed, "確定後の Ctrl+Enter はアプリへ渡す");
+        Assert.Equal(0, again.Commits.Count, "確定後の Ctrl+Enter は何も確定しない");
+    }
+
+    [Test]
     public static void EnglishWord_SpaceCommitsWithSpace()
     {
         var session = Create();

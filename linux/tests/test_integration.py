@@ -204,6 +204,19 @@ class IntegrationTests(unittest.TestCase):
                 self.assertEqual([ord(c) for c in expected], [ord(c) for c in self.engine.document])
                 self.assertEqual("", self.engine.marked)
 
+    def test_ctrl_enter_during_composition_commits_without_sending(self):
+        # 変換中の Ctrl+Enter (送信のショートカット) は確定だけを行い、キーはアプリへ渡さない。
+        # 渡すと、アプリが確定を反映する前に送信し、確定した文字が欠けた内容が送られる
+        # (X のリプライで「田所工事」と「田所工事だよ」が二重に投稿された)。
+        self.type_text("kyouha")
+        self.assertTrue(self.special(IBus.KEY_Return, IBus.ModifierType.CONTROL_MASK),
+                        "変換中の Ctrl+Enter はアプリへ渡さない")
+        self.assertEqual(["きょうは"], self.engine.commits)
+        self.assertEqual("", self.engine.marked)
+        self.assertFalse(self.special(IBus.KEY_Return, IBus.ModifierType.CONTROL_MASK),
+                         "確定後の Ctrl+Enter はアプリへ渡す (アプリが送信できる)")
+        self.assertEqual(["きょうは"], self.engine.commits, "2回目は何も確定しない")
+
     def test_focus_commits_once(self):
         self.type_text("@kuraido")
         self.engine.do_focus_out()

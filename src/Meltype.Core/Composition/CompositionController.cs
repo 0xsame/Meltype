@@ -590,6 +590,16 @@ public sealed class CompositionController
                 // Ctrl+U/I/O/P: F6/F7/F10/F9 と同じ (ATOK と同じ割り当て。続けて押すと大文字・小文字も切り替わる)。Ctrl+H は BackSpace。
                 vk = function;
             }
+            else if (!_text.IsEmpty && vk == VirtualKeys.Return)
+            {
+                // 変換中の Ctrl+Enter (送信のショートカット) は確定だけを行う。キーはアプリへ渡さない。
+                // 渡すと、アプリが確定を反映する前に送信してしまい、確定した文字が欠けた内容が送られる
+                // (X のリプライで「田所工事」と「田所工事だよ」が二重に投稿された)。日本語 IME の通例どおり、
+                // 変換中の Enter は確定、送信は次の Enter にする。
+                CommitIfAny();
+                _swallowedControl.Clear();
+                return;
+            }
             else
             {
                 // ほかのショートカット (Ctrl+C・Ctrl+Z …) は、確定してから Ctrl と一緒にアプリへ送る。

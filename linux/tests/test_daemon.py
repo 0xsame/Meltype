@@ -289,6 +289,18 @@ class PrivateDaemonTests(unittest.TestCase):
         self.assertTrue(self.key(self.IBus.KEY_Return))
         self.assert_document("今日")
 
+    def test_ctrl_enter_during_composition_commits_without_sending(self):
+        control = self.IBus.ModifierType.CONTROL_MASK
+        self.type_text("kyouha")
+        self.assertTrue(self.key(self.IBus.KEY_Return, None, control),
+                        "変換中の Ctrl+Enter はアプリへ渡さない")
+        self.assert_document("きょうは")
+        self.assertEqual(["きょうは"], self.client.commits)
+        self.assertFalse(self.key(self.IBus.KEY_Return, None, control),
+                         "確定後の Ctrl+Enter はアプリへ渡す (アプリが送信できる)")
+        self.assert_document("きょうは")
+        self.assertEqual(["きょうは"], self.client.commits, "2回目は何も確定しない")
+
     def test_focus_out_commits_once(self):
         self.type_text("@kuraido")
         self.context.focus_out()
