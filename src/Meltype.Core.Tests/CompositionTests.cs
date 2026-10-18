@@ -2285,6 +2285,23 @@ internal static class CompositionTests
         Assert.True(off.Host.View is null || !off.Host.View.Candidates.Contains("#123 変換ボックスが隠れる"), "OFF は問い合わせない");
         Assert.True(GitHubIssueTitles.IsRepository("a-b/c_d.e") && !GitHubIssueTitles.IsRepository("a/b/c") && !GitHubIssueTitles.IsRepository("a b/c"), "リポジトリの形");
         Assert.True(new GitHubIssueTitles((_, _) => throw new InvalidOperationException()).Lookup("a/b", 1) is null, "失敗は null");
+        // 調べられなかった番号 (404・レート制限) は、しばらくしたらもう一度調べる。ずっと覚えて二度と調べない、ということはしない
+        var calls = 0;
+        long clock = 0;
+        var retry = new GitHubIssueTitles((_, _) => Task.FromResult<string?>(++calls == 1 ? null : "直った"), () => clock);
+        Assert.True(retry.Lookup("a/b", 7) is null, "1 回目は調べられなかった");
+        Assert.True(retry.Lookup("a/b", 7) is null && calls == 1, "すぐには調べ直さない");
+        clock += 61_000;
+        retry.Lookup("a/b", 7); // 期限が切れたので覚えたものを捨てる
+        Assert.Equal("直った", retry.Lookup("a/b", 7) ?? "(調べ直さなかった)", "しばらくしたら調べ直す");
+        // 調べている途中は、最初の 1 回だけ待つ (打鍵のたびに UI スレッドを止めない)
+        var slow = new GitHubIssueTitles((_, _) => Task.Delay(400).ContinueWith(_ => (string?)"遅い")) { Timeout = TimeSpan.FromMilliseconds(30) };
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        slow.Lookup("a/b", 9);
+        var first = watch.ElapsedMilliseconds;
+        watch.Restart();
+        slow.Lookup("a/b", 9);
+        Assert.True(first >= 20 && watch.ElapsedMilliseconds < 20, $"最初の 1 回だけ待つ: 1 回目 {first}ms、2 回目 {watch.ElapsedMilliseconds}ms");
     }
 
     [Test]

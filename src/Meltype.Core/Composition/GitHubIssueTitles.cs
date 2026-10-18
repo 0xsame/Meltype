@@ -13,27 +13,53 @@ namespace Meltype.Composition;
 /// </summary>
 public sealed class GitHubIssueTitles
 {
-    private readonly ConcurrentDictionary<(string Repository, int Number), Task<string?>> _cache = new();
+    private sealed class Entry(Task<string?> task, long started)
+    {
+        public Task<string?> Task { get; } = task;
+        public long Started { get; } = started;
+
+        /// <summary>もう待ったか。待つのは最初の 1 回だけ (UI スレッドで、打鍵のたびに待たない)。</summary>
+        public bool Waited { get; set; }
+    }
+
+    private readonly ConcurrentDictionary<(string Repository, int Number), Entry> _cache = new();
+    private readonly Func<long> _now;
+
+    /// <summary>調べられなかった (404・レート制限・ネットワークの失敗) 番号を、もう一度調べるまでの時間。ずっと覚えて二度と調べない、ということはしない。</summary>
+    public TimeSpan RetryAfter { get; init; } = TimeSpan.FromSeconds(60);
     private readonly Func<string, int, Task<string?>> _fetch;
 
     /// <summary>1 回の問い合わせを待つ長さ。</summary>
-    public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(800);
+    public TimeSpan Timeout { get; init; } = TimeSpan.FromMilliseconds(300);
 
-    public GitHubIssueTitles(Func<string, int, Task<string?>>? fetch = null) => _fetch = fetch ?? FetchFromGitHub;
+    public GitHubIssueTitles(Func<string, int, Task<string?>>? fetch = null, Func<long>? now = null)
+    {
+        _fetch = fetch ?? FetchFromGitHub;
+        _now = now ?? (() => Environment.TickCount64);
+    }
 
     /// <summary>repository は「所有者/名前」。タイトルが分かれば返す (調べて待つのは Timeout まで)。無い・調べられない・時間切れは null。</summary>
     public string? Lookup(string repository, int number)
     {
         if (!IsRepository(repository) || number <= 0) return null;
-        var task = _cache.GetOrAdd((repository, number), key => Task.Run(() => _fetch(key.Repository, key.Number)));
+        var key = (repository, number);
+        var entry = _cache.GetOrAdd(key, k => new Entry(Task.Run(() => _fetch(k.Repository, k.Number)), _now()));
         try
         {
-            return task.Wait(Timeout) ? task.Result : null;
+            if (entry.Task.IsCompleted)
+            {
+                if (!entry.Task.IsFaulted && entry.Task.Result is { } title) return title;
+                // 調べられなかった番号は、しばらくしたらもう一度調べる (レート制限や一時的な失敗を、ずっと覚えない)
+                if (_now() - entry.Started >= RetryAfter.TotalMilliseconds) _cache.TryRemove(new KeyValuePair<(string, int), Entry>(key, entry));
+                return null;
+            }
+            // まだ調べている途中: 最初の 1 回だけ Timeout まで待つ。次からは待たずに null (終わっていれば、次の変換で出る)
+            if (entry.Waited) return null;
+            entry.Waited = true;
+            return entry.Task.Wait(Timeout) && !entry.Task.IsFaulted ? entry.Task.Result : null;
         }
         catch (Exception)
         {
-            // 失敗は覚えない (次の変換でもう一度調べる)
-            _cache.TryRemove((repository, number), out _);
             return null;
         }
     }
