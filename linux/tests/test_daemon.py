@@ -117,6 +117,7 @@ class PrivateDaemonTests(unittest.TestCase):
         cls.client = SyntheticClient()
         for name, callback in (("commit-text", cls.client.committed),
                                ("update-preedit-text", cls.client.preedit_updated),
+                               ("update-preedit-text-with-mode", cls.client.preedit_updated),
                                ("hide-preedit-text", cls.client.preedit_hidden),
                                ("update-lookup-table", cls.client.lookup_updated),
                                ("hide-lookup-table", cls.client.lookup_hidden),
@@ -296,6 +297,60 @@ class PrivateDaemonTests(unittest.TestCase):
         self.pump(0.2)
         self.assert_document("@kuraido")
         self.assertEqual(["@kuraido"], self.client.commits)
+
+    def test_reset_during_composition_commits_once(self):
+        for client_commits in (False, True):
+            with self.subTest(client_commit_preedit=client_commits):
+                self.context.set_client_commit_preedit(client_commits)
+                try:
+                    self.reset_client()
+                    self.type_text("kyouha")
+                    shown = self.client.preedit
+                    self.assertTrue(shown, self.client.describe())
+                    if client_commits:
+                        # このモードでは実クライアントが Reset 前に表示をローカルで確定する。
+                        self.client.document += shown
+                        self.client.preedit = ""
+                    self.context.reset()
+                    self.pump(0.2)
+                    self.context.reset()
+                    self.pump(0.1)
+                    self.assert_document(shown)
+                    self.assertEqual([] if client_commits else [shown], self.client.commits)
+                    self.context.focus_out()
+                    self.pump()
+                    self.context.focus_in()
+                    self.pump()
+                    self.type_text("ka")
+                    self.assertTrue(self.key(self.IBus.KEY_Return))
+                    self.assert_document(shown + "か")
+                finally:
+                    self.context.set_client_commit_preedit(False)
+                    self.pump()
+
+    def test_reset_selected_candidate_commits_once(self):
+        self.type_text("kyou")
+        self.assertTrue(self.key(self.IBus.KEY_space))
+        self.assertTrue(self.client.candidates, self.client.describe())
+        shown = self.client.preedit
+        self.context.reset()
+        self.pump(0.2)
+        self.assert_document(shown)
+        self.assertEqual([shown], self.client.commits)
+        self.assertEqual([], self.client.candidates)
+
+    def test_reset_after_enter_does_not_commit_again(self):
+        self.type_text("kyouha")
+        self.assertTrue(self.key(self.IBus.KEY_Return))
+        commits = list(self.client.commits)
+        document = self.client.document
+        self.context.reset()
+        self.pump(0.2)
+        self.context.focus_out()
+        self.context.focus_in()
+        self.pump(0.2)
+        self.assert_document(document)
+        self.assertEqual(commits, self.client.commits)
 
     def mixed_protection(self, action):
         for token in ("@kuraido", "./shumire-shon"):

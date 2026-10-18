@@ -210,6 +210,34 @@ class IntegrationTests(unittest.TestCase):
         self.engine.do_focus_out()
         self.assertEqual(["@kuraido"], self.engine.commits)
 
+    def test_reset_does_not_resend_client_committed_preedit(self):
+        self.type_text("kyouha")
+        # IBus/クライアントが COMMIT モードの表示を処理してから Reset が届く。
+        shown = self.engine.marked
+        self.engine.document = shown
+        self.engine.do_reset()
+        self.engine.do_reset()
+        self.assertEqual([], self.engine.commits)
+        self.assertEqual(shown, self.engine.document)
+        self.assertEqual("", self.engine.marked)
+        self.assertEqual([], self.engine.visible_candidates)
+        self.type_text("ka")
+        self.assertTrue(self.special(IBus.KEY_Return))
+        self.assertEqual(["か"], self.engine.commits)
+        self.assertEqual(shown + "か", self.engine.document)
+
+    def test_reset_clears_conversion_candidates_without_resending(self):
+        self.type_text("kyou")
+        self.assertTrue(self.special(IBus.KEY_space))
+        self.assertTrue(self.engine.visible_candidates)
+        shown = self.engine.marked
+        self.engine.document = shown
+        self.engine.do_reset()
+        self.assertEqual(shown, self.engine.document)
+        self.assertEqual([], self.engine.commits)
+        self.assertEqual("", self.engine.marked)
+        self.assertEqual([], self.engine.visible_candidates)
+
     def test_manual_width_and_kana(self):
         self.type_text("@kuraido")
         self.special(IBus.KEY_F9)

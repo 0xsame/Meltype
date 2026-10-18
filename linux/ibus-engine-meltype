@@ -232,7 +232,11 @@ class MeltypeEngine(IBus.Engine):
                 print(f"Meltype: 報告の画面を開けませんでした: {error}", file=sys.stderr)
 
     def do_reset(self):
-        self.do_focus_out()
+        # COMMIT モードの preedit は IBus/クライアントが Reset 時に処理済み。本体の確定を再送しない。
+        if self._session:
+            _result(_lib.meltype_commit(self._session))
+        self._hide_preedit()
+        self._hide_candidates()
 
     def do_disable(self):
         self.do_focus_out()
