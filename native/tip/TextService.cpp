@@ -180,7 +180,7 @@ HRESULT RunEditSession(ITfContext* context, TfClientId clientId, DWORD flags, st
 
 TextService::TextService() { DllAddRef(); }
 
-TextService::~TextService() { DllRelease(); }
+TextService::~TextService() { StopHelloUpdates(); DllRelease(); }
 
 STDMETHODIMP TextService::QueryInterface(REFIID riid, void** ppv) {
     if (ppv == nullptr) return E_INVALIDARG;
@@ -225,6 +225,8 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* threadMgr, TfClientId clientI
     // (終わったときの印 deactivated_ が残ると、二度と Meltype.exe とやり取りしなくなる)
     deactivated_ = false;
     serverActive_ = false;
+    serverStateKnown_ = false;
+    serverStateRevision_ = 0;
     directDetection_ = false;
     directEnglishWord_ = false;
     lastHello_ = 0;
@@ -316,11 +318,12 @@ STDMETHODIMP TextService::ActivateEx(ITfThreadMgr* threadMgr, TfClientId clientI
         AdviseTextEditSink(focus);
         focus->Release();
     }
-    if (!disabled_) Hello();
+    if (!disabled_) StartHelloUpdates();
     return S_OK;
 }
 
 STDMETHODIMP TextService::Deactivate() {
+    StopHelloUpdates();
     UnpreserveShortcuts();
     TipLog(L"Deactivate");
     if (composition_ != nullptr && compositionContext_ != nullptr) {
@@ -648,22 +651,93 @@ bool TextService::ContextDisabled(ITfContext* context) {
     return disabled;
 }
 
+// 通信側から TSF を触らず、IME のスレッドのタイマーで取得結果を反映する。
+LRESULT CALLBACK TextService::HelloWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_NCCREATE) {
+        auto create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+    }
+    auto self = reinterpret_cast<TextService*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+    if (message == WM_TIMER && self) { self->Hello(); return 0; }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+void TextService::StartHelloUpdates() {
+    WNDCLASSW cls{};
+    cls.lpfnWndProc = HelloWindowProc;
+    cls.hInstance = g_module;
+    cls.lpszClassName = L"Meltype.Tip.Hello";
+    RegisterClassW(&cls);
+    helloWindow_ = CreateWindowExW(0, cls.lpszClassName, L"", 0, 0, 0, 0, 0,
+        HWND_MESSAGE, nullptr, g_module, this);
+    helloPipe_ = std::make_shared<PipeClient>();
+    // 完了確認は 50ms ごと。実際の通信は Hello 内で約 2 秒に 1 回に制限する。
+    if (helloWindow_) SetTimer(helloWindow_, 1, 50, nullptr);
+    Hello();
+}
+
+void TextService::StopHelloUpdates() {
+    if (helloWindow_) { DestroyWindow(helloWindow_); helloWindow_ = nullptr; }
+    // worker は this や TSF に触れない。DLL を解放する前に通信終了を待つ。
+    if (helloResult_.valid()) { helloResult_.wait(); helloResult_.get(); }
+    helloPipe_.reset();
+    UnregisterClassW(L"Meltype.Tip.Hello", g_module);
+}
+
 bool TextService::ServerReady() {
-    if (disabled_) return false;
-    if (GetTickCount64() - lastHello_ > 2000) Hello();
-    return serverActive_;
+    // 打鍵の経路では設定確認の通信をしない。未確認を無効扱いすると、取得前の先頭文字が素通しになる。
+    return !disabled_ && (!serverStateKnown_ || serverActive_);
 }
 
 void TextService::Hello() {
-    lastHello_ = GetTickCount64();
-    JsonValue reply;
+    if (disabled_ || deactivated_ || !helloPipe_) return;
+    // 前の要求があれば追加で起動せず、下で完了だけを確認する。
+    if (!helloResult_.valid()) {
+        if (lastHello_ != 0 && GetTickCount64() - lastHello_ <= 2000) return;
+        lastHello_ = GetTickCount64();
+        helloStateRevision_ = serverStateRevision_;
+        auto pipe = helloPipe_;
+        auto request = "{\"op\":\"hello\",\"process\":" + JsonString(ProcessName()) + "}";
+        // 専用の接続なので変換要求と競合しない。応答・TSF の反映は所有スレッドで行う。
+        try {
+            helloResult_ = std::async(std::launch::async, [pipe, request]() {
+                std::string response;
+                JsonValue reply;
+                try {
+                    // optional: 一時的な応答遅延で、次の設定取得まで再接続を抑制しない。
+                    const bool received = pipe->Transact(request, response, 100, true) && ParseJson(response, reply);
+                    return std::make_pair(received, std::move(reply));
+                } catch (...) {
+                    return std::make_pair(false, JsonValue{});
+                }
+            });
+        } catch (...) { TipLog(L"設定取得のスレッドを開始できません"); }
+        return;
+    }
+    // 未完了ならすぐ戻る。get は完了が確認できた場合にだけ呼ぶ。
+    if (helloResult_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
+    auto result = helloResult_.get();
+    // 設定確認の失敗で、使えている変換接続まで無効にしない。
+    if (!result.first) return;
+    // 別接続の入力応答が先に反映された場合、古い有効状態で上書きしない。
+    const bool currentState = helloStateRevision_ == serverStateRevision_;
+    ApplyHello(result.second, currentState);
+}
+
+// 所有スレッドで設定と TSF のキー登録を更新する。
+void TextService::ApplyHello(const JsonValue& reply, bool currentState) {
     const bool wasActive = serverActive_;
     const bool wereShortcutsEnabled = shortcutsEnabled_;
     bool bindingsChanged = false;
-    bool received = Request("{\"op\":\"hello\",\"process\":" + JsonString(ProcessName()) + "}", reply, 100);
-    serverActive_ = received && reply[L"active"].Bool();
-    if (received) shortcutsEnabled_ = serverActive_;
-    if (received && reply[L"toggleShortcuts"].type == JsonValue::Type::Array) {
+    if (currentState) {
+        serverActive_ = reply[L"active"].Bool();
+        serverStateKnown_ = true;
+        directDetection_ = serverActive_ && reply[L"directDetection"].Bool();
+        codeApp_ = serverActive_ && reply[L"code"].Bool();
+    }
+    if (serverStateKnown_) shortcutsEnabled_ = serverActive_;
+    // 入力応答にはキー一覧が含まれないので、状態が更新済みでも一覧はこの応答から取得する。
+    if (reply[L"toggleShortcuts"].type == JsonValue::Type::Array) {
         std::vector<ToggleShortcut> shortcuts;
         for (const auto& b : reply[L"toggleShortcuts"].array) {
             const int key = b[L"key"].Int(), mods = b[L"mods"].Int();
@@ -673,10 +747,7 @@ void TextService::Hello() {
         if (bindingsChanged) toggleShortcuts_.swap(shortcuts);
     }
     if (bindingsChanged || wereShortcutsEnabled != shortcutsEnabled_ || preservedToggles_.empty()) RefreshPreservedShortcuts();
-    directDetection_ = serverActive_ && reply[L"directDetection"].Bool();
     if (wasActive != serverActive_) directEnglishWord_ = false;
-    // コードエディター・ターミナルのアプリなら、キャレットが動くたびに入力モードの表示を合わせる (QueryMode)
-    codeApp_ = serverActive_ && reply[L"code"].Bool();
     if (wasActive != serverActive_) TipLog(L"Meltype.exe: %s", serverActive_ ? L"つながりました" : L"使えません (動いていない・モードが Meltype IME でない)");
 }
 
@@ -703,7 +774,6 @@ void TextService::RefreshPreservedShortcuts() {
 
 STDMETHODIMP TextService::OnPreservedKey(ITfContext* context, REFGUID guid, BOOL* eaten) {
     *eaten = FALSE;
-    ServerReady(); // 設定を削除した後の古い登録も発動させない。
     for (const auto& binding : preservedToggles_) {
         if (!IsEqualGUID(binding.guid, guid)) continue;
         const UINT scan = ToggleShortcut::NormalizeHankakuKey(binding.key.uVKey) == ToggleShortcut::Hankaku || binding.key.uVKey == ToggleShortcut::Grave
@@ -749,7 +819,6 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t&
     secretChecked_ = false;
     secretWhileComposing_ = false;
     if (disabled_ || vk >= 256) return false;
-    ServerReady(); // 英数・修飾キーでも設定の変更を検知する。
     if (IsModifier(vk) && !MatchesToggle(vk, lParam)) return false;
     // アプリが確定した打ちかけの文字があれば、このキーの前に、変換中に戻すか確定したことにする
     ResumeOrCommit(context);
@@ -813,7 +882,7 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t&
         return false;
     };
     // 設定が変わった場合も、英数状態での次の打鍵時に検知の有効/無効を更新する。
-    if (!open_ && !directDetection_) return pass(L"英数");
+    if (!open_ && !directDetection_ && serverStateKnown_) return pass(L"英数");
     if (KeyDown(VK_CONTROL) || KeyDown(VK_MENU) || KeyDown(VK_LWIN) || KeyDown(VK_RWIN)) return pass(L"Ctrl・Alt・Windows キーを押している");
     if (ContextDisabled(context)) return pass(L"この入力欄では使わない");
     ch = CharOf(vk, 0);
@@ -1003,6 +1072,8 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch, bool toggl
             // Meltype.exe が応答しない: 変換中の文字はそのまま確定する。打った文字はここで入れる
             // (送り直すと、その間に打った次のキーより後に届いて順番が入れ替わる)
             keyFailed_ = true;
+            ++serverStateRevision_;
+            serverStateKnown_ = false;
             serverActive_ = false;
             if (candidates_) candidates_->Hide();
             EndComposition(ec);
@@ -1017,6 +1088,8 @@ void TextService::HandleKey(ITfContext* context, UINT vk, wchar_t ch, bool toggl
             }
             return S_OK;
         }
+        ++serverStateRevision_;
+        serverStateKnown_ = true;
         serverActive_ = reply[L"active"].Bool();
         directDetection_ = serverActive_ && reply[L"directDetection"].Bool();
         directEnglishWord_ = directDetection_ && reply[L"directEnglishWord"].Bool();

@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include <memory>
+#include <future>
 #include <vector>
 
 #include "CandidateWindow.h"
@@ -84,8 +85,17 @@ private:
     bool WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t& ch, bool test);
     void ForgetSecretField();
     bool IsReinjected(UINT vk);
+    // 入力要求を試せるか。未確認なら要求を送り、サーバーの応答で判断する 
     bool ServerReady();
+    // 設定の非同期取得を開始するか、完了済みの応答を反映する。通信完了は待たない。
     void Hello();
+    // 取得した設定を反映する。currentState が false なら、入力応答で更新済みの状態は上書きしない。
+    void ApplyHello(const JsonValue& reply, bool currentState);
+    // 設定取得と、その結果を IME のスレッドで反映するためのタイマーを開始する。
+    void StartHelloUpdates();
+    // タイマーを止め、取得処理の終了を待ってから接続を解放する。
+    void StopHelloUpdates();
+    static LRESULT CALLBACK HelloWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     // Meltype.exe から受け取った入力モード切り替えショートカットを TSF (PreserveKey) に再登録する
     void RefreshPreservedShortcuts();
     // TSF に登録した入力モード切り替えショートカットを解除する
@@ -154,9 +164,15 @@ private:
     PipeClient pipe_;
     std::string sid_;
     bool serverActive_ = false;
+    bool serverStateKnown_ = false; // 未取得・通信失敗は「無効」という応答と区別する
+    unsigned long long serverStateRevision_ = 0; // 入力要求の完了ごとに進める状態の世代
+    unsigned long long helloStateRevision_ = 0; // 設定取得を開始した時点の世代
     bool directDetection_ = false; // 英数状態でもローマ字検知が有効 (Meltype.exe の応答)
     bool directEnglishWord_ = false;
     ULONGLONG lastHello_ = 0;
+    HWND helloWindow_ = nullptr; // IME のスレッドでタイマーを受ける、表示しないウィンドウ
+    std::shared_ptr<PipeClient> helloPipe_; // 設定取得専用。入力用の pipe_ と同時に使える
+    std::future<std::pair<bool, JsonValue>> helloResult_; // 取得中の要求は 1 つだけ。成功したかと応答を保持
     bool open_ = true;
     bool codeApp_ = false;         // コードエディター・ターミナル (Meltype.exe の応答の code)
     bool codeEnglish_ = false;     // 次に打つキーがコードの行なので英数のまま通る (Meltype.exe の応答の english)
