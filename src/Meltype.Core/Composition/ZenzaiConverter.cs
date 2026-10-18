@@ -29,10 +29,11 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     private const int MaxCache = 256;
 
     /// <summary>
-    /// 文脈が無いときに Zenzai に任せない、短い読みの長さ。文脈の無い短い読み (きょう → 強、あつい → 厚い) は、
-    /// モデルの癖で外れやすい (実測)。Mozc の頻度の方が合うので、Mozc などに任せる。文脈があれば短くても使う (明日は + きょう → 今日)
+    /// 答えを使う自信の下限 (生成した文字ごとの確率の積)。モデルが迷っているとき (文脈の無い きょう → 強: 0.13、あつい → 厚い: 0.25、
+    /// かんたん: 0.22) は低く、確かなとき (今日はいい天気ですね: 0.76、文脈ありの きょう → 今日: 0.97、しごと: 0.54) は高い (実測)。
+    /// 自信が低いときは Zenzai を使わず、頻度で選ぶ Mozc などに任せる。
     /// </summary>
-    internal const int ShortReading = 3;
+    internal const double MinConfidence = 0.4;
 
     private readonly string _serverPath;
     private readonly string _modelPath;
@@ -91,7 +92,6 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     {
         if (string.IsNullOrEmpty(hiragana) || hiragana.Length > MaxReading || !IsAvailable || Environment.TickCount64 < Interlocked.Read(ref _pausedUntil)) return null;
         context = context is { Length: > MaxContext } ? context[^MaxContext..] : context;
-        if (string.IsNullOrEmpty(context) && hiragana.Length <= ShortReading) return null;
         var key = context + "\u0000" + hiragana;
         lock (_gate)
         {
@@ -100,18 +100,20 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             if (!_ready || _endpoint is null) return null;
         }
         var started = Environment.TickCount64;
-        var text = Complete(Prompt(hiragana, context));
-        // 読みのまま (変換していない: かんたん → かんたん) は、Zenzai の答えとして使わない。Mozc などに任せる
-        var unchanged = text == hiragana;
+        var (answer, confidence) = Complete(Prompt(hiragana, context));
+        // 自信が低い答えと、読みのまま (変換していない: かんたん → かんたん) の答えは使わない。Mozc などに任せる
+        var text = answer;
+        var unchanged = answer is not null && (answer == hiragana || confidence < MinConfidence);
         if (unchanged) text = null;
         var slow = Environment.TickCount64 - started >= _timeoutMs;
         lock (_gate)
         {
             if (slow) Interlocked.Exchange(ref _pausedUntil, Environment.TickCount64 + BackoffMs);
-            if (text is null && !slow && !unchanged) _failures++;
-            else if (text is not null) _failures = 0;
+            if (answer is null && !slow) _failures++;
+            else if (answer is not null) _failures = 0;
             if (_cache.Count >= MaxCache) _cache.Clear();
-            if (text is not null) _cache[key] = text;
+            // 使わないと決めた答えも覚える (打鍵のたびに聞き直さない)。失敗・遅いときは覚えない
+            if (answer is not null) _cache[key] = text;
         }
         return text is null ? null : [new ConversionClause(hiragana, text)];
     }
@@ -132,7 +134,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
                 span[i] = source[i] is >= 'ぁ' and <= 'ゖ' ? (char)(source[i] + 0x60) : source[i];
         });
 
-    private string? Complete(string prompt)
+    private (string? Text, double Confidence) Complete(string prompt)
     {
         try
         {
@@ -140,8 +142,9 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             {
                 ["prompt"] = prompt,
                 ["n_predict"] = 96,
-                ["temperature"] = 0,
-                ["top_k"] = 1,
+                // temperature -1: いちばん確率の高い文字を選び、その確率を n_probs で返してもらう (0 だと確率が正しく返らない)
+                ["temperature"] = -1,
+                ["n_probs"] = 1,
                 ["cache_prompt"] = true,
                 ["parse_special"] = true,
             });
@@ -151,16 +154,34 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
             };
             using var response = _http.Send(request, cts.Token);
-            if (!response.IsSuccessStatusCode) return null;
+            if (!response.IsSuccessStatusCode) return (null, 0);
             using var reader = new StreamReader(response.Content.ReadAsStream(cts.Token), Encoding.UTF8);
             using var json = JsonDocument.Parse(reader.ReadToEnd());
             var content = json.RootElement.TryGetProperty("content", out var c) ? c.GetString() : null;
-            return Clean(content);
+            return (Clean(content), Confidence(json.RootElement));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException or IOException)
         {
-            return null;
+            return (null, 0);
         }
+    }
+
+    /// <summary>
+    /// 生成した文字ごとの確率の積。確率が返ってこないサーバーでは 1 (自信ありとして扱う)。
+    /// azooKey の fork は completion_probabilities[].probs[0].prob、新しい llama.cpp は logprob を返す。
+    /// </summary>
+    internal static double Confidence(JsonElement root)
+    {
+        if (!root.TryGetProperty("completion_probabilities", out var list) || list.ValueKind != JsonValueKind.Array) return 1;
+        var product = 1.0;
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.TryGetProperty("content", out var content) && content.GetString() is "</s>" or "<s>") continue;
+            if (item.TryGetProperty("probs", out var probs) && probs.ValueKind == JsonValueKind.Array && probs.GetArrayLength() > 0 &&
+                probs[0].TryGetProperty("prob", out var prob) && prob.TryGetDouble(out var p)) product *= p;
+            else if (item.TryGetProperty("logprob", out var logprob) && logprob.TryGetDouble(out var lp)) product *= Math.Exp(lp);
+        }
+        return product;
     }
 
     /// <summary>生成された文字列から、終わりの記号 (EOS や U+EE0x) 以降と前後の空白を取り除く。空なら null。</summary>

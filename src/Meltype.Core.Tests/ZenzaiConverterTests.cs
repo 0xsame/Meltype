@@ -19,6 +19,9 @@ internal static class ZenzaiConverterTests
         public List<string> Prompts { get; } = [];
         public int Status { get; set; } = 200;
         public Func<string, string> Answer { get; set; } = _ => "";
+
+        /// <summary>答えの 1 文字ごとの確率 (本物のサーバーは completion_probabilities で返す)。</summary>
+        public double Probability { get; set; } = 0.9;
         public Uri Endpoint { get; }
 
         public FakeServer()
@@ -46,7 +49,9 @@ internal static class ZenzaiConverterTests
                     if (body.Length > 0) prompt = JsonDocument.Parse(body).RootElement.GetProperty("prompt").GetString() ?? "";
                     lock (Prompts) Prompts.Add(prompt);
                     context.Response.StatusCode = Status;
-                    var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { content = Answer(prompt) }));
+                    var answer = Answer(prompt);
+                    var probabilities = answer.Select(ch => new { content = ch.ToString(), probs = new[] { new { tok_str = ch.ToString(), prob = Probability } } }).ToArray();
+                    var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { content = answer, completion_probabilities = probabilities }));
                     context.Response.OutputStream.Write(bytes);
                     context.Response.Close();
                 }
@@ -86,14 +91,23 @@ internal static class ZenzaiConverterTests
     }
 
     [Test]
-    public static void ShortReadingsWithoutContext_AreLeftToOtherEngines()
+    public static void LowConfidenceAnswers_AreLeftToOtherEngines()
     {
-        using var server = new FakeServer { Answer = p => "強" };
-        using var zenzai = new ZenzaiConverter(server.Endpoint);
-        Assert.True(zenzai.ConvertClauses("きょう") is null, "文脈なしの短い読みは頼まない");
-        Assert.Equal(0, server.Prompts.Count, "サーバーにも聞かない");
-        Assert.True(zenzai.ConvertClauses("きょう", "明日は") is [{ Text: "強" }], "文脈があれば短くても使う");
-        Assert.True(zenzai.ConvertClauses("きょうはいいてんき") is [{ Text: "強" }], "長い読みは文脈なしでも使う");
+        // 文脈の無い きょう → 強 のように、モデルが迷っている (確率が低い) 答えは使わない。確かなら短くても使う
+        using var unsure = new FakeServer { Answer = p => "強", Probability = 0.13 };
+        using var zenzai = new ZenzaiConverter(unsure.Endpoint);
+        Assert.True(zenzai.ConvertClauses("きょう") is null, "自信が低ければ null");
+        Assert.Equal(1, unsure.Prompts.Count, "聞いた");
+        Assert.True(zenzai.ConvertClauses("きょう") is null && unsure.Prompts.Count == 1, "使わないと決めた答えも覚えていて、聞き直さない");
+        Assert.True(zenzai.IsAvailable, "自信が低いだけでは諦めない");
+        using var sure = new FakeServer { Answer = p => "今日", Probability = 0.97 };
+        using var confident = new ZenzaiConverter(sure.Endpoint);
+        Assert.True(confident.ConvertClauses("きょう", "明日は") is [{ Text: "今日" }], "確かなら短くても使う");
+        // 2 文字の答えの確率は積 (0.7 × 0.7 = 0.49 なら使う、0.6 × 0.6 = 0.36 なら使わない)
+        using var two = new FakeServer { Answer = p => "公園", Probability = 0.7 };
+        Assert.True(new ZenzaiConverter(two.Endpoint).ConvertClauses("こうえん") is [{ Text: "公園" }], "積が下限以上");
+        two.Probability = 0.6;
+        Assert.True(new ZenzaiConverter(two.Endpoint).ConvertClauses("こうえん") is null, "積が下限未満");
     }
 
     [Test]
@@ -168,5 +182,8 @@ internal static class ZenzaiConverterTests
         var bridge = zenzai.ConvertClauses("はし", "みずうみにかかる");
         Assert.Equal("箸", chopsticks is [var a] ? a.Text : "", "文脈 (食べる) で 箸");
         Assert.Equal("橋", bridge is [var b] ? b.Text : "", "文脈 (湖にかかる) で 橋");
+        // 文脈の無い きょう は、モデルが迷う (強 / 今 / 鏡 / 京がほぼ同じ確率) ので使わず、Mozc などに任せる。文脈があれば今日
+        Assert.True(zenzai.ConvertClauses("きょう") is null, "文脈なしの きょう は使わない");
+        Assert.Equal("今日", zenzai.ConvertClauses("きょう", "あしたは") is [var today] ? today.Text : "", "文脈 (あしたは) で 今日");
     }
 }
