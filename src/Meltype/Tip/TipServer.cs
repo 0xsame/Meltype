@@ -489,7 +489,7 @@ internal sealed class TipServer : IDisposable
                 if (!greeting) return Inactive;
                 // コードエディター・ターミナルのアプリか (DLL は、キャレットが動くたびに入力モードの表示を問い合わせる)
                 var codeApp = _settings().ProfileFor(process + ".exe") == AppProfile.Code;
-                return $"{{\"active\":true,\"code\":{(codeApp ? "true" : "false")},\"directDetection\":{(DirectDetectionFor(process) ? "true" : "false")},\"consumed\":false,\"commits\":[],\"view\":null}}";
+                return $"{{\"active\":true,\"code\":{(codeApp ? "true" : "false")},\"directDetection\":{(DirectDetectionFor(process) ? "true" : "false")},\"fullWidthSpaceByDefault\":{(_settings().FullWidthSpaceByDefault ? "true" : "false")},\"consumed\":false,\"commits\":[],\"view\":null}}";
             }
             case "close":
                 if (sessions.Remove(sid, out var closing) && closing.IsComposing) closing.CommitPending();
@@ -579,13 +579,14 @@ internal sealed class TipServer : IDisposable
         return settings.DirectModeAutoDetect && settings.ForApp(processName).DetectionLevel != DetectionLevel.Manual;
     }
 
-    private static string Reply(bool active, SessionResult result, bool code, bool english, bool? directDetection,
+    private string Reply(bool active, SessionResult result, bool code, bool english, bool? directDetection,
         bool switchedToJapanese = false, bool? directEnglishWord = null)
     {
         var json = result.ToJson();
         var detection = directDetection is { } enabled ? $"\"directDetection\":{(enabled ? "true" : "false")}," : "";
         var englishWord = directEnglishWord is { } isEnglishWord ? $"\"directEnglishWord\":{(isEnglishWord ? "true" : "false")}," : "";
-        return $"{{\"active\":{(active ? "true" : "false")},\"code\":{(code ? "true" : "false")},\"english\":{(english ? "true" : "false")},{detection}{englishWord}\"switchToJapanese\":{(switchedToJapanese ? "true" : "false")},{json[1..]}";
+        var fullWidthSpace = active && _settings().FullWidthSpaceByDefault;
+        return $"{{\"active\":{(active ? "true" : "false")},\"code\":{(code ? "true" : "false")},\"english\":{(english ? "true" : "false")},{detection}{englishWord}\"fullWidthSpaceByDefault\":{(fullWidthSpace ? "true" : "false")},\"switchToJapanese\":{(switchedToJapanese ? "true" : "false")},{json[1..]}";
     }
 
     /// <summary>

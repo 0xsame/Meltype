@@ -150,6 +150,7 @@ private:
     std::string sid_;
     bool serverActive_ = false;
     bool directDetection_ = false; // 英数状態でもローマ字検知が有効 (Meltype.exe の応答)
+    bool fullWidthSpaceByDefault_ = false; // 通常 Space を Meltype.exe に渡す必要があるか
     bool directEnglishWord_ = false;
     ULONGLONG lastHello_ = 0;
     bool open_ = true;

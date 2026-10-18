@@ -639,6 +639,7 @@ void TextService::Hello() {
     JsonValue reply;
     serverActive_ = Request("{\"op\":\"hello\",\"process\":" + JsonString(ProcessName()) + "}", reply) && reply[L"active"].Bool();
     directDetection_ = serverActive_ && reply[L"directDetection"].Bool();
+    fullWidthSpaceByDefault_ = serverActive_ && reply[L"fullWidthSpaceByDefault"].Bool();
     directEnglishWord_ = false;
     // コードエディター・ターミナルのアプリなら、キャレットが動くたびに入力モードの表示を合わせる (QueryMode)
     codeApp_ = serverActive_ && reply[L"code"].Bool();
@@ -726,9 +727,17 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t&
         if (continuesWord) return pass(L"英語の単語の続き");
         directEnglishWord_ = false;
     }
-    // Shift+Space は全角スペース (Microsoft IME と同じ。Meltype.exe が入れる: issue #246)
+    // 設定画面で変更した直後でも最初の Space に反映できるよう、通常 Space の判定前に設定を更新する。
+    if (vk == VK_SPACE && open_ && !KeyDown(VK_SHIFT)) {
+        JsonValue settings;
+        if (Request("{\"op\":\"hello\",\"process\":" + JsonString(ProcessName()) + "}", settings, 100, true)) {
+            serverActive_ = settings[L"active"].Bool();
+            fullWidthSpaceByDefault_ = serverActive_ && settings[L"fullWidthSpaceByDefault"].Bool();
+        }
+    }
+    // Shift+Space は幅設定を確認する。通常 Space は全角 Space 設定が ON のときだけ Meltype.exe に渡す。
     bool starts = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'!' && ch <= L'~') ||
-                  (vk == VK_SPACE && KeyDown(VK_SHIFT));
+                  (vk == VK_SPACE && (KeyDown(VK_SHIFT) || (open_ && fullWidthSpaceByDefault_)));
     if (!starts) return false;
     if (!ServerReady()) return pass(L"Meltype.exe が使えない");
     // パスワード欄か。OnTestKeyDown で読んだ結果は、続く同じキー・同じ入力欄の OnKeyDown で 1 回だけ使う (ほかのキー・入力欄には使わない)
@@ -1012,6 +1021,7 @@ std::string TextService::PendingPassed() {
 
 void TextService::ApplyMode(const JsonValue& reply) {
     bool active = reply[L"active"].Bool();
+    fullWidthSpaceByDefault_ = active && reply[L"fullWidthSpaceByDefault"].Bool();
     codeApp_ = active && reply[L"code"].Bool();
     bool english = codeApp_ && reply[L"english"].Bool();
     if (english == codeEnglish_) return;
