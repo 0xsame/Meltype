@@ -1262,6 +1262,8 @@ public sealed class CompositionController
         {
             DisplayMode.Hiragana => [DisplayMode.HalfWidthAlphanumeric],
             DisplayMode.HalfWidthAlphanumeric => [],
+            // 英字のまま見えている入力 (hello) は、かな (へっぉ) に変えても「一段戻す」にならない。戻せる段は無い (そのまま全部消す)
+            DisplayMode.Auto when _text.IsAlphanumeric => [],
             _ => [DisplayMode.Hiragana, DisplayMode.HalfWidthAlphanumeric],
         };
         foreach (var mode in steps)
