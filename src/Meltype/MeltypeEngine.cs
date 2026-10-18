@@ -270,7 +270,7 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
             var alt = IsDown(VirtualKeys.Menu);
             var shift = IsDown(VirtualKeys.Shift);
             var win = IsDown(VirtualKeys.LWin) || IsDown(VirtualKeys.RWin);
-            if (Meltype.Input.KeyShortcut.ParseList(settings.ToggleKeyboardShortcuts).Any(shortcut => shortcut.Matches(e.Vk, ctrl, alt, shift, win)))
+            if (ToggleShortcuts(settings.ToggleKeyboardShortcuts).Any(shortcut => shortcut.Matches(e.Vk, ctrl, alt, shift, win)))
             {
                 if (e.IsDown)
                 {
@@ -358,6 +358,20 @@ internal sealed class MeltypeEngine : ISessionEnvironment, IDisposable
         if (wasDirect) KeyboardDirect = false;
         else if (IsCodeApp(settings)) ShowCodeMode();
         else composition.ShowMode(true);
+    }
+
+    // 設定の文字列を、打鍵のたびに読み直さない (変わったときだけ読み直す)
+    private string _toggleShortcutsText = "";
+    private IReadOnlyList<Meltype.Input.KeyShortcut> _toggleShortcuts = [];
+
+    private IReadOnlyList<Meltype.Input.KeyShortcut> ToggleShortcuts(string text)
+    {
+        if (text != _toggleShortcutsText)
+        {
+            _toggleShortcuts = Meltype.Input.KeyShortcut.ParseList(text).ToList();
+            _toggleShortcutsText = text;
+        }
+        return _toggleShortcuts;
     }
 
     /// <summary>
