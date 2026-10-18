@@ -165,4 +165,5 @@ guard let bundleIdentifier = Bundle.main.bundleIdentifier,
     exit(1)
 }
 candidatesWindow = IMKCandidates(server: server, panelType: kIMKSingleColumnScrollingCandidatePanel)
+NSRegisterServicesProvider(ModeServices.shared, ModeServices.portName)
 NSApplication.shared.run()
