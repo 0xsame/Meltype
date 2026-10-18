@@ -267,7 +267,7 @@ internal static class ToggleShortcutTests
         var imported = empty.ImportProfile(settings.ExportProfile())!;
         Assert.Equal(0x20, imported.EffectiveToggleShortcuts[0].Key, "インポート");
         settings.Profiles.Add(new SettingsProfile { Name = "旧", Values = new JsonObject { ["HankakuTogglesKeyboard"] = false } });
-        Assert.True(settings.SwitchProfile("旧").EffectiveToggleShortcuts.Any(b => b.Key == 0x19), "旧プロファイルから復元");
+        Assert.Equal(0, settings.SwitchProfile("旧").EffectiveToggleShortcuts.Count, "旧プロファイルの OFF を維持");
         var directory = Path.Combine(Path.GetTempPath(), "meltype-shortcuts-" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -277,7 +277,14 @@ internal static class ToggleShortcutTests
             empty.Save(path);
             Assert.Equal(0, Settings.Load(path).EffectiveToggleShortcuts.Count, "空の保存・読み込み");
             File.WriteAllText(path, "{\"SettingsVersion\":5,\"HankakuTogglesKeyboard\":false}");
-            Assert.True(Settings.Load(path).EffectiveToggleShortcuts.Any(b => b.Key == 0x19), "旧ファイル");
+            Assert.Equal(0, Settings.Load(path).EffectiveToggleShortcuts.Count, "旧ファイルの OFF を維持");
+            Assert.Equal(0, Settings.Load(path).EffectiveToggleShortcuts.Count, "移行保存後も OFF を維持");
+            File.WriteAllText(path, "{\"SettingsVersion\":5,\"HankakuTogglesKeyboard\":true}");
+            Assert.Equal(2, Settings.Load(path).EffectiveToggleShortcuts.Count, "旧ファイルの ON は初期登録へ移行");
+            File.WriteAllText(path, "{\"SettingsVersion\":5,\"HankakuTogglesKeyboard\":true,\"ToggleShortcuts\":[]}");
+            Assert.Equal(0, Settings.Load(path).EffectiveToggleShortcuts.Count, "保存済みの空の一覧を優先");
+            File.WriteAllText(path, "{\"SettingsVersion\":5,\"HankakuTogglesKeyboard\":false,\"ToggleShortcuts\":[{\"Key\":32,\"Modifiers\":2}]}");
+            Assert.Equal(0x20, Settings.Load(path).EffectiveToggleShortcuts[0].Key, "保存済みの登録を優先");
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
@@ -352,21 +359,23 @@ internal static class ToggleShortcutTests
         Assert.Equal(binding, standard.EffectiveToggleShortcuts[0]);
     }
 
-    /// <summary>旧設定の ON/OFF によらず未設定の一覧を 2 つの初期登録へ移行し、通常設定・プロファイル・インポートで同じ規則を使い、明示された空の一覧は維持すること。</summary>
+    /// <summary>旧設定の OFF は空、ON は 2 つの初期登録へ移行し、通常設定・プロファイル・インポートで同じ規則を使い、明示された空の一覧は維持すること。</summary>
     [Test]
-    public static void Shortcut_LegacyMigrationUsesTwoDefaultsAndPreservesEmpty()
+    public static void Shortcut_LegacyMigrationPreservesDisabledAndExplicitBindings()
     {
         foreach (var enabled in new[] { false, true })
         {
-            var settings = new Settings { SettingsVersion = 5 };
+            var settings = new Settings { SettingsVersion = 5, LegacyHankaku = enabled };
             settings.Profiles.Add(new SettingsProfile { Name = "旧", Values = new JsonObject { ["HankakuTogglesKeyboard"] = enabled } });
             Assert.True(settings.Migrate(), "v6 に移行");
-            Assert.Equal(2, settings.Normalize().EffectiveToggleShortcuts.Count, "通常設定の初期値");
-            Assert.Equal(2, settings.SwitchProfile("旧").EffectiveToggleShortcuts.Count, "旧設定の値によらず 2 つ登録");
+            Assert.Equal(enabled ? 2 : 0, settings.Normalize().EffectiveToggleShortcuts.Count, "通常設定の ON/OFF を維持");
+            Assert.True(settings.LegacyHankaku is null, "移行後は旧値を破棄");
+            Assert.True(!settings.ToJson().Contains("HankakuTogglesKeyboard"), "旧項目は保存しない");
+            Assert.Equal(enabled ? 2 : 0, settings.SwitchProfile("旧").EffectiveToggleShortcuts.Count, "旧設定の ON/OFF を維持");
             Assert.True(!settings.Profiles.Single(p => p.Name == "旧").Values!.ContainsKey("HankakuTogglesKeyboard"), "旧項目を削除");
             Assert.True(!settings.Migrate(), "移行は一度だけ");
             var file = new JsonObject { ["format"] = "meltype-profile", ["name"] = "旧", ["values"] = new JsonObject { ["HankakuTogglesKeyboard"] = enabled } };
-            Assert.Equal(2, settings.ImportProfile(file.ToJsonString())!.EffectiveToggleShortcuts.Count, "旧インポートの初期値");
+            Assert.Equal(enabled ? 2 : 0, settings.ImportProfile(file.ToJsonString())!.EffectiveToggleShortcuts.Count, "旧インポートの ON/OFF を維持");
         }
         var empty = new Settings { SettingsVersion = 5, ToggleShortcuts = [] };
         empty.Profiles.Add(new SettingsProfile { Name = "空", Values = new JsonObject { ["ToggleShortcuts"] = new JsonArray() } });

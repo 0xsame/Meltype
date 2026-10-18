@@ -194,6 +194,11 @@ public sealed class Settings
      Description("日本語／英数の入力モードを切り替えるキーを複数登録できます。Windows や他のアプリで使うキー操作を登録すると、元の操作が使えなくなったり、入力モードの切り替えと同時に動いたりする場合があります。")]
     public List<ToggleShortcut>? ToggleShortcuts { get; set; }
 
+    // v5 以前の設定を読み込むためだけに残す。移行後は保存しない。
+    [Browsable(false), JsonInclude, JsonPropertyName("HankakuTogglesKeyboard")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal bool? LegacyHankaku { get; set; }
+
     [JsonIgnore, Browsable(false)]
     public IReadOnlyList<ToggleShortcut> EffectiveToggleShortcuts => ToggleShortcuts ?? ToggleShortcut.Defaults();
 
@@ -609,7 +614,9 @@ public sealed class Settings
     {
         if (values is null) return;
         if (values[nameof(ToggleShortcuts)] is null)
-            values[nameof(ToggleShortcuts)] = JsonSerializer.SerializeToNode(ToggleShortcut.Defaults(), SettingsJsonContext.Default.ListToggleShortcut);
+            values[nameof(ToggleShortcuts)] = JsonSerializer.SerializeToNode(
+                values["HankakuTogglesKeyboard"] is JsonValue legacy && legacy.TryGetValue<bool>(out var enabled) && !enabled
+                    ? new List<ToggleShortcut>() : ToggleShortcut.Defaults(), SettingsJsonContext.Default.ListToggleShortcut);
         values.Remove("HankakuTogglesKeyboard");
     }
 
@@ -837,8 +844,9 @@ public sealed class Settings
         }
         if (SettingsVersion < 6)
         {
-            // v6: 旧 ON/OFF の値によらず、未設定の切り替えキーには 2 つの初期登録を使う。
-            ToggleShortcuts ??= ToggleShortcut.Defaults();
+            // v6: 旧 OFF は空の一覧に移し、保存済みの一覧はそのまま維持する。
+            ToggleShortcuts ??= LegacyHankaku == false ? [] : ToggleShortcut.Defaults();
+            LegacyHankaku = null;
             foreach (var profile in Profiles ?? [])
                 if (profile is not null) InitializeToggleShortcuts(profile.Values ??= new JsonObject());
         }
