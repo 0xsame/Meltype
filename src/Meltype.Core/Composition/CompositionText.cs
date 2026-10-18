@@ -1216,13 +1216,13 @@ public sealed class CompositionText
         return _detector.Romaji.ConvertLenient(pending.ToLowerInvariant(), final);
     }
 
-    /// <summary>日本語の中で打った記号 (Microsoft IME と同じく全角)。英語の区間では打ったままの半角で出す。数字と括弧は半角のまま。</summary>
     /// <summary>[ ] を「」ではなく［］にするか (設定)。</summary>
     public bool SquareBrackets { get; set; }
 
     /// <summary>かなの後ろの / を全角の／にするか (設定)。</summary>
     public bool FullWidthSlash { get; set; }
 
+    /// <summary>日本語の中で打った記号 (Microsoft IME と同じく全角)。英語の区間では打ったままの半角で出す。数字と括弧は半角のまま。</summary>
     private char Symbol(char c) => c switch
     {
         '-' => 'ー',
