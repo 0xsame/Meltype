@@ -2209,6 +2209,13 @@ internal static class CompositionTests
         Assert.Equal(false, memory.Get("nw"), "日本語の後では日本語");
         memory.Context = true;
         Assert.Equal(true, memory.Get("nw"), "英語の後では英語");
+        // 学習した語の一覧には、印 (@e / @j) を出さず、語そのものと文脈を分けて返す。消すときは印付きの名前
+        var listed = memory.Entries().OrderBy(e => e.Context).ToList();
+        Assert.True(listed.All(e => e.Word == "nw"), "語に印が付かない: " + string.Join(",", listed.Select(e => e.Word)));
+        Assert.True(listed.Select(e => e.Context).SequenceEqual(["日本語の後", "英語の後"]) || listed.Select(e => e.Context).SequenceEqual(["英語の後", "日本語の後"]), "文脈が分かる");
+        memory.Remove([listed.First(e => e.Context == "英語の後").EntryKey]);
+        Assert.Equal(1, memory.Entries().Count, "文脈ごとに消せる");
+        memory.Remember("nw", english: true, explicitChoice: true);
         memory.Context = null;
         Assert.True(memory.Get("nw") is null, "文脈が分からなければ、文脈ごとの学習は使わない");
         var plain = new LanguageMemory(null);

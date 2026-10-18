@@ -29,7 +29,11 @@ public sealed class LanguageMemory
     }
 
     /// <summary>学習した語 (設定の「学習した語」の一覧に出す)。Active は今有効になっているか (2 回目を待っている語は false)。</summary>
-    public sealed record Learned(string Word, bool English, int Count, DateTime Used, bool Active);
+    public sealed record Learned(string Word, bool English, int Count, DateTime Used, bool Active, string? Key = null, string? Context = null)
+    {
+        /// <summary>Remove に渡す名前 (文脈ごとに分けて覚えた語は、印 @e / @j 付き)。</summary>
+        public string EntryKey => Key ?? Word;
+    }
 
     /// <summary>
     /// ローマ字としてよく使う日本語になる語か (kyouha = 今日は、sushi = すし)。こういう語は、一度英字にして確定しただけでは
@@ -136,8 +140,12 @@ public sealed class LanguageMemory
     /// <summary>学習した語の一覧 (新しく使ったものから)。</summary>
     public IReadOnlyList<Learned> Entries() =>
         _entries.OrderByDescending(e => e.Value.Used)
-            .Select(e => new Learned(e.Key, e.Value.English, Math.Max(1, e.Value.Count), e.Value.Used, !NeedsTwice(e.Key, e.Value)))
+            .Select(e => new Learned(WithoutContext(e.Key), e.Value.English, Math.Max(1, e.Value.Count), e.Value.Used, !NeedsTwice(e.Key, e.Value), e.Key,
+                e.Key.EndsWith("@e", StringComparison.Ordinal) ? "英語の後" : e.Key.EndsWith("@j", StringComparison.Ordinal) ? "日本語の後" : null))
             .ToList();
+
+    /// <summary>文脈ごとに分けて覚えた語の印 (@e / @j) を外した、語そのもの。</summary>
+    private static string WithoutContext(string key) => key.EndsWith("@e", StringComparison.Ordinal) || key.EndsWith("@j", StringComparison.Ordinal) ? key[..^2] : key;
 
     /// <summary>学習した語を忘れる (設定の「学習した語」から消したとき)。</summary>
     public void Remove(IEnumerable<string> words)

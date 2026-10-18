@@ -350,7 +350,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             // 判定は新しい版の Meltype.exe を起動して待つので、UI スレッドの外で行う (待つ間も Meltype IME に応答するため)
             if (Updater.Staged() is { } staged)
             {
-                var words = _composition.Languages.Entries().Select(e => e.Word).ToList();
+                var words = _composition.Languages.Entries().Select(e => e.Word).Distinct().ToList();
                 var preview = await Task.Run(() => Updater.PreviewChanges(words));
                 if (!UpdateChangesDialog.Confirm(_composition.Languages, staged.Version, _engine.Settings, preview)) return;
             }
