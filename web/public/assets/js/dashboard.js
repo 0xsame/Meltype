@@ -2,7 +2,7 @@
 /* Copyright (C) 2026 Konayukiw */
 
 import { copyText, escapeHtml, formatDate, formatNumber, getJson, icon, initHeader, relativeTime, toast } from "./common.js";
-import { FORMS, formById, formatBytes, toMarkdown } from "./report-schema.js";
+import { FORMS, formById, formatBytes, privateLabels, toMarkdown } from "./report-schema.js";
 
 const REPO = "https://github.com/yksr-melt/Meltype";
 const COLORS = { bug: "is-pink", misdetection: "is-sky", dictionary: "is-peri", idea: "is-sky" };
@@ -132,7 +132,7 @@ function fieldsHtml(fields, values) {
 }
 
 function fileUrl(report, attachment, download) {
-  return `/api/dashboard/reports/${report.id}/files/${attachment.idx}${download ? "?download=1" : ""}`;
+  return `/api/dashboard/reports/${report.id}/files/${attachment.idx}${download ? "?download=1" : "?inline=1"}`;
 }
 
 function attachmentHtml(report, attachment) {
@@ -164,6 +164,8 @@ function markdownFor(report) {
   const lines = [toMarkdown(form, report.fields)];
   const files = report.attachments.filter((a) => a.uploaded_at);
   if (files.length) lines.push(`### 添付\n\n${files.map((a) => `- ${a.name} (${formatBytes(a.size)})`).join("\n")}\n\n添付は報告ダッシュボードの #${report.id} にあります。`);
+  const hidden = privateLabels(form, report.fields);
+  if (hidden.length) lines.push(`${hidden.join("・")}は公開しないため載せていません。報告ダッシュボードの #${report.id} にあります。`);
   lines.push(`---\n報告フォームから (#${report.id}、${formatDate(report.created_at * 1000, true)})`);
   return lines.join("\n\n");
 }

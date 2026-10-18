@@ -2,8 +2,9 @@
 /* Copyright (C) 2026 Konayukiw */
 
 export const LIMITS = {
-  maxFiles: 5,
-  maxTotalBytes: 50 * 1024 * 1024,
+  maxFiles: 3,
+  maxFileBytes: 10 * 1024 * 1024,
+  maxTotalBytes: 20 * 1024 * 1024,
   text: 200,
   textarea: 5000,
   code: 20000,
@@ -50,6 +51,8 @@ const ENVIRONMENT = {
   hint: "トレイのアイコンを右クリック →「不具合の報告・提案...」の「実行環境」をそのまま貼ってください",
 };
 
+export const PRIVATE_FIELDS = ["contact", "log", "environment"];
+
 export const FORMS = [
   {
     id: "bug",
@@ -66,7 +69,7 @@ export const FORMS = [
       { id: "actual", label: "どうなったか", type: "textarea", hint: "画面の様子は、スクリーンショットや録画にして下の「添付」に入れてもらえると助かります" },
     ],
     optional: [
-      { id: "mode", label: "使っていたモード (Windows)", type: "select", options: ["Meltype IME", "Meltype キーボード (変換ボックスで入力)", "IME 自動切替 (Microsoft IME を使う)", "分からない / Mac・Linux"] },
+      { id: "mode", label: "使っていたモード (Windows)", type: "select", options: ["Meltype IME (入力欄に直接入力)", "Meltype キーボード (変換ボックスで入力)", "分からない / Mac・Linux"] },
       { id: "os-detail", label: "OS の詳細", type: "text", placeholder: "Ubuntu 24.04 / GNOME / Wayland", hint: "Mac: macOS 15.2 / M2 など。Linux: Ubuntu 24.04 / GNOME / Wayland など" },
       { id: "expected", label: "どうなってほしかったか", type: "textarea" },
       { id: "frequency", label: "起きる頻度", type: "select", options: ["毎回", "ときどき", "一度だけ"] },
@@ -195,6 +198,7 @@ export function validateFiles(files) {
     const type = fileTypeOf(name);
     if (!name || !type) return { error: `${name || "名前のないファイル"} は添付できない種類です` };
     if (!Number.isSafeInteger(size) || size <= 0) return { error: `${name} は空のファイルです` };
+    if (size > LIMITS.maxFileBytes) return { error: `${name} は大きすぎます (1 ファイル ${formatBytes(LIMITS.maxFileBytes)} まで)` };
     total += size;
     clean.push({ name, size, mime: type.mime, group: type.group });
   }
@@ -223,9 +227,16 @@ export function titleFor(form, fields) {
   }
 }
 
+export function privateLabels(form, fields) {
+  return [...form.required, ...form.optional]
+    .filter((field) => PRIVATE_FIELDS.includes(field.id) && fields[field.id] != null && !isEmpty(fields[field.id]))
+    .map((field) => field.label);
+}
+
 export function toMarkdown(form, fields) {
   const parts = [];
   for (const field of [...form.required, ...form.optional]) {
+    if (PRIVATE_FIELDS.includes(field.id)) continue;
     const value = fields[field.id];
     if (value == null || isEmpty(value)) continue;
     const body = Array.isArray(value)

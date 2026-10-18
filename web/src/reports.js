@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2026 Konayukiw */
 
-import { formById, titleFor, validateFields, validateFiles } from "../public/assets/js/report-schema.js";
+import { LIMITS, formById, titleFor, validateFields, validateFiles } from "../public/assets/js/report-schema.js";
 import { error, json, now, randomToken, readJson, sha256Hex } from "./http.js";
 
 const SHORT_WINDOW = 10 * 60;
@@ -28,14 +28,42 @@ function rateKey(ip) {
 
 async function hashIp(request, env) {
   const ip = request.headers.get("cf-connecting-ip") || "unknown";
-  return sha256Hex(`${env.IP_HASH_SALT || "meltype-local-development"}\n${rateKey(ip)}`);
+  return sha256Hex(`${env.IP_HASH_SALT}\n${rateKey(ip)}`);
 }
 
-async function checkRate(env, ipHash, at) {
-  const { results } = await env.DB.prepare("SELECT created_at FROM rate_events WHERE ip_hash = ? AND created_at > ? ORDER BY created_at")
-    .bind(ipHash, at - DAY)
-    .all();
-  const times = results.map((row) => row.created_at);
+const TURNSTILE_VERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+export async function verifyTurnstile(request, env, token) {
+  if (!env.TURNSTILE_SECRET) {
+    console.error("TURNSTILE_SECRET が設定されていないため、報告を受け付けていません");
+    return { status: 503, message: "いまは報告を受け付けられません。時間をおいてもう一度試してください" };
+  }
+  if (typeof token !== "string" || !token || token.length > 2048) {
+    return { status: 400, message: "ロボットでないことの確認が済んでいません。チェックが終わってから送ってください" };
+  }
+  const payload = { secret: env.TURNSTILE_SECRET, response: token };
+  const ip = request.headers.get("cf-connecting-ip");
+  if (ip) payload.remoteip = ip;
+  let result;
+  try {
+    const response = await fetch(TURNSTILE_VERIFY, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    result = await response.json();
+  } catch (e) {
+    console.error("Turnstile の確認に失敗しました", e);
+    return { status: 503, message: "ロボットでないことの確認ができませんでした。時間をおいてもう一度試してください" };
+  }
+  if (!result.success) return { status: 400, message: "ロボットでないことの確認ができませんでした。ページを読み込み直してください" };
+  if (result.action && result.action !== "report") return { status: 400, message: "ロボットでないことの確認ができませんでした" };
+  const hosts = String(env.TURNSTILE_HOSTNAMES || "").split(",").map((h) => h.trim()).filter(Boolean);
+  if (hosts.length && !hosts.includes(result.hostname)) return { status: 400, message: "ロボットでないことの確認ができませんでした" };
+  return null;
+}
+
+function limitMessage(times, at) {
   const recent = times.filter((time) => time > at - SHORT_WINDOW);
   if (recent.length >= SHORT_LIMIT) {
     return {
@@ -43,13 +71,25 @@ async function checkRate(env, ipHash, at) {
       message: `同じ場所から送れるのは 10 分に ${SHORT_LIMIT} 件までです。少し待ってからもう一度送ってください`,
     };
   }
-  if (times.length >= DAY_LIMIT) {
-    return {
-      retryAfter: Math.max(1, times[times.length - DAY_LIMIT] + DAY - at),
-      message: `同じ場所から送れるのは 1 日に ${DAY_LIMIT} 件までです。時間をおいてからもう一度送ってください`,
-    };
-  }
-  return null;
+  return {
+    retryAfter: Math.max(1, (times.length >= DAY_LIMIT ? times[times.length - DAY_LIMIT] + DAY : at + SHORT_WINDOW) - at),
+    message: `同じ場所から送れるのは 1 日に ${DAY_LIMIT} 件までです。時間をおいてからもう一度送ってください`,
+  };
+}
+
+export async function claimRate(env, ipHash, at) {
+  const claimed = await env.DB.prepare(
+    "INSERT INTO rate_events (ip_hash, created_at) SELECT ?1, ?2 " +
+      "WHERE (SELECT COUNT(*) FROM rate_events WHERE ip_hash = ?1 AND created_at > ?2 - ?3) < ?4 " +
+      "AND (SELECT COUNT(*) FROM rate_events WHERE ip_hash = ?1 AND created_at > ?2 - ?5) < ?6 RETURNING rowid",
+  )
+    .bind(ipHash, at, SHORT_WINDOW, SHORT_LIMIT, DAY, DAY_LIMIT)
+    .first();
+  if (claimed) return null;
+  const { results } = await env.DB.prepare("SELECT created_at FROM rate_events WHERE ip_hash = ? AND created_at > ? ORDER BY created_at")
+    .bind(ipHash, at - DAY)
+    .all();
+  return limitMessage(results.map((row) => row.created_at), at);
 }
 
 export async function createReport(request, env) {
@@ -64,10 +104,16 @@ export async function createReport(request, env) {
   if (Object.keys(errors).length) return error(422, "書いていない所か、直してほしい所があります", { fields: errors });
   const checked = validateFiles(body.files);
   if (checked.error) return error(422, checked.error, { files: checked.error });
+  if (!env.IP_HASH_SALT) {
+    console.error("IP_HASH_SALT が設定されていないため、報告を受け付けていません");
+    return error(503, "いまは報告を受け付けられません。時間をおいてもう一度試してください");
+  }
+  const human = await verifyTurnstile(request, env, body.turnstile);
+  if (human) return error(human.status, human.message);
 
   const at = now();
   const ipHash = await hashIp(request, env);
-  const limited = await checkRate(env, ipHash, at);
+  const limited = await claimRate(env, ipHash, at);
   if (limited) return error(429, limited.message, { retryAfter: limited.retryAfter });
 
   const files = checked.files;
@@ -83,14 +129,46 @@ export async function createReport(request, env) {
   const statements = files.map((file, index) =>
     env.DB.prepare("INSERT INTO attachments (report_id, idx, name, mime, grp, size) VALUES (?, ?, ?, ?, ?, ?)").bind(id, index, file.name, file.mime, file.group, file.size),
   );
-  statements.push(env.DB.prepare("INSERT INTO rate_events (ip_hash, created_at) VALUES (?, ?)").bind(ipHash, at));
-  statements.push(env.DB.prepare("DELETE FROM rate_events WHERE created_at <= ?").bind(at - DAY));
-  await env.DB.batch(statements);
+  if (statements.length) await env.DB.batch(statements);
 
   return json(
     { id, title, uploadToken: token, files: files.map((file, index) => ({ index, name: file.name, size: file.size })) },
     { status: 201 },
   );
+}
+
+function startsWith(bytes, signature, offset = 0) {
+  return signature.every((byte, i) => bytes[offset + i] === byte);
+}
+
+const ascii = (text) => [...text].map((c) => c.charCodeAt(0));
+
+export function looksLike(mime, bytes) {
+  switch (mime.split(";")[0]) {
+    case "image/png":
+      return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case "image/jpeg":
+      return startsWith(bytes, [0xff, 0xd8, 0xff]);
+    case "image/gif":
+      return startsWith(bytes, ascii("GIF87a")) || startsWith(bytes, ascii("GIF89a"));
+    case "image/webp":
+      return startsWith(bytes, ascii("RIFF")) && startsWith(bytes, ascii("WEBP"), 8);
+    case "video/mp4":
+      return startsWith(bytes, ascii("ftyp"), 4);
+    case "video/webm":
+      return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+    case "text/plain":
+    case "application/json":
+      if (bytes.includes(0)) return false;
+      try {
+        new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        return true;
+      } catch {
+        return false;
+      }
+    default:
+      return false;
+  }
 }
 
 export async function uploadFile(request, env, id, index) {
@@ -108,11 +186,14 @@ export async function uploadFile(request, env, id, index) {
   const file = await env.DB.prepare("SELECT name, mime, size, uploaded_at FROM attachments WHERE report_id = ? AND idx = ?").bind(id, index).first();
   if (!file) return error(404, "そのファイルは報告に含まれていません");
   if (file.uploaded_at) return error(409, "このファイルはもう届いています");
-  if (Number(request.headers.get("content-length")) !== file.size || !request.body) {
+  if (Number(request.headers.get("content-length")) !== file.size || !request.body || file.size > LIMITS.maxFileBytes) {
     return error(400, "ファイルの大きさが送信前と違います");
   }
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.length !== file.size) return error(400, "ファイルの大きさが送信前と違います");
+  if (!looksLike(file.mime, bytes)) return error(415, "ファイルの中身が拡張子と合いません");
 
-  await env.FILES.put(`reports/${id}/${index}`, request.body, {
+  await env.FILES.put(`reports/${id}/${index}`, bytes, {
     httpMetadata: { contentType: file.mime },
     customMetadata: { name: encodeURIComponent(file.name) },
   });
@@ -197,13 +278,15 @@ export async function getFile(env, request, id, index, url) {
   }
   const object = await env.FILES.get(`reports/${id}/${index}`, range ? { range: { offset: range.start, length: range.end - range.start + 1 } } : undefined);
   if (!object) return error(404, "そのファイルは見つかりません");
-  const disposition = url.searchParams.get("download") ? "attachment" : "inline";
+  const inline = url.searchParams.get("inline") === "1" && (file.mime.startsWith("image/") || file.mime.startsWith("video/"));
+  const disposition = inline ? "inline" : "attachment";
   const headers = new Headers({
     "content-type": file.mime,
     "content-disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
     "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
-    "cache-control": "private, max-age=3600",
+    "cross-origin-resource-policy": "same-origin",
+    "cache-control": "private, no-store",
     "accept-ranges": "bytes",
   });
   if (range) {

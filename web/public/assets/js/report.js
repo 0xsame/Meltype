@@ -219,7 +219,7 @@ function setStatus(kind, message) {
 }
 
 function fileRules() {
-  root.querySelector("[data-file-rules]").textContent = `画像 (PNG・JPEG・WebP・GIF)・動画 (MP4・WebM)・ログ (.log・.txt)・設定 (.json)。${LIMITS.maxFiles} ファイル・合計 ${formatBytes(LIMITS.maxTotalBytes)} まで`;
+  root.querySelector("[data-file-rules]").textContent = `画像 (PNG・JPEG・WebP・GIF)・動画 (MP4・WebM)・ログ (.log・.txt)・設定 (.json)。${LIMITS.maxFiles} ファイル・1 ファイル ${formatBytes(LIMITS.maxFileBytes)}・合計 ${formatBytes(LIMITS.maxTotalBytes)} まで`;
   fileInput.accept = FILE_ACCEPT;
 }
 
@@ -279,6 +279,10 @@ function addFiles(list) {
     }
     if (file.size === 0) {
       problems.push(`${file.name} は空のファイルです`);
+      continue;
+    }
+    if (file.size > LIMITS.maxFileBytes) {
+      problems.push(`${file.name} は大きすぎます (1 ファイル ${formatBytes(LIMITS.maxFileBytes)} まで)`);
       continue;
     }
     if (state.files.length >= LIMITS.maxFiles) {
@@ -378,6 +382,15 @@ async function uploadAll(result) {
   return failed;
 }
 
+function turnstileToken() {
+  const input = formElement.querySelector('[name="cf-turnstile-response"]');
+  return input ? input.value : "";
+}
+
+function resetTurnstile() {
+  if (window.turnstile) window.turnstile.reset();
+}
+
 function retryText(seconds) {
   if (!seconds) return "";
   const minutes = Math.ceil(seconds / 60);
@@ -409,6 +422,7 @@ async function submit(event) {
         files: state.files.map((entry) => ({ name: entry.file.name, size: entry.file.size })),
         website: trap.value,
         elapsed: Math.round(performance.now() - startedAt),
+        turnstile: turnstileToken(),
       }),
     });
     const failed = state.files.length ? await uploadAll(result) : [];
@@ -416,6 +430,7 @@ async function submit(event) {
   } catch (e) {
     state.sending = false;
     submitButton.disabled = false;
+    resetTurnstile();
     if (e.body && e.body.fields) showErrors(e.body.fields);
     if (e.body && e.body.files) {
       filesError.textContent = e.body.files;
@@ -454,6 +469,7 @@ function reset() {
   submitButton.disabled = false;
   done.hidden = true;
   formElement.hidden = false;
+  resetTurnstile();
   if (state.form) selectForm(state.form.id, false);
   picker.scrollIntoView({ behavior: "smooth", block: "start" });
 }

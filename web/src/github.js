@@ -4,6 +4,8 @@
 import { error, now } from "./http.js";
 
 const FRESH = 60 * 60;
+const KEEP = 24 * 60 * 60;
+const RETRY = 60;
 const CACHE_KEY = "github";
 const RELEASES_SHOWN = 6;
 const NOTES_LIMIT = 8000;
@@ -78,13 +80,11 @@ async function fetchSummary(env) {
   };
 }
 
+let refreshStartedAt = 0;
+
 async function refresh(env) {
   const value = JSON.stringify(await fetchSummary(env));
-  await env.DB.prepare(
-    "INSERT INTO cache (key, value, fetched_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at",
-  )
-    .bind(CACHE_KEY, value, now())
-    .run();
+  await env.CACHE.put(CACHE_KEY, value, { expirationTtl: KEEP, metadata: { fetchedAt: now() } });
   return value;
 }
 
@@ -99,16 +99,14 @@ function respond(value, state) {
 }
 
 export async function githubSummary(env, ctx) {
-  const cached = await env.DB.prepare("SELECT value, fetched_at FROM cache WHERE key = ?").bind(CACHE_KEY).first();
-  if (cached) {
-    if (now() - cached.fetched_at >= FRESH) {
-      ctx.waitUntil(
-        env.DB.prepare("UPDATE cache SET fetched_at = ? WHERE key = ? AND fetched_at = ?")
-          .bind(now() - FRESH + 120, CACHE_KEY, cached.fetched_at)
-          .run()
-          .then((result) => (result.meta.changes ? refresh(env) : null))
-          .catch((e) => console.error("GitHub の情報を更新できませんでした", e)),
-      );
+  const cached = await env.CACHE.getWithMetadata(CACHE_KEY);
+  if (cached.value) {
+    const fetchedAt = Number(cached.metadata && cached.metadata.fetchedAt) || 0;
+    if (now() - fetchedAt >= FRESH) {
+      if (now() - refreshStartedAt >= RETRY) {
+        refreshStartedAt = now();
+        ctx.waitUntil(refresh(env).catch((e) => console.error("GitHub の情報を更新できませんでした", e)));
+      }
       return respond(cached.value, "stale");
     }
     return respond(cached.value, "hit");
@@ -119,4 +117,8 @@ export async function githubSummary(env, ctx) {
     console.error("GitHub の情報を読めませんでした", e);
     return error(502, "GitHub の情報を読めませんでした");
   }
+}
+
+export function _resetGithubCache() {
+  refreshStartedAt = 0;
 }

@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2026 Konayukiw */
 
+import { requireAccess } from "./access.js";
+import { cleanup } from "./cleanup.js";
 import { githubSummary } from "./github.js";
 import { error } from "./http.js";
 import { createReport, getFile, getReport, listReports, stats, uploadFile } from "./reports.js";
@@ -14,6 +16,17 @@ const routes = [
   ["GET", /^\/api\/dashboard\/reports\/(\d+)$/, (c) => getReport(c.env, Number(c.match[1]))],
   ["GET", /^\/api\/dashboard\/reports\/(\d+)\/files\/(\d+)$/, (c) => getFile(c.env, c.request, Number(c.match[1]), Number(c.match[2]), c.url)],
 ];
+
+class SetAttribute {
+  constructor(attribute, value) {
+    this.attribute = attribute;
+    this.value = value;
+  }
+
+  element(element) {
+    element.setAttribute(this.attribute, this.value);
+  }
+}
 
 class AbsoluteUrl {
   constructor(attribute, origin) {
@@ -30,16 +43,26 @@ class AbsoluteUrl {
 async function page(request, env, url) {
   const response = await env.ASSETS.fetch(request);
   if (!(response.headers.get("content-type") || "").includes("text/html")) return response;
+  const origin = env.SITE_ORIGIN || url.origin;
   return new HTMLRewriter()
-    .on('meta[property="og:image"]', new AbsoluteUrl("content", url.origin))
-    .on('meta[property="og:url"]', new AbsoluteUrl("content", url.origin))
-    .on('link[rel="canonical"]', new AbsoluteUrl("href", url.origin))
+    .on('meta[property="og:image"]', new AbsoluteUrl("content", origin))
+    .on('meta[property="og:url"]', new AbsoluteUrl("content", origin))
+    .on('link[rel="canonical"]', new AbsoluteUrl("href", origin))
+    .on("[data-turnstile]", new SetAttribute("data-sitekey", env.TURNSTILE_SITE_KEY || ""))
     .transform(response);
+}
+
+function isAdminPath(pathname) {
+  return pathname === "/dashboard" || pathname.startsWith("/dashboard/") || pathname.startsWith("/api/dashboard/");
 }
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (isAdminPath(url.pathname)) {
+      const denied = await requireAccess(request, env);
+      if (denied) return denied;
+    }
     if (!url.pathname.startsWith("/api/")) return page(request, env, url);
     const matching = routes.filter(([, pattern]) => pattern.test(url.pathname));
     if (!matching.length) return error(404, "見つかりません");
@@ -51,5 +74,13 @@ export default {
       console.error(e);
       return error(500, "サーバーで問題が起きました。時間をおいてもう一度試してください");
     }
+  },
+
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      cleanup(env)
+        .then((result) => console.log("掃除しました", JSON.stringify(result)))
+        .catch((e) => console.error("掃除に失敗しました", e)),
+    );
   },
 };

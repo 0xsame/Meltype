@@ -29,9 +29,3 @@ CREATE TABLE rate_events (
 
 CREATE INDEX rate_events_ip ON rate_events (ip_hash, created_at);
 CREATE INDEX rate_events_time ON rate_events (created_at);
-
-CREATE TABLE cache (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  fetched_at INTEGER NOT NULL
-);
