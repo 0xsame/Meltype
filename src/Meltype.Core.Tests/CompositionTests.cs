@@ -1468,6 +1468,13 @@ internal static class CompositionTests
         var saw = new Keyboard { LaughterAfterKana = true };
         saw.Type("saw\n");
         Assert.Equal("さw", saw.Host.Document, "saw → さw");
+        // 1 回の入力に かな + w が 2 つ以上あっても、それぞれ分ける (2 つ目が別の区間を書き換えていた)
+        var twice = new Keyboard { LaughterAfterKana = true };
+        twice.Type("newtosaw\n");
+        Assert.Equal("ねwとさw", twice.Host.Document, "2 つとも笑いの w (2 つ目が別の区間を書き換えて ねwさsaww になっていた)");
+        var spread = new Keyboard { LaughterAfterKana = true };
+        spread.Type("ganbattenewdesunesaw\n");
+        Assert.Equal("がんばってねwですねさw", spread.Host.Document, "間に日本語があっても");
         var normal = new Keyboard();
         normal.Type("naruhodonew\n");
         Assert.Equal("なるほどnew", normal.Host.Document, "OFF は今までどおり");
