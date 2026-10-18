@@ -1517,13 +1517,16 @@ public sealed class CompositionController
             _converting = true;
             return;
         }
-        // 設定「#番号で GitHub の Issue・PR のタイトルを候補に出す」: #123 の形 (issue #291)
-        if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && !_text.KanaInput && _text.Mode == DisplayMode.Auto &&
-            _text.Raw is ['#', .. { Length: > 0 } digits] && digits.All(char.IsAsciiDigit) && digits.Length <= 7 &&
-            titles.Lookup(_options.GitHubRepository(), int.Parse(digits)) is { Length: > 0 } title)
+        // #123 の形は、# と数字を別々の文節にしない (issue #865)。
+        // 設定「#番号で GitHub の Issue・PR のタイトルを候補に出す」なら、タイトルも候補に出す (issue #291)
+        if (!_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is ['#', .. { Length: > 0 } digits] && digits.All(char.IsAsciiDigit) && digits.Length <= 7)
         {
             var repository = _options.GitHubRepository();
-            _clauses = [new Clause(_text.Raw, true, Distinct([_text.Raw, $"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"])) { Raw = _text.Raw }];
+            var hashCandidates = new List<string> { _text.Raw };
+            if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits)) is { Length: > 0 } title)
+                hashCandidates.AddRange([$"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"]);
+            hashCandidates.Add(CompositionText.ToFullWidth(_text.Raw));
+            _clauses = [new Clause(_text.Raw, true, Distinct([.. hashCandidates])) { Raw = _text.Raw }];
             _selectedClause = 0;
             _converting = true;
             return;
