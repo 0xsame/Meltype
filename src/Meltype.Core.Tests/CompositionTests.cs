@@ -2318,6 +2318,33 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue865_HashNumberIsOneClause()
+    {
+        // #123 は # と 123 を別々の文節に変換しない (タイトルが無い・設定 OFF でも)
+        var k = new Keyboard();
+        k.Type("#123 ");
+        Assert.True(k.Host.View is { } view && view.Candidates.Contains("#123") && view.Candidates.Contains("＃１２３"), string.Join(",", k.Host.View?.Candidates ?? []));
+        var none = new Keyboard { GitHubIssueCandidates = true, GitHubRepository = "a/b", GitHubTitles = new GitHubIssueTitles((_, _) => Task.FromResult<string?>(null)) };
+        none.Type("#45 ");
+        Assert.True(none.Host.View is { } v && v.Candidates.Contains("#45"), string.Join(",", none.Host.View?.Candidates ?? []));
+    }
+
+    [Test]
+    public static void Issue866_GitHubRepositorySettingIsNormalized()
+    {
+        // 設定のリポジトリは、空白・URL・.git が付いていても「所有者/名前」として問い合わせる
+        foreach (var setting in (string[])[" yksr-melt/Meltype ", "https://github.com/yksr-melt/Meltype", "github.com/yksr-melt/Meltype.git", "https://github.com/yksr-melt/Meltype/issues/1"])
+        {
+            Assert.Equal("yksr-melt/Meltype", GitHubIssueTitles.Normalize(setting), setting);
+            var titles = new GitHubIssueTitles((repository, number) => Task.FromResult<string?>(repository == "yksr-melt/Meltype" && number == 866 ? "候補に出ない" : null));
+            var k = new Keyboard { GitHubIssueCandidates = true, GitHubRepository = setting, GitHubTitles = titles };
+            k.Type("#866 ");
+            var candidates = k.Host.View?.Candidates ?? [];
+            Assert.True(candidates.Contains("#866 候補に出ない") && candidates.Contains("yksr-melt/Meltype#866"), setting + ": " + string.Join(",", candidates));
+        }
+    }
+
+    [Test]
     public static void Issue281_ClipboardTextIsOfferedOnlyWhenEnabled()
     {
         var k = new Keyboard { ClipboardCandidates = true };
