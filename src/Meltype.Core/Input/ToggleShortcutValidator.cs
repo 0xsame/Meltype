@@ -5,7 +5,7 @@ using Meltype.Config;
 
 namespace Meltype.Input;
 
-public enum ShortcutValidationError { None, Invalid, Duplicate, Conversion, FunctionKey, ConvertKeys }
+public enum ShortcutValidationError { None, Invalid, Duplicate, Conversion, FunctionKey, ConvertKeys, UnmodifiedKey }
 
 /// <summary>設定画面と設定の読み込みで共通に使う割り当て判定。</summary>
 public static class ToggleShortcutValidator
@@ -26,6 +26,12 @@ public static class ToggleShortcutValidator
         // F6〜F10 (0x75〜0x79) 単独 または Shift + F6〜F10: かな・英字変換用ファンクションキー
         if (b.Key is >= 0x75 and <= 0x79 && (b.Modifiers & ~ShortcutModifiers.Shift) == 0)
             return ShortcutValidationError.FunctionKey;
+
+        // 通常入力を奪わないよう、Ctrl・Alt・Win を伴わないキーは IME 用キーだけに絞る。
+        // Shift だけの英字・記号も文字入力に使うので、単独押しと同じ規則にする。
+        if ((b.Modifiers & ~ShortcutModifiers.Shift) == ShortcutModifiers.None &&
+            ToggleShortcut.NormalizeHankakuKey(b.Key) is not (ToggleShortcut.Hankaku or 0x1C or 0x1D))
+            return ShortcutValidationError.UnmodifiedKey;
 
         // 無変換 (0x1D) / 変換 (0x1C) キー単独
         // 設定「無変換で英数 / 変換で日本語」が有効な場合は競合するため登録不可

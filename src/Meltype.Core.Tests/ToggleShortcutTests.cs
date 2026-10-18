@@ -319,6 +319,23 @@ internal static class ToggleShortcutTests
         Assert.Equal(0, settings.ImportProfile(file.ToJsonString())!.EffectiveToggleShortcuts.Count, "インポートでも除外");
     }
 
+    /// <summary>文字入力・編集用の単独キーと Shift のみの組み合わせを拒否し、IME 用キーと Ctrl+Space は維持する。</summary>
+    [Test]
+    public static void Shortcut_RejectsUnmodifiedTextAndEditingKeys()
+    {
+        foreach (var mods in new[] { ShortcutModifiers.None, ShortcutModifiers.Shift })
+        foreach (var key in new[] { 0x20, 0x0D, 0x1B, 0x41, 0x30, 0x09, 0x08, 0x25, 0x2E, 0xC0, 0x70 })
+        {
+            var binding = new ToggleShortcut { Key = key, Modifiers = mods };
+            Assert.Equal(ShortcutValidationError.UnmodifiedKey, ToggleShortcutValidator.Validate(binding, new Settings(), []));
+            Assert.Equal(0, new Settings { ToggleShortcuts = [binding] }.Normalize().EffectiveToggleShortcuts.Count, "読み込み時も通常入力を奪わない");
+        }
+        foreach (var key in new[] { 0x19, 0xF3, 0xF4, 0x1C, 0x1D })
+            Assert.Equal(ShortcutValidationError.None, ToggleShortcutValidator.Validate(new() { Key = key }, new Settings(), []));
+        Assert.Equal(ShortcutValidationError.None, ToggleShortcutValidator.Validate(
+            new() { Key = 0x20, Modifiers = ShortcutModifiers.Control }, new Settings(), []));
+    }
+
     /// <summary>Windows の操作に使うキー (Alt+Tab、Win+L 等) を理由に登録を拒否せず、設定・プロファイル・インポートで割り当てを維持すること。</summary>
     [Test]
     public static void Shortcut_OsShortcutsAreAllowedAcrossSettingsAndProfiles()
