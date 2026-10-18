@@ -533,6 +533,14 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue545_ExclamationOffersBangBangEmoji()
+    {
+        var k = new Keyboard();
+        k.Type("! ");
+        Assert.True(k.Host.View!.Candidates.Contains("‼️"), string.Join(" ", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Emoji_AreLastAndReachedByUp()
     {
         // #133: 絵文字・顔文字は候補の最後に逆順でまとめる。変換してすぐ ↑ で、いちばんよく使う絵文字 (えがお → 😊) になる
@@ -589,6 +597,19 @@ internal static class CompositionTests
             k.Type(keys);
             var candidates = k.Host.View!.Candidates;
             Assert.True(candidates.Any(c => c.StartsWith("GitHub")), keys + ": " + string.Join(" ", candidates));
+        }
+    }
+
+    [Test]
+    public static void Issue231_ImeOffersIme()
+    {
+        // #231: いめ を変換すると IME が候補に出る。後ろの助詞はかなのまま。
+        foreach (var (keys, expected) in new[] { ("ime ", "IME"), ("imede ", "IMEで") })
+        {
+            var k = new Keyboard();
+            k.Type(keys);
+            var candidates = k.Host.View!.Candidates;
+            Assert.True(candidates.Contains(expected), keys + ": " + string.Join(" ", candidates));
         }
     }
 
@@ -888,6 +909,43 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void CaptureGate_StartCheckDoesNotBlockQueue()
+    {
+        // 打ち始めの判定 (フォーカスを調べ終わるのを待つことがある) の間も、UI スレッドはキューを読める
+        var gate = new CaptureGate(() => { });
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var hook = Task.Run(() => gate.OnKey(new KeyEvent('A', 0, false, false, false, 0), _ =>
+        {
+            entered.Set();
+            release.Wait(5000);
+            return true;
+        }));
+        Assert.True(entered.Wait(5000), "判定が始まる");
+        var ui = Task.Run(() => gate.TryDequeue(out _) || gate.IsCaptured || !gate.TryRelease());
+        var finished = ui.Wait(2000);
+        release.Set();
+        Assert.True(finished && !ui.Result, "判定の間も、キューの出し入れと関所の開け閉めは待たされない");
+        Assert.True(hook.Result && gate.IsCaptured, "判定が済んだら横取りを始める");
+        Assert.True(gate.TryDequeue(out var input) && input.Key?.Vk == 'A' && !gate.TryDequeue(out _), "判定した打鍵を 1 回だけ積む");
+    }
+
+    [Test]
+    public static void ShiftClick_CommitsThenSendsShiftWithClick()
+    {
+        // Shift を押したままクリック (範囲選択): 確定してから、Shift とクリックを送る
+        var k = new Keyboard();
+        k.Type("kana");
+        k.Key(VirtualKeys.LShift);
+        k.Gate.OnMouseButton(new MouseButtonEvent(0x201, 10, 20, 0));
+        k.Controller.Pump();
+        var events = string.Join("|", k.Host.Events);
+        Assert.True(events.StartsWith("text:かな|down:A0|mouse:201"), events);
+        k.Key(VirtualKeys.LShift, up: true);
+        Assert.True(k.Host.Events.Count(e => e.Contains(":A0")) == 2, "Shift の上げ下げがそろう: " + string.Join("|", k.Host.Events));
+    }
+
+    [Test]
     public static void CtrlOtherShortcut_CommitsThenPasses()
     {
         var k = new Keyboard();
@@ -945,6 +1003,34 @@ internal static class CompositionTests
         var digit = (char)('0' + count + 1);
         k.Press(digit);
         Assert.True(k.Host.Document.EndsWith(digit) || k.Showing == digit.ToString(), "番号の無い数字は普通に打った数字: " + k.Host.Document + " / " + k.Showing);
+    }
+
+    [Test]
+    public static void KanaInput_DigitRowKeyTypesKana_WhileConverting()
+    {
+        // かな入力では数字の段のキーは ぬふあうえおやゆよ。変換中に打っても番号で選ばず、今の候補で確定して打ったかなを入れる。
+        var k = new Keyboard { Kana = true };
+        k.TypeKanaKeys("tu");
+        k.Press(VirtualKeys.Space);
+        var current = k.Host.View!.Clauses![0];
+        k.Press(0x33);
+        Assert.Equal(current, k.Host.Document, "今の候補で確定する");
+        Assert.Equal("あ", k.Showing, "3 のキーは あ");
+    }
+
+    [Test]
+    public static void KanaInput_NumpadSelectsCandidateByNumber()
+    {
+        // かな入力でも、テンキーの数字なら候補の番号で選べる。
+        var k = new Keyboard { Kana = true };
+        k.TypeKanaKeys("tu");
+        k.Press(VirtualKeys.Space);
+        var view = k.Host.View!;
+        Assert.True(view.Converting && view.Candidates.Count >= 2, "候補の一覧が出る");
+        var second = view.Candidates[1];
+        k.Press(0x62);
+        Assert.Equal(second, k.Host.Document);
+        Assert.True(!k.Gate.IsCaptured, "最後の文節を番号で選んだら確定する");
     }
 
     [Test]
@@ -1288,7 +1374,7 @@ internal static class CompositionTests
         // えーmail、こーおp になっていた
         foreach (var (typed, expected) in new[]
         {
-            ("e-mail", "e-mail"), ("co-op", "co-op"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"), ("Blu-ray", "Blu-ray"),
+            ("e-mail", "e-mail"), ("co-op", "co-op"), ("bio-break", "bio-break"), ("e-maildeokuru", "e-mailでおくる"), ("x-ray", "x-ray"), ("lo-fi", "lo-fi"), ("Lo-fi", "Lo-fi"), ("sci-fi", "sci-fi"), ("lo-fiwokiku", "lo-fiをきく"), ("r-18", "r-18"), ("sub-6", "sub-6"), ("GPT-6.7", "GPT-6.7"), ("Blu-ray", "Blu-ray"),
             ("e-to", "えーと"), ("su-pa-", "すーぱー"), ("o-bun", "おーぶん"),
         })
         {
@@ -1343,11 +1429,43 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue537_ProcrasticleStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("procrasticle\n");
+        Assert.Equal("procrasticle", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue506_EnumerateStaysEnglish()
     {
         var k = new Keyboard();
         k.Type("enumerate\n");
         Assert.Equal("enumerate", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue536_FatigueStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("fatigue\n");
+        Assert.Equal("fatigue", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue538_InfobesityStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("infobesity\n");
+        Assert.Equal("infobesity", k.Host.Document);
+    }
+  
+    [Test]
+    public static void Issue535_OverchoiceStaysEnglish()
+    {
+        var k = new Keyboard();
+        k.Type("overchoice\n");
+        Assert.Equal("overchoice", k.Host.Document);
     }
 
     [Test]
@@ -1581,6 +1699,38 @@ internal static class CompositionTests
         Assert.Equal(2, k.Host.Events.Count(e => e.StartsWith("down:")), "しばらく打たなければ英語とみなす (送り直さない)");
         Assert.True(!k.Host.Events.Any(e => e.StartsWith("bs:")), "消さない");
         Assert.True(!k.Gate.IsCaptured, "判定をやめたら横取りもやめる");
+    }
+
+    [Test]
+    public static void DirectMode_ShiftAfterHeldWordReachesApp()
+    {
+        // 英数状態で英字を打った直後に押した Shift がアプリに届かず、(bow) の ) が Shift なしの 0 になっていた。
+        var k = new Keyboard(direct: true);
+        k.Type("bow");
+        Assert.True(k.Gate.IsCaptured, "bow はまだ判定中");
+        k.Host.Events.Clear();
+        k.Key(VirtualKeys.LShift);
+        k.Press(0x30);
+        k.Key(VirtualKeys.LShift, up: true);
+        var shift = k.Host.Events.IndexOf("down:A0");
+        Assert.True(shift >= 0 && shift < k.Host.Events.IndexOf("passed:30"), $"Shift を 0 より先にアプリへ送る ({string.Join(",", k.Host.Events)})");
+        Assert.True(!k.Gate.IsCaptured, "判定をやめたら横取りもやめる");
+    }
+
+    [Test]
+    public static void ShiftRepeatWhileComposing_ReleaseReachesApp()
+    {
+        // キーボードが 2 台だと、文字を打っても Shift のリピートが止まらず、離しても Shift が押されたままになっていた (issue #617)。
+        var k = new Keyboard();
+        k.Host.PhysicalShift = true; // Shift の押下は、変換ボックスが開く前にアプリへ届いている
+        k.Press(0x41);
+        Assert.True(k.Gate.IsCaptured, "A で変換ボックスが開く");
+        k.Key(VirtualKeys.RShift); // リピート
+        k.Press(0x41);
+        k.Key(VirtualKeys.RShift);
+        k.Host.Events.Clear();
+        k.Key(VirtualKeys.RShift, up: true);
+        Assert.True(k.Host.Events.Contains("up:A1"), $"Shift を離したことをアプリに伝える ({string.Join(",", k.Host.Events)})");
     }
 
     [Test]
@@ -2063,6 +2213,20 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void UnitThenKanaThenNumber_KeepsTypedOrder()
+    {
+        // 数字・単位・かな・数字の順に打つと、かなが後ろの数字の後ろに回っていた (100mlnomizu2 → 100ml2のみず)
+        foreach (var (typed, expected) in new[] { ("100mlnomizu2", "100mlのみず2"), ("3kmhashitte5", "3kmはしって5") })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Showing, typed);
+            k.Type("\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
+
+    [Test]
     public static void Candidates_ExpandWithWindowsCandidates()
     {
         var k = new Keyboard(moreCandidates: reading => reading == "かわ" ? ["川", "皮", "河", "革"] : []);
@@ -2450,6 +2614,24 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Clauses_ShiftArrowResize_ExpandsWithWindowsCandidatesAgain()
+    {
+        // 区切りを変えた文節も、新しい読みで変換エンジンの候補の一覧を取り直す。
+        var k = new Keyboard(moreCandidates: r => [r + "★"]);
+        k.Type("tanniwotoru ");
+        Assert.True(k.Host.View!.Candidates.Contains("たんいを★"), string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Right);
+        Assert.True(k.Host.View.Candidates.Contains("とる★"), string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Left);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift, up: true);
+        Assert.True(k.Host.View.Candidates.Contains("たんいをと★"), "選んでいる文節: " + string.Join(",", k.Host.View.Candidates));
+        k.Press(VirtualKeys.Right);
+        Assert.True(k.Host.View.Candidates.Contains("る★"), "前に選んでいた次の文節: " + string.Join(",", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Clauses_ShiftArrowResizesAcrossEnglish()
     {
         // 報告 (#144): 英語の文節が混ざると Shift+← → で区切りを動かせない (みー|thin|ぐ、disco|で)。
@@ -2482,6 +2664,31 @@ internal static class CompositionTests
         Assert.Equal("たん|い|Github|で", string.Join("|", k.Host.View.Clauses!), "縮めて空いた分は、後ろの英語の文節を変えずに新しい文節にする");
         k.Press(VirtualKeys.Right);
         Assert.Equal("単位|Github|で", string.Join("|", k.Host.View.Clauses!), "伸ばして戻す");
+        k.Key(VirtualKeys.LShift, up: true);
+    }
+
+    [Test]
+    public static void Clauses_ShiftArrowKeepsEnglishWhenItCannotMove()
+    {
+        // 区切りを動かせないときは、選んだ英語の文節を日本語に読み直さない (日本語の文節と同じく何も変えない)
+        var k = new Keyboard();
+        k.Type("konoteam");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("この|team", string.Join("|", k.Host.View!.Clauses!));
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        Assert.Equal("この|team", string.Join("|", k.Host.View.Clauses!), "最後の文節は伸ばせない");
+        k.Key(VirtualKeys.LShift, up: true);
+
+        k = new Keyboard();
+        k.Type("konoteamXyz");
+        k.Press(VirtualKeys.Convert);
+        Assert.Equal("この|team|Xyz", string.Join("|", k.Host.View!.Clauses!));
+        k.Press(VirtualKeys.Right);
+        k.Key(VirtualKeys.LShift);
+        k.Press(VirtualKeys.Right);
+        Assert.Equal("この|team|Xyz", string.Join("|", k.Host.View.Clauses!), "次の文節がかなに読めないので伸ばせない");
         k.Key(VirtualKeys.LShift, up: true);
     }
 
@@ -2696,6 +2903,28 @@ internal static class CompositionTests
         Assert.Equal("tesuto", k.Showing);
         k.Press(VirtualKeys.OemAuto); // 半角/全角 で日本語⇔英字
         Assert.Equal("てすと", k.Showing);
+    }
+
+    [Test]
+    public static void FunctionKeys_TypingAfterCommits()
+    {
+        // F7 でカタカナにしたあと続けて打つと、カタカナを確定して新しく入力する (続きまでカタカナにしない)
+        var k = new Keyboard();
+        k.Type("tesuto");
+        k.Press(VirtualKeys.F7);
+        k.Type("desu");
+        Assert.Equal("テスト", string.Concat(k.Host.Output));
+        Assert.Equal("です", k.Showing);
+
+        // F10 で大文字にしたあとも同じ (続きまで大文字にしない)
+        k = new Keyboard();
+        k.Type("tesuto");
+        k.Press(VirtualKeys.F10);
+        k.Press(VirtualKeys.F10);
+        Assert.Equal("TESUTO", k.Showing);
+        k.Type("desu");
+        Assert.Equal("TESUTO", string.Concat(k.Host.Output));
+        Assert.Equal("です", k.Showing);
     }
 
     [Test]
@@ -3016,6 +3245,33 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void EnglishVerb_PlusSuru_PendingConsonantIsShownOnce()
+    {
+        // 英単語 + する の活用の打ちかけの子音が 2 回出ていた (googleしまss)。Space で変換する読みも同じ
+        foreach (var (typed, expected, converted) in new[]
+        {
+            ("googleshimas", "googleしまs", "googleしまs"),
+            ("googleshimasen", "googleしませn", "googleしません"),
+            ("reflectsaret", "reflectされt", "reflectされt"),
+        })
+        {
+            Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+            try
+            {
+                var k = new Keyboard();
+                k.Type(typed);
+                Assert.Equal(expected, k.Showing, typed);
+                k.Type(" ");
+                Assert.Equal(converted, k.Showing, typed + " (Space)");
+            }
+            finally
+            {
+                Detector.SpellChecker = null;
+            }
+        }
+    }
+
+    [Test]
     public static void SpaceAroundEnglish_AddsHalfWidthSpaces()
     {
         // Twitter の要望: 半角英語の前後に半角スペース (設定、最初は OFF)
@@ -3240,5 +3496,21 @@ internal static class CompositionTests
         var k = new Keyboard();
         k.Type("abctodef\n");
         Assert.Equal("abcとdef", k.Host.Document);
+    }
+
+    [Test]
+    public static void Issue338_ZArrowKeys()
+    {
+        // Issue #338: zh / zj / zk / zl は Microsoft IME と同じ矢印。z + 記号は今までどおり。zz の次の l (puzzle) は矢印にしない。
+        foreach (var (typed, expected) in new[]
+        {
+            ("zh", "←"), ("zj", "↓"), ("zk", "↑"), ("zl", "→"),
+            ("z/", "・"), ("zu", "ず"), ("puzzle", "ぷっぞえ"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
     }
 }

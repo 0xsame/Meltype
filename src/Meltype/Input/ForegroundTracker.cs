@@ -16,6 +16,7 @@ public sealed record AppInfo(IntPtr Window, uint ProcessId, string ProcessName, 
 /// <summary>
 /// 前面ウィンドウごとにプロセス名・権限・全画面かどうかをキャッシュする。
 /// フックのスレッドから呼ばれるので、取得は前面ウィンドウが変わったときの 1 回だけにする。
+/// 全画面かどうかだけは、同じウィンドウのまま切り替わるゲームがあるので、少し間を空けて確かめ直す。
 /// </summary>
 internal sealed class ForegroundTracker
 {
@@ -23,14 +24,36 @@ internal sealed class ForegroundTracker
     private static readonly bool SelfElevated = QueryElevation(Process.GetCurrentProcess().Handle) ?? false;
     private readonly object _gate = new();
     private AppInfo _current = AppInfo.None;
+    private long _checkedAt;
+    private const long FullscreenRecheckMs = 500;
 
     /// <summary>
-    /// Meltype 自身のウィンドウのうち、Meltype キーボードで入力してよいもの (ユーザー辞書の登録画面)。
+    /// Meltype 自身のウィンドウのうち、Meltype キーボードで入力してよいもの (ユーザー辞書・定型文・プロファイルの名前など、日本語を打つ画面)。
     /// ほかの自分のウィンドウ (設定画面など) では横取りしない。
     /// </summary>
     public static System.Collections.Concurrent.ConcurrentDictionary<IntPtr, bool> TypingAllowedWindows { get; } = new();
 
-    /// <summary>Meltype 自身のウィンドウで、入力してよい画面 (ユーザー辞書) ではないもの。</summary>
+    /// <summary>入力してよい画面の中で、横取りしない欄 (英数のまま打つ定型文の名前・選ぶだけのドロップダウンなど)。</summary>
+    public static System.Collections.Concurrent.ConcurrentDictionary<IntPtr, bool> DirectInputControls { get; } = new();
+
+    /// <summary>
+    /// Meltype 自身の画面 form でも、Meltype キーボードで日本語を打てるようにする (窓ができたら登録し、閉じたら外す)。
+    /// direct の欄では横取りしない。
+    /// </summary>
+    public static void AllowTyping(Form form, params Control[] direct)
+    {
+        Track(form, TypingAllowedWindows);
+        foreach (var control in direct) Track(control, DirectInputControls);
+    }
+
+    private static void Track(Control control, System.Collections.Concurrent.ConcurrentDictionary<IntPtr, bool> handles)
+    {
+        if (control.IsHandleCreated) handles[control.Handle] = true;
+        control.HandleCreated += (_, _) => handles[control.Handle] = true;
+        control.HandleDestroyed += (_, _) => handles.TryRemove(control.Handle, out _);
+    }
+
+    /// <summary>Meltype 自身のウィンドウで、入力してよい画面 (ユーザー辞書など) ではないもの。</summary>
     public static bool IsOwnWindow(IntPtr window)
     {
         if (window == IntPtr.Zero) return false;
@@ -38,23 +61,45 @@ internal sealed class ForegroundTracker
         return processId == OwnProcessId && !TypingAllowedWindows.ContainsKey(window);
     }
 
-    public AppInfo Current
+    /// <summary>このアプリに SendInput の入力が届くか (管理者として動くアプリには、Meltype も管理者でなければ届かない: UIPI)。</summary>
+    public static bool CanSendInputTo(AppInfo app) => app.IsElevated == false || SelfElevated;
+
+    public AppInfo Current => CurrentFor(Native.GetForegroundWindow(), Environment.TickCount64);
+
+    internal AppInfo CurrentFor(IntPtr window, long now)
     {
-        get
+        AppInfo cached;
+        long checkedAt;
+        lock (_gate)
         {
-            var window = Native.GetForegroundWindow();
-            lock (_gate)
-            {
-                if (_current.Window == window) return _current;
-            }
-            return Refresh(window);
+            cached = _current;
+            checkedAt = _checkedAt;
         }
+        if (cached.Window != window) return Refresh(window, now);
+        if (window == IntPtr.Zero || now - checkedAt < FullscreenRecheckMs) return cached;
+        // 枠ありで起動して、同じウィンドウのまま全画面に切り替えるゲームがある
+        var info = cached with { IsFullscreen = IsFullscreen(window) };
+        lock (_gate)
+        {
+            if (ReferenceEquals(_current, cached))
+            {
+                _current = info;
+                _checkedAt = now;
+            }
+        }
+        return info;
     }
 
-    public AppInfo Refresh(IntPtr window)
+    public AppInfo Refresh(IntPtr window) => Refresh(window, Environment.TickCount64);
+
+    private AppInfo Refresh(IntPtr window, long now)
     {
         var info = Describe(window);
-        lock (_gate) _current = info;
+        lock (_gate)
+        {
+            _current = info;
+            _checkedAt = now;
+        }
         return info;
     }
 

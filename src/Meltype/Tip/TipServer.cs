@@ -25,6 +25,7 @@ namespace Meltype.Tip;
 ///   {"op":"mode","sid":"…","process":"…","before":"…","passed":37,"ctrl":true} (キャレットが動いた・文字が変わった。入力モードの表示を合わせる)
 /// select の prediction は、予測変換の候補を選んだこと (付けなければ変換の候補)。
 /// key の code は、DLL が toggle・mode を送ること (付けない古い DLL では、コードの入力欄として扱わない)。
+/// key の private は、入力を覚えないように求める入力欄 (InputScope が IS_PRIVATE) であること。次の key まで学習しない。
 /// passed は、DLL がアプリに通したキー (0 はキーなしでキャレットが動いた、-1 は文字が変わっただけ)。key・toggle にも、まだ伝えていなければ付ける。
 /// 応答: {"active":true, "consumed":…, "commits":[…], "view":{…}, "code":…, "english":…} (active が false なら DLL は何もせずにキーを通す)
 /// code はコードの入力欄か、english は次に打つキーがコードの行なので英数のまま通るか (DLL はタスクバーに「A」を出す)。
@@ -33,8 +34,10 @@ namespace Meltype.Tip;
 /// sid は DLL が入力欄 (スレッド) ごとに振る ID。入力の本体はつながり (パイプ) ごとに持ち、すべて UI スレッドで動かす。
 /// 別のつながりの sid には触れない (つなぎ直した DLL が古い入力の続きを拾わないように。ほかのアプリの入力を読めないように)。
 ///
-/// 同じユーザーのほかのプロセスが同じ名前のパイプを先に作ると、打鍵を横取りできてしまう。最初のパイプは FirstPipeInstance で作り、
-/// 先に作られていたら始めない。Meltype.exe より高い権限で動くアプリ (管理者として動くアプリなど) とサインインの画面には、
+/// ほかのプロセスが同じ名前のパイプを先に作ると、DLL はそちらにつなごうとする。パイプの名前はセッションをまたいで共通で、名前の SID も
+/// ほかのユーザーから分かるので、同じ PC のほかのユーザーのプロセスも先に作れる。同じユーザーのプロセスなら打鍵を横取りできてしまう。
+/// ほかのユーザーのプロセスなら DLL がつながないので打鍵は渡らないが、このユーザーは Meltype IME を使えなくなる。最初のパイプは
+/// FirstPipeInstance で作り、先に作られていたら始めない (ログに書く)。Meltype.exe より高い権限で動くアプリ (管理者として動くアプリなど) とサインインの画面には、
 /// DLL の側でつながない (Meltype.exe の権限より上の入力を扱わない)。
 /// </summary>
 internal sealed class TipServer : IDisposable
@@ -68,13 +71,17 @@ internal sealed class TipServer : IDisposable
         System.Runtime.InteropServices.RuntimeInformation.OSArchitecture != System.Runtime.InteropServices.Architecture.Arm64 &&
         IsRegistered && IsInUserLanguageList;
 
-    // 登録されているか。レジストリを読めなければ null
+    // 登録されているか。レジストリを読めなければ null。
+    // TIP のキーだけ残り、DLL の登録 (InprocServer32) や DLL が無いことがある (セキュリティソフトが登録を途中で止めたとき)。
+    // そのときは登録されていないとみなす (動作モードを Meltype キーボードに戻す)
     private static bool? Registration()
     {
         try
         {
             using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\CTF\TIP\{417D801B-A9BD-4C26-BD16-356A825A6998}");
-            return key is not null;
+            if (key is null) return false;
+            using var server = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes\CLSID\{417D801B-A9BD-4C26-BD16-356A825A6998}\InprocServer32");
+            return server?.GetValue(null) is string dll && File.Exists(dll);
         }
         catch
         {
@@ -378,6 +385,29 @@ internal sealed class TipServer : IDisposable
         }
     }
 
+    /// <summary>
+    /// 応答に時間がかかった要求をログに残す。DLL はキーの応答を 800ms まで待ち、来なければ打った文字のまま入れるので、
+    /// その原因を調べられるように (UI スレッドが空くのを待った時間も含む)。打った文字は書かない。
+    /// 遅いことが続いてもほかのログを押し出さないように、書くのは 20 回まで。
+    /// </summary>
+    private void LogSlow(string request, long elapsedMs)
+    {
+        if (elapsedMs < SlowRequestMs || Interlocked.Increment(ref _slowRequests) > 20) return;
+        string? op = null;
+        try
+        {
+            using var document = JsonDocument.Parse(request);
+            if (document.RootElement.TryGetProperty("op", out var value)) op = value.GetString();
+        }
+        catch (JsonException) { }
+        // op はアプリの側が送ってくるので、知っているものだけを書く (ログを崩さないように)
+        var shown = op is "hello" or "key" or "commit" or "select" or "close" or "toggle" or "mode" ? op : "?";
+        Log.Warn($"Meltype IME: 要求 ({shown}) の応答に {elapsedMs}ms かかりました。");
+    }
+
+    private const int SlowRequestMs = 500;
+    private int _slowRequests;
+
     private async Task Serve(NamedPipeServerStream pipe)
     {
         // このつながりの入力の本体 (UI スレッドからだけ触る。Meltype.exe 自身の UI スレッドのつながりは、UI スレッドが止まっている間に触る)
@@ -403,7 +433,9 @@ internal sealed class TipServer : IDisposable
                 try
                 {
                     var request = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
+                    var started = Environment.TickCount64;
                     reply = FromOwnUiThread(ownClient, request) ? Handle(request, sessions) : Invoke(() => Handle(request, sessions));
+                    LogSlow(request, Environment.TickCount64 - started);
                 }
                 catch (Exception ex)
                 {
@@ -514,6 +546,8 @@ internal sealed class TipServer : IDisposable
             case "key":
             {
                 if (root.TryGetProperty("direct", out var direct)) session.Direct = direct.ValueKind == JsonValueKind.True;
+                // 入力を覚えないように求める入力欄 (ブラウザーのシークレット / InPrivate ウィンドウ) では学習しない
+                session.Private = IsTrue(root, "private");
                 var wasDirect = session.Direct;
                 // 前に確定してから、キャレットが動いた (DLL がアプリに通したキー・クリック・別の入力欄): 前の語を確定し直さない
                 if (IsTrue(root, "moved"))
