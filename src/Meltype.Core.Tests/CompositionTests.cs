@@ -325,12 +325,19 @@ internal static class CompositionTests
     [Test]
     public static void Issue674_ExtendedYoonSpellings()
     {
-        foreach (var (typed, expected) in new[] { ("kyi", "きぃ"), ("kye", "きぇ"), ("gwi", "ぐぃ"), ("swa", "すぁ"), ("hwa", "ふぁ"), ("fya", "ふゃ"), ("mye", "みぇ") })
+        foreach (var (typed, expected) in new[] { ("kye", "きぇ"), ("gwi", "ぐぃ"), ("zwa", "ずぁ"), ("fya", "ふゃ"), ("mye", "みぇ") })
         {
             var k = new Keyboard();
             k.Type(typed);
             Assert.Equal(expected, k.Showing, typed);
+                // 英単語の中の綴りは、かなにしない (trying・swan・highway・hyena・babying)
+        foreach (var word in new[] { "trying", "swan", "swine", "highway", "pathway", "hyena", "babying", "studying" })
+        {
+            var e = new Keyboard();
+            e.Type(word);
+            Assert.Equal(word, e.Showing, word);
         }
+}
     }
 
     [Test]
