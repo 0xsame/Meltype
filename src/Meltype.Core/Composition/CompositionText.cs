@@ -655,9 +655,11 @@ public sealed class CompositionText
                 char.IsAsciiLetterLower(segment.Raw[0]) && char.IsAsciiLetterLower(segment.Raw[1]) &&
                 _detector.Romaji.Analyze(segment.Raw[..2]) is { IsValid: true, Partial: "" } reading && reading.Kana.Length == 1)
             {
+                // 前の分割で要素が増えた分、元の i とずれる。ずれ込んだ位置で書き換える (2 つ目以降が別の区間を書き換えていた)
                 changed ??= [.. segments];
-                changed[i] = new CompositionSegment(false, reading.Kana, segment.Raw[..2]);
-                changed.Insert(i + 1 + (changed.Count - segments.Count), new CompositionSegment(true, "w", "w"));
+                var at = i + (changed.Count - segments.Count);
+                changed[at] = new CompositionSegment(false, reading.Kana, segment.Raw[..2]);
+                changed.Insert(at + 1, new CompositionSegment(true, "w", "w"));
             }
         }
         return changed ?? segments;
@@ -1253,7 +1255,6 @@ public sealed class CompositionText
         return _detector.Romaji.ConvertLenient(pending.ToLowerInvariant(), final);
     }
 
-    /// <summary>日本語の中で打った記号 (Microsoft IME と同じく全角)。英語の区間では打ったままの半角で出す。数字と括弧は半角のまま。</summary>
     /// <summary>( ) を全角にするか (設定「カッコを全角で入力」)。</summary>
     public bool FullWidthParentheses { get; set; }
 
@@ -1266,6 +1267,7 @@ public sealed class CompositionText
     /// <summary>1 つのかなの音の後ろの w を笑いにするか (設定)。</summary>
     public bool LaughterAfterKana { get; set; }
 
+    /// <summary>日本語の中で打った記号 (Microsoft IME と同じく全角)。英語の区間では打ったままの半角で出す。数字と括弧は半角のまま。</summary>
     private char Symbol(char c) => c switch
     {
         '-' => 'ー',
