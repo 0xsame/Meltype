@@ -25,7 +25,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     private const char ContextMark = '';
     private const int StartTimeoutMs = 30000;
     private const int MaxReading = 80;
-    private const int MaxContext = 40;
+    private const int MaxContext = 100;
     private const int MaxCache = 256;
 
     /// <summary>

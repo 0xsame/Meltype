@@ -933,6 +933,7 @@ public sealed class CompositionController
         // 自分が確定した直後は、アプリ側のテキストがまだ更新されていないかもしれないので自分の記録を信じる。
         var recentOwnCommit = Environment.TickCount64 - _lastCommitTime < OwnCommitTrustMs;
         _precedingText = _lastCommitEnglish is null ? null : _lastCommitText;
+        UpdateWideContext();
         _followingText = null;
         _caretBefore = null; // 読み直せなければ (返ってこなければ) キャレットの位置は確かめない = 今までどおり直す
         _text.PrecedingEnglish = _lastCommitEnglish;
@@ -948,6 +949,7 @@ public sealed class CompositionController
             if (!recentOwnCommit && before is not null)
             {
                 _precedingText = before;
+                UpdateWideContext();
                 if (LanguageOf(before) is { } english) _text.PrecedingEnglish = english;
                 _text.PrecedingEnglishSentence = IsEnglishSentence(before);
                 _text.PrecedingEnglishName = IsEnglishNameContext(before);
@@ -1693,6 +1695,14 @@ public sealed class CompositionController
         var start = text.LastIndexOfAny(SentenceEnds);
         text = text[(start + 1)..].Trim();
         return text.Length == 0 ? null : text.Length > 10 ? text[^10..] : text;
+    }
+
+    /// <summary>広い文脈 (文をまたいで最大 100 文字の、日本語の文章) を、使える変換エンジン (Zenzai) に渡す。英文のときは渡さない。</summary>
+    private void UpdateWideContext()
+    {
+        if (_converter is not IWideContextConverter wide) return;
+        var text = _precedingText?.Replace("\r", "").Replace("\n", "").Trim();
+        wide.WideContext = string.IsNullOrEmpty(text) || LanguageOf(text) != false ? null : text.Length > 100 ? text[^100..] : text;
     }
 
     private static readonly char[] SentenceEnds = ['。', '．', '！', '？', '\n', '\r'];

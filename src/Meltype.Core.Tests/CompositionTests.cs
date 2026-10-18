@@ -322,6 +322,33 @@ internal static class CompositionTests
         public string? Showing => Host.View?.Text;
     }
 
+    private sealed class WideContextConverter : IKanjiConverter, IWideContextConverter
+    {
+        public string? WideContext { get; set; }
+        public string? Convert(string hiragana) => null;
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null) => null;
+    }
+
+    [Test]
+    public static void WideContext_IsPassedToConvertersThatCanUseIt()
+    {
+        var converter = new WideContextConverter();
+        var k = new Keyboard(converter: converter);
+        k.Host.PrecedingText = "昨日は雨でしたが、\n今日は";
+        k.Type("kyou");
+        Assert.Equal("昨日は雨でしたが、今日は", converter.WideContext ?? "(なし)", "改行を除いて文をまたいで渡す");
+        var longText = string.Concat(Enumerable.Repeat("あ", 150)) + "終";
+        var l = new Keyboard(converter: converter);
+        l.Host.PrecedingText = longText;
+        l.Type("kyou");
+        Assert.Equal(100, converter.WideContext?.Length ?? 0, "最大 100 文字");
+        Assert.True(converter.WideContext!.EndsWith("終"), "キャレットに近い方を残す");
+        var e = new Keyboard(converter: converter);
+        e.Host.PrecedingText = "Hello, this is a pen. ";
+        e.Type("kyou");
+        Assert.True(converter.WideContext is null, "英文のときは渡さない");
+    }
+
     [Test]
     public static void Reconversion_RomajiTextBecomesJapanese()
     {

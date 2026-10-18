@@ -11,11 +11,14 @@ namespace Meltype.Composition;
 /// 候補の一覧は Mozc の候補の後ろに OS の変換エンジンの候補を足す (Microsoft IME に登録した単語も出る)。
 /// </summary>
 public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter? mozc, IKanjiConverter system,
-    Func<string, IReadOnlyList<string>>? systemCandidates, Func<ZenzaiConverter?>? zenzai = null) : IKanjiConverter, ILearningConverter
+    Func<string, IReadOnlyList<string>>? systemCandidates, Func<ZenzaiConverter?>? zenzai = null) : IKanjiConverter, ILearningConverter, IWideContextConverter
 {
+    /// <summary>Zenzai に渡す広い文脈 (Mozc / Microsoft IME には渡さない)。</summary>
+    public string? WideContext { get; set; }
+
     /// <summary>設定で Zenzai が使えるとき、その変換結果 (読み全体で 1 つの文節)。使えない・変換できなければ null。</summary>
     private IReadOnlyList<ConversionClause>? Zenzai(string hiragana, string? context) =>
-        zenzai?.Invoke() is { IsAvailable: true } z ? z.ConvertClauses(hiragana, context) : null;
+        zenzai?.Invoke() is { IsAvailable: true } z ? z.ConvertClauses(hiragana, WideContext ?? context) : null;
 
     private bool UseMozc => engine() != ConversionEngine.System && mozc is { IsAvailable: true };
     private bool UseSystem => engine() != ConversionEngine.Mozc || mozc is not { IsAvailable: true };

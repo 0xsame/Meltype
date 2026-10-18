@@ -21,6 +21,16 @@ public interface IKanjiConverter
     IReadOnlyList<ConversionClause>? ConvertClauses(string hiragana, string? context = null);
 }
 
+/// <summary>
+/// 広い文脈を使える変換エンジン (Zenzai)。ConvertClauses に渡す文脈は、Mozc / Microsoft IME に合わせて同じ文の最大 10 文字だけだが、
+/// ニューラルモデルは前の文までの長い文脈ほど強い (文脈の無い きょう → 強 が、「昨日」だけで 今日 になる)。
+/// 入力を始めるたびに、キャレットの前の日本語の文章 (文をまたいで最大 100 文字) を入れる。無ければ null。
+/// </summary>
+public interface IWideContextConverter
+{
+    string? WideContext { get; set; }
+}
+
 /// <summary>確定した変換を覚えられる変換エンジン (Mozc)。次から同じ読みで同じ文字列を先に出す。</summary>
 public interface ILearningConverter
 {
