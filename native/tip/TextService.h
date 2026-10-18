@@ -98,8 +98,8 @@ private:
     std::string PendingPassed();
     // 応答の code / english を入力モードの表示に反映する
     void ApplyMode(const JsonValue& reply);
-    // 要求を送って応答を読む。失敗したら false
-    bool Request(const std::string& json, JsonValue& reply, DWORD timeoutMs = 800);
+    // 要求を送って応答を読む。失敗したら false (optional は PipeClient::Transact と同じ)
+    bool Request(const std::string& json, JsonValue& reply, DWORD timeoutMs = 800, bool optional = false);
     // 応答を入力欄に反映する (編集セッションの中で呼ぶ)
     void Apply(TfEditCookie ec, ITfContext* context, const JsonValue& reply);
     // range の前の count 文字が expect (前に確定した文字) なら、range をそこまで広げる。違えば false
@@ -149,6 +149,8 @@ private:
     PipeClient pipe_;
     std::string sid_;
     bool serverActive_ = false;
+    bool directDetection_ = false; // 英数状態でもローマ字検知が有効 (Meltype.exe の応答)
+    bool directEnglishWord_ = false;
     ULONGLONG lastHello_ = 0;
     bool open_ = true;
     bool codeApp_ = false;         // コードエディター・ターミナル (Meltype.exe の応答の code)
@@ -195,6 +197,8 @@ private:
     Microsoft::WRL::ComPtr<ITfContext> secretContext_;
     ULONGLONG secretTime_ = 0;
     int secretResult_ = -1;
+    bool secretPrivate_ = false;
+    bool privateField_ = false;    // 前に入力欄の種類を読んだとき、入力を覚えないように求める入力欄 (IS_PRIVATE) だった
     const wchar_t* scopeSource_ = nullptr;  // 入力欄の種類を前に読んだところ (ログ用)
     bool keepAppCaret_ = false;    // 確定したあと、キャレットを動かさない (クリック・別の入力欄で確定したとき)
     bool deactivated_ = false;     // 終わった後は Meltype.exe とやり取りしない

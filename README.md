@@ -13,8 +13,13 @@
   <a href="https://github.com/sponsors/yksr-melt"><img src="https://img.shields.io/badge/Sponsor-応援する-ff8ab4?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors"></a>
 </p>
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/284759?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-284759" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/284759/daily?language=C%23" alt="yksr-melt%2FMeltype | Trendshift" width="250" height="55"/></a>
+<p align="center" style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+  <a href="https://trendshift.io/repositories/284759?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-284759" target="_blank" rel="noopener noreferrer">
+    <img src="https://trendshift.io/api/badge/trendshift/repositories/284759/daily?language=C%23" alt="yksr-melt%2FMeltype | Trendshift" width="250" height="55"/>
+  </a>
+  <a href="https://trendshift.io/repositories/284759?utm_source=trendshift-badge&utm_medium=badge&utm_campaign=badge-trendshift-284759" target="_blank" rel="noopener noreferrer">
+    <img src="https://trendshift.io/api/badge/trendshift/repositories/284759/weekly?language=C%23" alt="yksr-melt%2FMeltype | Trendshift" width="250" height="55"/>
+  </a>
 </p>
 
 <h3 align="center">半角/全角 キーは、もう押さなくていい！</h3>
@@ -72,6 +77,14 @@ VS Code やターミナルでは英数が基本で、コメントと文字列の
 
 <img src="docs/images/headings/install.svg" alt="インストール" width="480"><br>
 
+<p align="center">
+  <a href="docs/WINDOWS.md"><img src="docs/images/cards/os-windows.svg" alt="Windows" width="30%"></a>
+  <a href="mac/README.md"><img src="docs/images/cards/os-mac.svg" alt="Mac" width="30%"></a>
+  <a href="linux/README.md"><img src="docs/images/cards/os-linux.svg" alt="Linux" width="30%"></a>
+</p>
+
+<p align="center"><sub>カードを押すと、それぞれの OS の README (インストール・使い方・困ったとき) が開きます</sub></p>
+
 1. [Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `Meltype-<version>-setup.exe` をダウンロード
 2. 開いて、案内どおりに進める
 3. タスクトレイに「あ」が出たら準備完了！
@@ -87,7 +100,7 @@ VS Code やターミナルでは英数が基本で、コメントと文字列の
 |---|---|
 | Windows (zip) | `Meltype-<version>-windows.zip` を展開して `Install.cmd` をダブルクリック |
 | Mac (プレビュー版) | `Meltype-<version>-mac.zip` ([mac/README.md](mac/README.md)) |
-| Linux (プレビュー版) | `Meltype-<version>-linux.zip` (IBus / fcitx5) |
+| Linux (プレビュー版) | `Meltype-<version>-linux.zip` (IBus / fcitx5、[linux/README.md](linux/README.md)) |
 
 インストーラーでも zip でも、入る場所は同じ `%LOCALAPPDATA%\Programs\Meltype` です。
 Windows 版に必要なのは Windows 10 / 11 (64bit) と Microsoft IME だけで、.NET は同梱しています。
@@ -252,6 +265,15 @@ General Public License for more details.
 <!-- sponsors:start -->
 <p align="center">
   <a href="https://github.com/cpthgli"><img src="https://github.com/cpthgli.png?size=120" width="60" alt="@cpthgli" title="@cpthgli"></a>
+  <a href="https://github.com/MuNeNiCK"><img src="https://github.com/MuNeNiCK.png?size=120" width="60" alt="@MuNeNiCK" title="@MuNeNiCK"></a>
+  <a href="https://github.com/whitewater-png"><img src="https://github.com/whitewater-png.png?size=120" width="60" alt="@whitewater-png" title="@whitewater-png"></a>
+  <a href="https://github.com/kumapuni"><img src="https://github.com/kumapuni.png?size=120" width="60" alt="@kumapuni" title="@kumapuni"></a>
+  <a href="https://github.com/Maguro-Tsukiji"><img src="https://github.com/Maguro-Tsukiji.png?size=120" width="60" alt="@Maguro-Tsukiji" title="@Maguro-Tsukiji"></a>
+  <a href="https://github.com/aokuraiauau"><img src="https://github.com/aokuraiauau.png?size=120" width="60" alt="@aokuraiauau" title="@aokuraiauau"></a>
+  <a href="https://github.com/daddydaddy"><img src="https://github.com/daddydaddy.png?size=120" width="60" alt="@daddydaddy" title="@daddydaddy"></a>
+  <a href="https://github.com/Kuraido1018"><img src="https://github.com/Kuraido1018.png?size=120" width="60" alt="@Kuraido1018" title="@Kuraido1018"></a>
+  <a href="https://github.com/overdozer1124"><img src="https://github.com/overdozer1124.png?size=120" width="60" alt="@overdozer1124" title="@overdozer1124"></a>
+  <a href="https://github.com/01mercurylampe"><img src="https://github.com/01mercurylampe.png?size=120" width="60" alt="@01mercurylampe" title="@01mercurylampe"></a>
 </p>
 <!-- sponsors:end -->
 <sub>名前を公開にして応援してくださった方を、毎日自動で載せています (.github/workflows/sponsors.yml)。</sub>

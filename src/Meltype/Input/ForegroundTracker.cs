@@ -13,9 +13,17 @@ public sealed record AppInfo(IntPtr Window, uint ProcessId, string ProcessName, 
     public static AppInfo None { get; } = new(IntPtr.Zero, 0, "", false, false, false);
 }
 
+/// <summary>打鍵を保留してよいかの判断。</summary>
+public readonly record struct CollectPermission(bool Allowed, string Reason)
+{
+    public static CollectPermission Allow { get; } = new(true, "");
+    public static CollectPermission Deny(string reason) => new(false, reason);
+}
+
 /// <summary>
 /// 前面ウィンドウごとにプロセス名・権限・全画面かどうかをキャッシュする。
 /// フックのスレッドから呼ばれるので、取得は前面ウィンドウが変わったときの 1 回だけにする。
+/// 全画面かどうかだけは、同じウィンドウのまま切り替わるゲームがあるので、少し間を空けて確かめ直す。
 /// </summary>
 internal sealed class ForegroundTracker
 {
@@ -23,6 +31,8 @@ internal sealed class ForegroundTracker
     private static readonly bool SelfElevated = QueryElevation(Process.GetCurrentProcess().Handle) ?? false;
     private readonly object _gate = new();
     private AppInfo _current = AppInfo.None;
+    private long _checkedAt;
+    private const long FullscreenRecheckMs = 500;
 
     /// <summary>
     /// Meltype 自身のウィンドウのうち、Meltype キーボードで入力してよいもの (ユーザー辞書の登録画面)。
@@ -38,30 +48,49 @@ internal sealed class ForegroundTracker
         return processId == OwnProcessId && !TypingAllowedWindows.ContainsKey(window);
     }
 
-    public AppInfo Current
+    public AppInfo Current => CurrentFor(Native.GetForegroundWindow(), Environment.TickCount64);
+
+    internal AppInfo CurrentFor(IntPtr window, long now)
     {
-        get
+        AppInfo cached;
+        long checkedAt;
+        lock (_gate)
         {
-            var window = Native.GetForegroundWindow();
-            lock (_gate)
-            {
-                if (_current.Window == window) return _current;
-            }
-            return Refresh(window);
+            cached = _current;
+            checkedAt = _checkedAt;
         }
+        if (cached.Window != window) return Refresh(window, now);
+        if (window == IntPtr.Zero || now - checkedAt < FullscreenRecheckMs) return cached;
+        // 枠ありで起動して、同じウィンドウのまま全画面に切り替えるゲームがある
+        var info = cached with { IsFullscreen = IsFullscreen(window) };
+        lock (_gate)
+        {
+            if (ReferenceEquals(_current, cached))
+            {
+                _current = info;
+                _checkedAt = now;
+            }
+        }
+        return info;
     }
 
-    public AppInfo Refresh(IntPtr window)
+    public AppInfo Refresh(IntPtr window) => Refresh(window, Environment.TickCount64);
+
+    private AppInfo Refresh(IntPtr window, long now)
     {
         var info = Describe(window);
-        lock (_gate) _current = info;
+        lock (_gate)
+        {
+            _current = info;
+            _checkedAt = now;
+        }
         return info;
     }
 
     /// <summary>このアプリで打鍵を保留してよいか。</summary>
     public CollectPermission Check(Settings settings)
     {
-        if (!settings.Enabled) return CollectPermission.Deny("自動切替が無効");
+        if (!settings.Enabled) return CollectPermission.Deny("Meltype が無効");
         var app = Current;
         if (app.Window == IntPtr.Zero) return CollectPermission.Deny("前面ウィンドウがない");
         if (app.IsOwnProcess) return CollectPermission.Deny("Meltype 自身のウィンドウ");

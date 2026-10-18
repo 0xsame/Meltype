@@ -11,8 +11,8 @@ if CommandLine.arguments.contains("--version") {
 }
 
 if CommandLine.arguments.contains("--register-input-source") {
-    guard InputSourceRegistration.register() == 0 else { exit(1) }
-    // 登録が変わらなくても、入力メニューの一覧が古い場合がある。
+    let outcome = InputSourceRegistration.register()
+    guard outcome == .ready else { exit(outcome.exitCode) }
     let refresh = Process()
     refresh.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
     refresh.arguments = ["TextInputMenuAgent"]
@@ -115,42 +115,20 @@ if CommandLine.arguments.contains("--self-test") || CommandLine.arguments.contai
     print("issue 114: first checks=\(checksAfterFirst - checksBefore), repeat checks=\(repeatedChecks), elapsed=\(Date().timeIntervalSince(started))s")
     check("issue 114: repeated spelling uses cache", repeatedChecks == 0 && firstOutput == secondOutput)
     let other: [String: Any] = ["InputSourceKind": "Keyboard Layout", "KeyboardLayout Name": "ABC"]
-    let duplicate: [String: Any] = ["Bundle ID": InputSourceRegistration.identifier, "InputSourceKind": "Keyboard Input Method"]
+    let duplicate: [String: Any] = ["Bundle ID": InputSourceRegistration.identifier, "InputSourceKind": "Keyboard Input Method", "metadata": ["keep": true]]
     let duplicateMode: [String: Any] = ["Bundle ID": InputSourceRegistration.identifier,
                                       "Input Mode": InputSourceRegistration.japaneseIdentifier, "InputSourceKind": "Input Mode"]
-    let google: [String: Any] = ["Bundle ID": "com.google.inputmethod.Japanese", "InputSourceKind": "Keyboard Input Method",
-                               "metadata": ["enabled": true, "modes": ["Hiragana", "Roman"]]]
-    let azooKey: [String: Any] = ["Bundle ID": "dev.ensan.inputmethod.azooKey", "InputSourceKind": "Keyboard Input Method",
-                                "metadata": ["order": 7]]
-    let similar: [String: Any] = ["Bundle ID": InputSourceRegistration.identifier + "Extra",
-                                "Input Mode": InputSourceRegistration.japaneseIdentifier + ".Other", "metadata": ["keep": true]]
-    let unrelated = [google, azooKey, similar]
     let duplicatePairs = (0..<15).flatMap { _ in [duplicate, duplicateMode] }
-    let repaired = InputSourceRegistration.repaired(legacy: [other] + duplicatePairs,
-        thirdParty: [google] + duplicatePairs + [azooKey, similar], preferThirdParty: true)
-    let thirdParty = repaired.thirdParty ?? []
-    check("issue 101: remove Meltype overlap from legacy store", NSArray(array: repaired.legacy).isEqual(to: [other]))
-    check("issue 101: deduplicate 15 third-party pairs", thirdParty.count == 5 &&
-          NSArray(array: Array(thirdParty.suffix(2))).isEqual(to: [duplicateMode, duplicate]))
-    check("issue 101: preserve Google, azooKey, similar identifiers and metadata", NSArray(array: Array(thirdParty.prefix(3))).isEqual(to: unrelated))
-    let repeatedRepair = InputSourceRegistration.repaired(legacy: repaired.legacy, thirdParty: repaired.thirdParty, preferThirdParty: true)
-    check("issue 101: dual-store repair is idempotent", NSArray(array: repeatedRepair.legacy).isEqual(to: repaired.legacy) &&
-          NSArray(array: repeatedRepair.thirdParty ?? []).isEqual(to: thirdParty))
-    let existingThirdParty = InputSourceRegistration.repaired(legacy: [other] + duplicatePairs, thirdParty: [], preferThirdParty: false)
-    check("issue 101: existing third-party key takes priority on older OS", NSArray(array: existingThirdParty.legacy).isEqual(to: [other]) &&
-          NSArray(array: existingThirdParty.thirdParty ?? []).isEqual(to: [duplicateMode, duplicate]))
-    let modern = InputSourceRegistration.repaired(legacy: [other] + duplicatePairs, thirdParty: nil, preferThirdParty: true)
-    check("issue 101: create third-party store on modern OS", NSArray(array: modern.legacy).isEqual(to: [other]) &&
-          NSArray(array: modern.thirdParty ?? []).isEqual(to: [duplicateMode, duplicate]))
-    let fallback = InputSourceRegistration.repaired(legacy: [other] + duplicatePairs + unrelated, thirdParty: nil, preferThirdParty: false)
-    let expectedFallback = [other] + unrelated + [duplicateMode, duplicate]
-    check("issue 101: older OS fallback preserves absent third-party store", fallback.thirdParty == nil &&
-          NSArray(array: fallback.legacy).isEqual(to: expectedFallback))
-    let repeatedFallback = InputSourceRegistration.repaired(legacy: fallback.legacy, thirdParty: nil, preferThirdParty: false)
-    check("issue 101: fallback repair is idempotent", repeatedFallback.thirdParty == nil &&
-          NSArray(array: repeatedFallback.legacy).isEqual(to: expectedFallback))
-    let guiSources = [google, azooKey, duplicateMode, duplicate]
-    check("issue 101: preserve the order saved by macOS", NSArray(array: InputSourceRegistration.normalized(guiSources)).isEqual(to: guiSources))
+    let repaired = InputSourceRegistration.repaired(legacy: [other] + duplicatePairs, thirdParty: duplicatePairs)
+    check("issue 101: deduplicate each existing store without moving entries",
+          NSArray(array: repaired.legacy).isEqual(to: [other, duplicate, duplicateMode]) &&
+          NSArray(array: repaired.thirdParty ?? []).isEqual(to: [duplicate, duplicateMode]))
+    let repeatedRepair = InputSourceRegistration.repaired(legacy: repaired.legacy, thirdParty: repaired.thirdParty)
+    check("issue 101: repair is idempotent", NSArray(array: repeatedRepair.legacy).isEqual(to: repaired.legacy) &&
+          NSArray(array: repeatedRepair.thirdParty ?? []).isEqual(to: repaired.thirdParty ?? []))
+    let fallback = InputSourceRegistration.repaired(legacy: [duplicateMode, other, duplicate], thirdParty: nil)
+    check("issue 101: preserve order, metadata and absent store", fallback.thirdParty == nil &&
+          NSArray(array: fallback.legacy).isEqual(to: [duplicateMode, other, duplicate]))
     let malformedPreferences: [Any] = ["not an array", [other, "not a dictionary"] as [Any]]
     for invalid in malformedPreferences {
         do {
@@ -217,4 +195,5 @@ guard let bundleIdentifier = Bundle.main.bundleIdentifier,
     exit(1)
 }
 candidatesWindow = IMKCandidates(server: server, panelType: kIMKSingleColumnScrollingCandidatePanel)
+NSRegisterServicesProvider(ModeServices.shared, ModeServices.portName)
 NSApplication.shared.run()

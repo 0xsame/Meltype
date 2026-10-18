@@ -176,6 +176,26 @@ internal static class Quality
         new("混在", "yastack", "やstack"),
         new("混在", "yaplay", "やplay"),
         new("混在", "yasync", "やsync"),
+        // 全体で 1 語の英単語は、助詞 + 英単語に分けない (de|light、mo|rally)
+        new("英語", "delight", "delight"),
+        new("英語", "devote", "devote"),
+        new("英語", "morally", "morally"),
+        new("混在", "kokodevote", "ここでvote"),
+        new("混在", "githubdevote", "githubでvote"),
+        // 英字のあいだの と は、chotto の っと や、英単語の途中 (stories) では助詞にしない
+        new("混在", "chottodehijacked", "ちょっとでhijacked"),
+        new("混在", "korekarastories", "これからstories"),
+        new("混在", "devtoprod", "devとprod"),
+        new("混在", "edittopub", "editとpub"),
+        new("混在", "dottonet", "dotとnet"),
+        new("混在", "rdstoredshift", "rdsとredshift"),
+        new("混在", "mottopython", "もっとpython"),
+        new("混在", "uikittoswiftui", "uikitとswiftui"),
+        // 英単語の最後の t + s は つ にしないが、つ まで読むと日本語の語になるなら つ (しゅつ・おちつ)
+        new("日本語", "teishutsushita", "ていしゅつした"),
+        new("日本語", "ochitsuite", "おちついて"),
+        new("混在", "kyoucommitsuru", "きょうcommitする"),
+        new("混在", "shutsita", "shutした"),
         // -pedia / -pedias (ローマ字だと ぺぢあ。#207)
         // site (=して) のあと英字が続いても、確定し直しで site に戻さない
         new("混在", "sitePR", "してPR"),
@@ -316,7 +336,7 @@ internal static class Quality
         ("Windows PowerShell", false),
     ];
 
-    /// <summary>よく使う英単語 (IME 自動切替で日本語と誤判定しないか)。</summary>
+    /// <summary>よく使う英単語 (英数状態の検知で日本語と誤判定しないか)。</summary>
     private static readonly string[] CommonEnglish =
     [
         "the", "this", "that", "with", "from", "have", "what", "when", "where", "which", "there", "their", "would", "could", "should",
@@ -401,18 +421,18 @@ Dictionary<string, (int Pass, int Total)> ByCategory, List<string> Failures, Lis
             Score("文章ファイル", actual == expected, $"「{title}」→ {actual} (期待: {expected})");
         }
 
-        // IME 自動切替 (打ち始めの数文字で Microsoft IME を ON にするか): 日本語の辞書の語は英語と決めつけない、よく使う英単語は日本語にしない。
+        // 英数状態の検知 (打ち始めの数文字がローマ字なら日本語入力に戻すか): 日本語の辞書の語は英語と決めつけない、よく使う英単語は日本語にしない。
         var scoreEngine = TestSupport.CreateEngine();
         var japaneseWords = DictionarySource.Load("japanese.txt", null).Where(w => w.Length >= 4).Distinct().ToList();
         foreach (var word in japaneseWords)
         {
             var result = TestSupport.Classify(scoreEngine, word);
-            Score("自動切替: 日本語", result.Verdict != Verdict.English, $"{word} → {result.Verdict} ({result.Summary})");
+            Score("英数状態の検知: 日本語", result.Verdict != Verdict.English, $"{word} → {result.Verdict} ({result.Summary})");
         }
         foreach (var word in CommonEnglish)
         {
             var result = TestSupport.Classify(scoreEngine, word);
-            Score("自動切替: 英語", result.Verdict != Verdict.Japanese, $"{word} → {result.Verdict} ({result.Summary})");
+            Score("英数状態の検知: 英語", result.Verdict != Verdict.Japanese, $"{word} → {result.Verdict} ({result.Summary})");
         }
 
         // 絵文字・顔文字の候補

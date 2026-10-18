@@ -12,7 +12,7 @@ namespace Meltype.Composition;
 ///
 /// 日本語入力中に google と打って「ごおｇぇ」になるのを防ぐのが目的。英語かどうかは区間ごとに判定するので、
 /// 「きょうは google」なら google の部分だけが英字になる。区間の区切りはかな 1 音の境目だけ。
-/// 未確定のうちは何度でも表示を作り直せるので、ここでの判定は IME 自動切替より積極的でよいが、
+/// 未確定のうちは何度でも表示を作り直せるので、ここでの判定は積極的でよいが、
 /// 既定は日本語で、英語と判断できる根拠があるときだけ英字にする。
 /// </summary>
 public sealed partial class CompositionDetector
@@ -182,6 +182,8 @@ public sealed partial class CompositionDetector
                     if (_romaji.Analyze(left.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
                     if (_romaji.Analyze(right.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
                     if (IsKnownEnglishWord(left + "to")) continue;
+                    // 左が英単語でなく、to までで日本語の語 (chotto の っと) になるか、to が英単語の途中 (stories・symptom) なら助詞ではない
+                    if (!IsKnownEnglishWord(left) && (EndsWithJapaneseWord(raw.ToLowerInvariant()[..(end + 2)]) || ToInsideEnglishWord(raw.ToLowerInvariant(), end))) continue;
                     return [new CompositionSegment(true, "", left),
                         new CompositionSegment(false, _romaji.ConvertLenient("to", final: true), "to"),
                         new CompositionSegment(true, "", right)];
@@ -205,7 +207,12 @@ public sealed partial class CompositionDetector
                 var analysis = _romaji.AnalyzeFragment(rest);
                 if (analysis.IsValid && IsSuruForm(analysis.Kana) && word.All(char.IsAsciiLetter) &&
                     !_romaji.AnalyzeFragment(word.ToLowerInvariant()).IsValid && IsKnownEnglishWord(word))
-                    return [new CompositionSegment(true, "", word), new CompositionSegment(false, analysis.Kana + analysis.Partial, raw[end..])];
+                {
+                    // 入力途中の子音 (pending) は表示・変換のときに後ろに足すので、読みに含めない (googleしまss になっていた)。
+                    // 読めない英字の単位として残った子音 (shimaSS の S) は pending ではないので、そのまま読みに含める。
+                    var partial = analysis.Partial.EndsWith(pending, StringComparison.OrdinalIgnoreCase) ? analysis.Partial[..^pending.Length] : analysis.Partial;
+                    return [new CompositionSegment(true, "", word), new CompositionSegment(false, analysis.Kana + partial, raw[end..])];
+                }
             }
         }
         var segments = ScoredSegmentation && !kanaInput
@@ -221,13 +228,18 @@ public sealed partial class CompositionDetector
         if (level != DetectionLevel.Manual && !segments[0].IsEnglish && Memory?.Get(whole.ToLowerInvariant()) != false && IsUnknownEnglishWord(whole))
         {
             var lowerWhole = whole.ToLowerInvariant();
-            if (Detection.DictionaryDetector.StartsWithParticle(lowerWhole) is not { } leading ||
+            // 全体で 1 語の英単語 (delight・morally) は、助詞 + 英単語 (de|light) に分けない
+            if (IsKnownEnglishWord(lowerWhole) || Detection.DictionaryDetector.StartsWithParticle(lowerWhole) is not { } leading ||
                 lowerWhole.Length - leading.Length < 3 ||
                 !IsKnownEnglishWord(lowerWhole[leading.Length..]))
             {
                 return [new CompositionSegment(true, "", whole)];
             }
         }
+        // 辞書の短い英語 (pro) だけが先頭で英語になり、残りの英字がかな化される (procrasticle: issue #537)。
+        if (level != DetectionLevel.Manual && whole.All(char.IsAsciiLetter) && Memory?.Get(whole.ToLowerInvariant()) != false &&
+            !IsKnownEnglishWord(whole.ToLowerInvariant()) && HasListedEnglishPrefixSplit(whole, segments))
+            return [new CompositionSegment(true, "", whole)];
         return segments;
     }
 
@@ -268,6 +280,23 @@ public sealed partial class CompositionDetector
         return -1;
     }
 
+    /// <summary>先頭が辞書の短い英語 (pro) で、残りがまだ英字なのに日本語区間になっている (procrasticle)。</summary>
+    private bool HasListedEnglishPrefixSplit(string whole, List<CompositionSegment> segments)
+    {
+        if (segments.Count < 2 || !segments[0].IsEnglish || segments[1].IsEnglish) return false;
+        var head = segments[0].Raw;
+        var lowerHead = head.ToLowerInvariant();
+        // 長い辞書語 (google) + 助詞、短い語 + する (push|shita) は今までどおり分ける。
+        if (!IsListedEnglishWord(lowerHead) || head.Length >= whole.Length || head.Length > 3) return false;
+        if (!segments[1].Raw.All(char.IsAsciiLetter)) return false;
+        var restLower = segments[1].Raw.ToLowerInvariant();
+        if (Detection.DictionaryDetector.StartsWithParticle(restLower) is not null) return false;
+        var lowerWhole = whole.ToLowerInvariant();
+        for (var len = head.Length + 1; len <= lowerWhole.Length; len++)
+            if (IsKnownEnglishWord(lowerWhole[..len])) return false;
+        return segments.Skip(1).All(s => !s.IsEnglish && s.Raw.All(char.IsAsciiLetter));
+    }
+
     private List<CompositionSegment>? UnknownWordThenJapanese(IReadOnlyList<CompositionUnit> units, string pending, List<CompositionSegment> segments, DetectionLevel level, string whole)
     {
         // 知らない英字の語 + 助詞で始まる日本語 (grokga、grokniyoruto) を最初から打っているなら、語は英字・後ろは日本語 (grokが)。
@@ -306,6 +335,7 @@ public sealed partial class CompositionDetector
             var found = -1;
             // ドメイン・拡張子の . の後ろは、ローマ字として読めても英字のままにする (tetr.io、Wakatte.TV、MeltypeTip.dll)。
             if (!kanaInput && level != DetectionLevel.Manual && i > 0 && units[i - 1].Raw == "." && PrecededByEnglish(i) == true) found = DotSuffixEnd(units, i, pending, final);
+            if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = ReadableStemDotSuffixEnd(units, i, pending, final, level);
             if (!kanaInput && found < 0) found = LeadingDotfileEnd(units, i, pending, final, level);
             // 英文の中の記号 (, . ! ? -) は読点・句点にせず半角のまま。日本語の文の中の英単語の後 (今日はgoogle、) は日本語の記号。
             // (かな入力では 、。 も かなのキーなので対象外)
@@ -379,7 +409,8 @@ public sealed partial class CompositionDetector
                     if (covered == leading.Length)
                     {
                         var rest = Raw(units, afterParticle, n) + pending;
-                        if (rest.Length >= 3 && IsKnownEnglishWord(rest)) found = -1;
+                        // ただし入力の頭からの全体が 1 語の英単語 (devote) なら、de + vote に分けない
+                        if (rest.Length >= 3 && IsKnownEnglishWord(rest) && !(i == 0 && IsKnownEnglishWord(Raw(units, 0, n) + pending))) found = -1;
                     }
                 }
             }
@@ -458,6 +489,8 @@ public sealed partial class CompositionDetector
         return _english.Words.ContainsWord(lower) || IsSpellWord(lower);
     }
 
+    internal bool IsJapaneseWordOrPrefix(string kana) => _kana?.IsJapaneseWordOrPrefix(kana) == true;
+
     /// <summary>スペルチェッカーが正しいと言う英単語か、よくある打ち間違い (teh、recieve) か。</summary>
     internal bool IsSpellWord(string lower) => SpellChecker is { } checker && (checker.IsWord(lower) || checker.AutoCorrection(lower) is not null);
 
@@ -470,6 +503,29 @@ public sealed partial class CompositionDetector
         if (SpellChecker?.AutoCorrection(word.ToLowerInvariant()) is not { } right) return null;
         if (word.All(char.IsAsciiLetterUpper) && word.Length > 1) return right.ToUpperInvariant();
         return char.IsAsciiLetterUpper(word[0]) ? char.ToUpperInvariant(right[0]) + right[1..] : right;
+    }
+
+    /// <summary>末尾が日本語の辞書の語か (chotto)。語の前は空か、助詞で終わる読み切れるローマ字 (kyouha) に限る (uikit + to は当たらない)。</summary>
+    private bool EndsWithJapaneseWord(string lower)
+    {
+        for (var start = 0; start <= lower.Length - 4; start++)
+        {
+            if (start > 0 && !(TrailingParticles.Any(p => lower.AsSpan(0, start).EndsWith(p, StringComparison.Ordinal)) && _romaji.Analyze(lower[..start]) is { IsValid: true, Partial: "" })) continue;
+            if (_japanese.Words.ContainsWord(lower[start..])) return true;
+        }
+        return false;
+    }
+
+    /// <summary>at の to が、その前から始まる英単語の途中か (korekara + stories)。英単語の前は空か、読み切れるローマ字に限る。</summary>
+    private bool ToInsideEnglishWord(string lower, int at)
+    {
+        for (var start = Math.Max(0, at - 12); start < at; start++)
+        {
+            if (start > 0 && _romaji.Analyze(lower[..start]) is not { IsValid: true, Partial: "" }) continue;
+            for (var end = at + 2; end <= Math.Min(lower.Length, start + 16); end++)
+                if (end - start >= 4 && (IsListedEnglishWord(lower[start..end]) || end - start >= 5 && IsSpellWord(lower[start..end]))) return true;
+        }
+        return false;
     }
 
     /// <summary>同梱の英単語の辞書・固有名詞にある語か、ユーザーが英字に直して覚えた語か (ok、github)。スペルチェッカーは使わない。</summary>
@@ -485,9 +541,13 @@ public sealed partial class CompositionDetector
         var upper = token.AsSpan().IndexOfAnyInRange('A', 'Z');
         if (upper < 3) return false;
         var head = token[..upper];
-        return head.All(char.IsAsciiLetterLower) && TrailingParticles.Any(p => head.Length > p.Length && head.EndsWith(p, StringComparison.Ordinal)) &&
+        // 長い日本語の読み (korewoiPhone: これをiPhone) は、助詞で終わらなくても (iPhone・YouTube を 2 つ含む文: issue #821)
+        return head.All(char.IsAsciiLetterLower) && (head.Length >= 7 || TrailingParticles.Any(p => head.Length > p.Length && head.EndsWith(p, StringComparison.Ordinal))) &&
             _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } && !IsKnownEnglishWord(head);
     }
+
+    /// <summary>english-readable.txt の語か (ローマ字として最後まで読めても、日本語の語にならない英単語: open、feature)。</summary>
+    public static bool IsReadableEnglishWord(string lower) => ReadableEnglish.Value.ContainsWord(lower);
 
     /// <summary>
     /// 知っている英単語か (同梱の辞書・固有名詞・ユーザーが英字に直して覚えた語・4 文字以上ならスペルチェッカー)。
@@ -538,10 +598,11 @@ public sealed partial class CompositionDetector
         return false;
     }
 
-    private static readonly string[] SuruForms = ["する", "すれ", "した", "して", "しま", "しな", "しよ", "しと", "しちゃ", "しろ", "され", "させ", "せず"];
+    /// <summary>する の活用 (した・して・しない・しよう・したい …) で始まる読み。</summary>
+    internal static readonly string[] SuruForms = ["する", "すれ", "した", "して", "しま", "しな", "しよ", "しと", "しちゃ", "しろ", "され", "させ", "せず"];
 
     /// <summary>する の活用 (して・した・します …) だけでできたかなか。</summary>
-    private static bool IsSuruForm(string kana) => SuruForms.Any(kana.StartsWith) && kana.All(c => c is >= 'ぁ' and <= 'ゖ' or 'ー');
+    internal static bool IsSuruForm(string kana) => SuruForms.Any(kana.StartsWith) && kana.All(KanaChars.IsHiraganaOrLongMark);
 
     private static int Score(bool? english) => english switch { true => 1, false => -1, null => 0 };
 
@@ -549,6 +610,20 @@ public sealed partial class CompositionDetector
     private static bool IsAsciiSymbol(CompositionUnit unit) =>
         unit.Raw.Length == 1 && unit.Raw[0] is >= '!' and <= '~' && !char.IsAsciiLetterOrDigit(unit.Raw[0]) && unit.Raw[0] is not ('[' or ']');
 
+
+    /// <summary>
+    /// 小文字だけの語の末尾が大文字 1 文字 (holoX) なら true。
+    /// 大文字の後ろに英字が続く (English の E) ときと、小文字側がよく使う日本語 (koreX → これX) のときは false。
+    /// </summary>
+    private bool IsTrailingCapitalName(string span, string? next)
+    {
+        if (span.Length < 4 || !char.IsAsciiLetterUpper(span[^1])) return false;
+        if (next is [var followed, ..] && char.IsAsciiLetter(followed)) return false;
+        var stem = span[..^1];
+        if (stem.Length < 3 || !stem.All(char.IsAsciiLetterLower)) return false;
+        if (IsCommonJapanese?.Invoke(stem) == true || _japanese.Words.ContainsWord(stem)) return false;
+        return true;
+    }
 
     /// <param name="final">打ち終わった (Space・Enter)。末尾の区間でも、英単語の打ちかけ (amaz) は英語の根拠にしない。</param>
     /// <param name="unreadable">区間にローマ字として読めなかった英字がある (zoom + de の m、bug + wo の g)。</param>
@@ -560,6 +635,9 @@ public sealed partial class CompositionDetector
         if (IsContraction(span)) return level != DetectionLevel.Manual || char.IsAsciiLetterUpper(span[0]);
         if (span.Length == 0 || !span.All(char.IsAsciiLetter)) return false;
         var lower = span.ToLowerInvariant();
+        // 小文字の語の末尾が大文字 1 文字 (holoX → ほぉX になっていた: issue #469)。
+        // 略語 (PC、SNS) や途中の大文字 (GitHub) は下の規則のまま。小文字側がふつうの日本語 (kore) なら分けたまま。
+        if (level != DetectionLevel.Manual && IsTrailingCapitalName(span, next)) return true;
         // 小文字で始まって途中に大文字がある区間 (iPC、meteSNS) は、固有名詞の書き方 (iPhone・eBay・macOS) でなければ 1 語ではない:
         // 小文字の部分は前の日本語の続き (atarashi|i|PC → あたらしいPC、motome|te|SNS → 求めてSNS)。
         if (char.IsAsciiLetterLower(span[0]) && span.Skip(1).Any(char.IsAsciiLetterUpper) && _proper.Canonical(lower) != span) return false;
@@ -861,7 +939,7 @@ public sealed partial class CompositionDetector
     private static readonly HashSet<string> HyphenPrefixes = ["e", "x", "re", "co", "ex", "non", "anti", "semi", "multi", "pre", "sub", "post", "mid", "self", "well"];
 
     // 接頭辞の規則では拾えない、- の入ったよく使う英単語 (後ろが 2 文字以下など)
-    private static readonly HashSet<string> HyphenatedWords = ["co-op", "re-do", "x-ray", "t-shirt", "wi-fi", "hi-fi", "lo-fi", "sci-fi", "e-book", "e-sports", "k-pop", "j-pop", "j-rock", "j-core", "p-hub", "talk-admin", "r-18", "sub-6", "gpt-6.7", "a-z", "u-turn", "check-in", "log-in", "sign-in", "add-on", "plug-in", "built-in", "follow-up", "set-up", "pop-up", "drop-down", "blu-ray"];
+    private static readonly HashSet<string> HyphenatedWords = ["bio-break", "co-op", "re-do", "x-ray", "t-shirt", "wi-fi", "hi-fi", "lo-fi", "sci-fi", "e-book", "e-sports", "k-pop", "j-pop", "j-rock", "j-core", "p-hub", "talk-admin", "r-18", "sub-6", "gpt-6.7", "a-z", "u-turn", "check-in", "log-in", "sign-in", "add-on", "plug-in", "built-in", "follow-up", "set-up", "pop-up", "drop-down", "blu-ray", "binge-watch", "ad-blocker"];
     // 日本語のローマ字の途中を英語の接頭辞と誤認しないよう、日本語に続けて拾うのは明示した英数字表記だけ。
     private static readonly HashSet<string> NumericHyphenatedWords = ["r-18", "sub-6", "gpt-6.7"];
 
@@ -915,6 +993,29 @@ public sealed partial class CompositionDetector
             if (local < n && units[local].Raw == "@" && domainStarts) return local + 1;
         }
         return -1;
+    }
+
+    /// <summary>
+    /// ローマ字として読める英字のすぐ後ろに、読めない拡張子が続くとき (llama.cpp → っぁま。cpp)。
+    /// 語の先頭から拡張子までを 1 つの英語区間にする。大文字や既に英語と分かる語 (Meltype.amr) は、拡張子を別区間のままにする。
+    /// 数字の前 (3.14desu)・小数 (soudesu.1.5)・最後まで読める語 (Meltype.desu) は対象外。
+    /// </summary>
+    private int ReadableStemDotSuffixEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, bool final, DetectionLevel level)
+    {
+        if (start > 0 && units[start - 1].Raw.Length > 0 && units[start - 1].Raw.All(char.IsAsciiLetter)) return -1;
+        var dot = start;
+        if (dot >= units.Count || units[dot].Raw.Length == 0 || !units[dot].Raw.All(char.IsAsciiLetter)) return -1;
+        if (char.IsAsciiLetterUpper(units[dot].Raw[0])) return -1;
+        while (dot < units.Count && units[dot].Raw.Length > 0 && units[dot].Raw.All(char.IsAsciiLetter)) dot++;
+        if (dot >= units.Count || units[dot].Raw != ".") return -1;
+        var stem = Raw(units, start, dot);
+        if (IsEnglishSpan(stem, atEnd: false, 0, false, start == 0, level, final, next: ".")) return -1;
+        var suffix = DotSuffixEnd(units, dot + 1, pending, final);
+        if (suffix <= dot + 1) return -1;
+        // 1.5 のような小数は拡張子ではない (soudesu.1.5 → そうです。1.5)。cpp のような英字の拡張子だけをまとめる。
+        var suffixRaw = Raw(units, dot + 1, Math.Min(suffix, units.Count));
+        if (suffixRaw.Length > 0 && char.IsAsciiDigit(suffixRaw[0])) return -1;
+        return suffix;
     }
 
     /// <summary>

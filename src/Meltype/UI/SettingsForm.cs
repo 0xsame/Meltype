@@ -4,15 +4,16 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Text;
+using Meltype.Composition;
 using Meltype.Config;
 
 namespace Meltype.UI;
 
 /// <summary>
 /// 設定画面。Settings の各項目を種類に合わせた部品で並べる:
-///   ON/OFF → プルダウン、選択肢 (列挙型) → 日本語名のプルダウン、数値 → 数値入力、アプリ別設定 → 表 (ON/OFF はプルダウン)。
+///   ON/OFF → スイッチ (ToggleSwitch)、選択肢 (列挙型) → 日本語名のプルダウン、数値 → 数値入力、アプリ別設定 → 表 (ON/OFF はスイッチ)。
 /// 項目名・分類・説明は Settings の属性 (DisplayName / Category / Description) から取る。
-/// 下の「判定テスト」欄では、打った英字が IME 自動切替でどう判定されるかと理由を確認できる。
+/// 下の「判定テスト」欄では、打った英字をローマ字 (日本語) と英語のどちらと判定するかと理由を確認できる。
 /// </summary>
 internal sealed class SettingsForm : Form, IMessageFilter
 {
@@ -34,11 +35,14 @@ internal sealed class SettingsForm : Form, IMessageFilter
     // プロファイル (仕事用・趣味用・SNS 用など) を選ぶ欄
     private readonly ComboBox _profiles = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, Anchor = AnchorStyles.Left };
     private bool _loadingProfiles;
-    private readonly CheckBox _showHelp = new() { Text = "下部に説明を表示", AutoSize = true };
-    private readonly CheckBox _wheelChangesValue = new() { Text = "マウスホイールで値を変更", AutoSize = true };
+    private readonly ToggleSwitch _showHelp = new() { Text = "下部に説明を表示" };
+    private readonly ToggleSwitch _wheelChangesValue = new() { Text = "マウスホイールで値を変更" };
 
     /// <summary>画面の部品に出していない値 (プロファイルの一覧・使っているプロファイル など) を持つ設定。</summary>
     private Settings _draft;
+
+    /// <summary>開いた時点の画面の値。閉じるときに比べて、画面で変えた項目だけを今の設定に重ねる (開いている間にトレイで変えた設定を戻さない)。</summary>
+    private readonly Settings _opened = null!;
 
     /// <summary>1 項目分の部品と、設定値との受け渡し。</summary>
     private sealed record Binding(PropertyInfo Property, Control Control, Action<Settings> Load, Action<Settings> Store);
@@ -73,7 +77,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
         _helpPanel.Controls.Add(_help);
         _helpPanel.Height = TextRenderer.MeasureText("あ", Font).Height * HelpLines + _help.Padding.Vertical + 6;
 
-        var testLabel = new Label { Text = "判定テスト (IME 自動切替の判定。英字で入力):", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 6, 0, 2) };
+        var testLabel = new Label { Text = "判定テスト (ローマ字か英語かの判定。英字で入力):", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(0, 6, 0, 2) };
         _testInput.TextChanged += (_, _) => RunTest();
         var testPanel = new Panel { Dock = DockStyle.Bottom, Height = 110, Padding = new Padding(8, 0, 8, 0) };
         testPanel.Controls.Add(_testResult);
@@ -94,7 +98,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
         FormClosing += (_, _) =>
         {
             if (discard) return;
-            var next = Collect();
+            var next = Settings.MergeEdits(_opened, Collect(), _engine.Settings);
             if (next.ToJson() != _engine.Settings.Clone().Normalize().ToJson()) _engine.ApplySettings(next);
         };
         defaults.Click += (_, _) =>
@@ -116,6 +120,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
 
         LoadFrom(_draft);
         RefreshProfiles();
+        _opened = Collect();
     }
 
     /// <summary>プロファイルの欄の下: 説明の欄を出すか、ホイールで値を変えるか。</summary>
@@ -296,6 +301,8 @@ internal sealed class SettingsForm : Form, IMessageFilter
                 var name = property.GetCustomAttribute<DisplayNameAttribute>()?.DisplayName ?? property.Name;
                 var description = property.GetCustomAttribute<DescriptionAttribute>()?.Description ?? "";
                 var label = new Label { Text = name, AutoSize = true, Anchor = AnchorStyles.Left, Padding = new Padding(0, 6, 0, 6) };
+                // スイッチには見出しの文字が無いので、ナレーターには項目名で読ませる
+                binding.Control.AccessibleName = name;
                 // 表 (アプリ別設定は表 + ボタンの枠) は、右の列だと狭くて列が見切れるので、名前の下に幅いっぱいで出す
                 var fullRow = binding.Control is DataGridView or Panel;
                 if (fullRow)
@@ -326,15 +333,18 @@ internal sealed class SettingsForm : Form, IMessageFilter
         var type = property.PropertyType;
         if (type == typeof(bool))
         {
-            var combo = DropDown([On, Off]);
-            return new Binding(property, combo,
-                s => combo.SelectedItem = (bool)property.GetValue(s)! ? On : Off,
-                s => property.SetValue(s, Equals(combo.SelectedItem, On)));
+            var toggle = Toggle();
+            return new Binding(property, toggle,
+                s => toggle.Checked = (bool)property.GetValue(s)!,
+                s => property.SetValue(s, toggle.Checked));
         }
         if (type.IsEnum)
         {
             var values = Enum.GetValues(type).Cast<object>().ToList();
             var combo = DropDown(values.Select(v => EnumName(type, v)).ToArray());
+            // Meltype IME を使えない (ARM64 の Windows・登録されていない・キーボードの一覧に無い) なら、灰色にして選ばせない
+            if (property.Name == nameof(Settings.Mode) && _engine.Settings.Mode != InputMode.Tsf && !Tip.TipServer.IsUsable)
+                DisableChoice(combo, values.IndexOf(InputMode.Tsf));
             return new Binding(property, combo,
                 s => combo.SelectedIndex = values.IndexOf(property.GetValue(s)!),
                 s => property.SetValue(s, values[Math.Max(0, combo.SelectedIndex)]));
@@ -360,6 +370,27 @@ internal sealed class SettingsForm : Form, IMessageFilter
             return new Binding(property, panel,
                 s => text.Text = (string?)property.GetValue(s) ?? "",
                 s => property.SetValue(s, text.Text.Trim()));
+        }
+        if (type == typeof(string) && property.Name is nameof(Settings.ModeIndicatorJapaneseColor) or nameof(Settings.ModeIndicatorDirectColor) or nameof(Settings.ModeIndicatorTextColor))
+        {
+            var fallback = property.Name switch
+            {
+                nameof(Settings.ModeIndicatorJapaneseColor) => ModeIndicatorWindow.DefaultJapaneseColor,
+                nameof(Settings.ModeIndicatorDirectColor) => ModeIndicatorWindow.DefaultDirectColor,
+                _ => Color.White,
+            };
+            var panel = ColorEditor(fallback, out var text);
+            return new Binding(property, panel,
+                s => text.Text = (string?)property.GetValue(s) ?? "",
+                s => property.SetValue(s, text.Text.Trim()));
+        }
+        if (type == typeof(string))
+        {
+            // 入力モードの表示の色・定型文を出す記号など
+            var box = new TextBox { Width = 120, Anchor = AnchorStyles.Left };
+            return new Binding(property, box,
+                s => box.Text = (string?)property.GetValue(s) ?? "",
+                s => property.SetValue(s, box.Text));
         }
         if (type == typeof(int))
         {
@@ -393,7 +424,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
                     foreach (var rule in (List<AppRule>)property.GetValue(s)!)
                     {
                         var kind = rule.Kind is { Length: > 0 } name && s.AppKinds.Any(k => k.Name == name) ? name : EnumName(typeof(AppProfile), rule.Profile);
-                        grid.Rows.Add(rule.Process, rule.Enabled ? On : Off, kind);
+                        grid.Rows.Add(rule.Process, rule.Enabled, kind);
                     }
                 },
                 s => property.SetValue(s, grid.Rows.Cast<DataGridViewRow>()
@@ -406,7 +437,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
                         return new AppRule
                         {
                             Process = r.Process,
-                            Enabled = !Equals(r.Value, Off),
+                            Enabled = r.Value is not false, // 新しい行の空の値は ON
                             Profile = builtIn ?? AppProfile.General,
                             Kind = builtIn is null && r.Kind.Length > 0 ? r.Kind : null,
                         };
@@ -425,7 +456,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
                         grid.Rows.Add(kind.Name, EnumName(typeof(AppProfile), kind.Base),
                             kind.DetectionLevel is { } level ? EnumName(typeof(DetectionLevel), level) : SameAsGlobal,
                             kind.LiveConversion is { } live ? (live ? On : Off) : SameAsGlobal,
-                            kind.StartInEnglish ? On : Off);
+                            kind.StartInEnglish);
                     }
                 },
                 s => property.SetValue(s, ReadKinds(grid)));
@@ -444,7 +475,7 @@ internal sealed class SettingsForm : Form, IMessageFilter
             Base = Equals(r.Cells[1].Value, EnumName(typeof(AppProfile), AppProfile.Code)) ? AppProfile.Code : AppProfile.General,
             DetectionLevel = Enum.GetValues<DetectionLevel>().Where(l => Equals(r.Cells[2].Value, EnumName(typeof(DetectionLevel), l))).Cast<DetectionLevel?>().FirstOrDefault(),
             LiveConversion = Equals(r.Cells[3].Value, On) ? true : Equals(r.Cells[3].Value, Off) ? false : null,
-            StartInEnglish = Equals(r.Cells[4].Value, On),
+            StartInEnglish = r.Cells[4].Value is true,
         })
         .GroupBy(k => k.Name).Select(g => g.First())
         .ToList();
@@ -479,14 +510,15 @@ internal sealed class SettingsForm : Form, IMessageFilter
         grid.Columns.Add(Choices("元にする種類", 18, Enum.GetValues<AppProfile>().Select(p => EnumName(typeof(AppProfile), p))));
         grid.Columns.Add(Choices("判定の強さ", 20, [SameAsGlobal, .. Enum.GetValues<DetectionLevel>().Select(l => EnumName(typeof(DetectionLevel), l))]));
         grid.Columns.Add(Choices("ライブ変換", 18, [SameAsGlobal, On, Off]));
-        grid.Columns.Add(Choices("最初は英数", 18, [Off, On]));
+        grid.Columns.Add(new ToggleSwitchColumn("最初は英数", 18));
         grid.DefaultValuesNeeded += (_, e) =>
         {
             e.Row.Cells[1].Value = EnumName(typeof(AppProfile), AppProfile.General);
             e.Row.Cells[2].Value = SameAsGlobal;
             e.Row.Cells[3].Value = SameAsGlobal;
-            e.Row.Cells[4].Value = Off;
+            e.Row.Cells[4].Value = false;
         };
+        CommitSwitchesImmediately(grid);
         // 種類を足したり名前を変えたりしたら、アプリ別設定の「種類」の選択肢にすぐ出す。
         void Changed() => RefreshKindChoices(ReadKinds(grid).Select(k => k.Name));
         grid.CellValueChanged += (_, _) => Changed();
@@ -512,11 +544,39 @@ internal sealed class SettingsForm : Form, IMessageFilter
         return combo;
     }
 
+    /// <summary>ON/OFF の項目のスイッチ。切り替えたら下の判定テストをやり直す (プルダウンと同じ)。</summary>
+    private ToggleSwitch Toggle()
+    {
+        var toggle = new ToggleSwitch { Anchor = AnchorStyles.Left };
+        toggle.CheckedChanged += (_, _) => RunTest();
+        return toggle;
+    }
+
+    /// <summary>プルダウンの 1 項目を灰色で出し、選んだら前の項目に戻す。</summary>
+    private static void DisableChoice(ComboBox combo, int disabled)
+    {
+        combo.DrawMode = DrawMode.OwnerDrawFixed;
+        combo.DrawItem += (_, e) =>
+        {
+            if (e.Index < 0) return;
+            e.DrawBackground();
+            var color = e.Index == disabled ? SystemColors.GrayText : e.ForeColor;
+            TextRenderer.DrawText(e.Graphics, combo.GetItemText(combo.Items[e.Index]), e.Font, e.Bounds, color, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            e.DrawFocusRectangle();
+        };
+        var previous = disabled == 0 ? 1 : 0;
+        combo.SelectedIndexChanged += (_, _) =>
+        {
+            if (combo.SelectedIndex == disabled) combo.SelectedIndex = previous;
+            else previous = combo.SelectedIndex;
+        };
+    }
+
     /// <summary>窓を開いている実行中のアプリの一覧を出し、選んだものをアプリ別設定の表に足す (既に表にあれば、その行を選ぶ)。</summary>
     private static void ShowRunningApps(DataGridView grid, Control anchor) => ShowRunningApps(anchor, name =>
     {
         var existing = grid.Rows.Cast<DataGridViewRow>().FirstOrDefault(r => !r.IsNewRow && string.Equals(r.Cells[0].Value as string, name, StringComparison.OrdinalIgnoreCase));
-        var row = existing ?? grid.Rows[grid.Rows.Add(name, On, EnumName(typeof(AppProfile), AppProfile.General))];
+        var row = existing ?? grid.Rows[grid.Rows.Add(name, true, EnumName(typeof(AppProfile), AppProfile.General))];
         grid.ClearSelection();
         row.Selected = true;
         grid.FirstDisplayedScrollingRowIndex = row.Index;
@@ -569,6 +629,31 @@ internal sealed class SettingsForm : Form, IMessageFilter
         return panel;
     }
 
+    /// <summary>
+    /// 色の設定 (#RRGGBB) の部品。手で書くほか、Windows の色の選択画面で選べる。
+    /// 横の見本は今の色で、空・読めない値なら既定の色 (fallback) を出す。
+    /// </summary>
+    private static Control ColorEditor(Color fallback, out TextBox text)
+    {
+        var box = text = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "空なら既定の色" };
+        var swatch = new Panel { Width = 28, Dock = DockStyle.Right, BorderStyle = BorderStyle.FixedSingle };
+        var pick = new Button { Text = "選ぶ…", AutoSize = true, Dock = DockStyle.Right };
+        Color Current() => Settings.ParseColor(box.Text) is var (r, g, b) ? Color.FromArgb(r, g, b) : fallback;
+        box.TextChanged += (_, _) => swatch.BackColor = Current();
+        swatch.BackColor = fallback;
+        pick.Click += (_, _) =>
+        {
+            using var dialog = new ColorDialog { Color = Current(), FullOpen = true };
+            if (dialog.ShowDialog(pick.FindForm()) == DialogResult.OK) box.Text = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+        };
+        // Panel だと表と同じく名前の下に幅いっぱいで出るので、ほかの項目と同じ右の列に置く UserControl にする
+        var panel = new UserControl { Height = Math.Max(box.PreferredHeight, pick.PreferredSize.Height) + 4, Dock = DockStyle.Fill };
+        panel.Controls.Add(box);
+        panel.Controls.Add(swatch);
+        panel.Controls.Add(pick);
+        return panel;
+    }
+
     private static DataGridView AppRulesGrid()
     {
         var grid = new DataGridView
@@ -582,20 +667,31 @@ internal sealed class SettingsForm : Form, IMessageFilter
             AllowUserToDeleteRows = true,
         };
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "プロセス名 (例: code.exe)", FillWeight = 55 });
-        var enabled = new DataGridViewComboBoxColumn { HeaderText = "自動切替", FillWeight = 22, FlatStyle = FlatStyle.Flat };
-        enabled.Items.AddRange(On, Off);
-        grid.Columns.Add(enabled);
+        grid.Columns.Add(new ToggleSwitchColumn("有効", 22));
         // 種類: 一般 / コード (コメント・文字列の中だけ日本語)
         var profile = new DataGridViewComboBoxColumn { HeaderText = "種類", FillWeight = 23, FlatStyle = FlatStyle.Flat };
         profile.Items.AddRange(Enum.GetValues<AppProfile>().Select(p => (object)EnumName(typeof(AppProfile), p)).ToArray());
         grid.Columns.Add(profile);
         grid.DefaultValuesNeeded += (_, e) =>
         {
-            e.Row.Cells[1].Value = On;
+            e.Row.Cells[1].Value = true;
             e.Row.Cells[2].Value = EnumName(typeof(AppProfile), AppProfile.General);
         };
         grid.DataError += (_, e) => e.ThrowException = false;
+        CommitSwitchesImmediately(grid);
         return grid;
+    }
+
+    /// <summary>
+    /// スイッチのセルは、クリックした時点で値を確定する (チェックボックスの列は、ほかのセルに移るまで値が変わらないので、
+    /// 切り替えてすぐ OK を押したときや、独自の種類の名前の一覧を出し直すときに、前の値が読まれる)。
+    /// </summary>
+    private static void CommitSwitchesImmediately(DataGridView grid)
+    {
+        grid.CurrentCellDirtyStateChanged += (_, _) =>
+        {
+            if (grid.IsCurrentCellDirty && grid.CurrentCell is ToggleSwitchCell) grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
     }
 
     private static string EnumName(Type type, object value) =>

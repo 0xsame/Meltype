@@ -17,6 +17,14 @@ enum InputSourceRegistration {
         let thirdParty: [[String: Any]]?
     }
 
+    enum Outcome {
+        case ready
+        case pending
+        case failed
+
+        var exitCode: Int32 { self == .failed ? 1 : 0 }
+    }
+
     struct Failure: LocalizedError {
         let errorDescription: String?
         init(_ message: String) { errorDescription = message }
@@ -28,17 +36,34 @@ enum InputSourceRegistration {
     }
 
     static func normalized(_ sources: [[String: Any]]) -> [[String: Any]] {
-        var result = sources.filter { !isMeltype($0) }
-        result.append(["Bundle ID": identifier, "Input Mode": japaneseIdentifier, "InputSourceKind": "Input Mode"])
-        result.append(["Bundle ID": identifier, "InputSourceKind": "Keyboard Input Method"])
+        var seen = Set<String>()
+        var result: [[String: Any]] = []
+        for source in sources {
+            guard isMeltype(source) else {
+                result.append(source)
+                continue
+            }
+            let kind = source["InputSourceKind"] as? String
+            if kind == "Input Mode", (source["Input Mode"] as? String) == japaneseIdentifier {
+                if seen.insert("Input Mode").inserted { result.append(source) }
+            } else if kind == "Keyboard Input Method", (source["Bundle ID"] as? String) == identifier {
+                if seen.insert("Keyboard Input Method").inserted { result.append(source) }
+            } else {
+                result.append(source)
+            }
+        }
+        if !seen.contains("Input Mode") {
+            result.append(["Bundle ID": identifier, "Input Mode": japaneseIdentifier, "InputSourceKind": "Input Mode"])
+        }
+        if !seen.contains("Keyboard Input Method") {
+            result.append(["Bundle ID": identifier, "InputSourceKind": "Keyboard Input Method"])
+        }
         return result
     }
 
-    static func repaired(legacy: [[String: Any]], thirdParty: [[String: Any]]?, preferThirdParty: Bool) -> Sources {
-        if thirdParty != nil || preferThirdParty {
-            return Sources(legacy: legacy.filter { !isMeltype($0) }, thirdParty: normalized(thirdParty ?? []))
-        }
-        return Sources(legacy: normalized(legacy), thirdParty: thirdParty)
+    static func repaired(legacy: [[String: Any]], thirdParty: [[String: Any]]?) -> Sources {
+        Sources(legacy: legacy.contains(where: isMeltype) ? normalized(legacy) : legacy,
+                thirdParty: thirdParty.map { $0.contains(where: isMeltype) ? normalized($0) : $0 })
     }
 
     static func validatedSources(_ value: Any?, name: String) throws -> [[String: Any]]? {
@@ -97,7 +122,20 @@ enum InputSourceRegistration {
         }.count
     }
 
-    static func register() -> Int32 {
+    private static func prepare() throws {
+        _ = try read(legacyDomain, key: legacyKey)
+        _ = try read(thirdPartyDomain, key: thirdPartyKey)
+        let status = TISRegisterInputSource(Bundle.main.bundleURL as CFURL)
+        guard status == noErr else { throw Failure("TISRegisterInputSource failed (OSStatus \(status))") }
+        for id in [identifier, japaneseIdentifier] {
+            let matches = inputSources().filter { (property($0, kTISPropertyInputSourceID) as? String) == id }
+            if !matches.contains(where: { (property($0, kTISPropertyInputSourceIsEnabled) as? Bool) == true }),
+               let source = matches.first {
+                let status = TISEnableInputSource(source)
+                guard status == noErr else { throw Failure("TISEnableInputSource failed for \(id) (OSStatus \(status))") }
+            }
+        }
+
         var preferencesChanged = false
         defer {
             if preferencesChanged {
@@ -105,36 +143,37 @@ enum InputSourceRegistration {
                     CFNotificationName(kTISNotifyEnabledKeyboardInputSourcesChanged), nil, nil, true)
             }
         }
+        let legacy = try read(legacyDomain, key: legacyKey)
+        let thirdParty = try read(thirdPartyDomain, key: thirdPartyKey)
+        let sources = repaired(legacy: legacy ?? [], thirdParty: thirdParty)
+        if let repairedThirdParty = sources.thirdParty {
+            preferencesChanged = try write(repairedThirdParty, replacing: thirdParty, domain: thirdPartyDomain, key: thirdPartyKey)
+        }
+        let legacyChanged = try write(sources.legacy, replacing: legacy, domain: legacyDomain, key: legacyKey)
+        preferencesChanged = preferencesChanged || legacyChanged
+    }
+
+    static func register(
+        prepare: () throws -> Void = prepare,
+        enabledCount: () -> Int = enabledJapaneseCount,
+        wait: () -> Void = { Thread.sleep(forTimeInterval: 0.1) }
+    ) -> Outcome {
         do {
-            let legacy = try read(legacyDomain, key: legacyKey)
-            let thirdParty = try read(thirdPartyDomain, key: thirdPartyKey)
-            let preferThirdParty = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
-            let sources = repaired(legacy: legacy ?? [], thirdParty: thirdParty, preferThirdParty: preferThirdParty)
-            if let repairedThirdParty = sources.thirdParty {
-                preferencesChanged = try write(repairedThirdParty, replacing: thirdParty, domain: thirdPartyDomain, key: thirdPartyKey)
-            }
-            let legacyChanged = try write(sources.legacy, replacing: legacy, domain: legacyDomain, key: legacyKey)
-            preferencesChanged = preferencesChanged || legacyChanged
-            let status = TISRegisterInputSource(Bundle.main.bundleURL as CFURL)
-            guard status == noErr else { throw Failure("TISRegisterInputSource failed (OSStatus \(status))") }
-            // 親を有効にしてからモードを確かめる。同じIDの重複オブジェクトは有効化しない。
-            for id in [identifier, japaneseIdentifier] {
-                let matches = inputSources().filter { (property($0, kTISPropertyInputSourceID) as? String) == id }
-                if !matches.contains(where: { (property($0, kTISPropertyInputSourceIsEnabled) as? Bool) == true }),
-                   let source = matches.first {
-                    let status = TISEnableInputSource(source)
-                    guard status == noErr else { throw Failure("TISEnableInputSource failed for \(id) (OSStatus \(status))") }
+            try prepare()
+            for attempt in 0...20 {
+                let count = enabledCount()
+                if count == 1 { return .ready }
+                if attempt < 20 {
+                    wait()
+                } else {
+                    FileHandle.standardError.write(Data(
+                        "Input-source registration is pending (enabled selectable Japanese modes: \(count)). Choose Meltype in Keyboard settings or log out and back in.\n".utf8))
                 }
             }
-            let deadline = Date().addingTimeInterval(2)
-            repeat {
-                if enabledJapaneseCount() == 1 { return 0 }
-                Thread.sleep(forTimeInterval: 0.1)
-            } while Date() < deadline
-            throw Failure("Expected one enabled selectable Meltype Japanese mode, found \(enabledJapaneseCount())")
+            return .pending
         } catch {
             FileHandle.standardError.write(Data("Input-source repair failed: \(error.localizedDescription)\n".utf8))
-            return 1
+            return .failed
         }
     }
 }
