@@ -222,7 +222,6 @@ public sealed record CompositionOptions
     public Func<string> GitHubRepository { get; init; } = () => "";
     public Func<GitHubIssueTitles?> GitHubTitles { get; init; } = () => null;
     public Func<bool> ClipboardCandidates { get; init; } = () => false;
-    public Func<string> PauseHotkey { get; init; } = () => "";
     public Func<bool> AutomaticEnglishSpacing { get; init; } = () => false;
 
     /// <summary>句読点の組み合わせ (設定)。</summary>

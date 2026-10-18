@@ -193,7 +193,6 @@ internal static class CompositionTests
         public string GitHubRepository { get; set; } = "";
         public GitHubIssueTitles? GitHubTitles { get; set; }
         public bool ClipboardCandidates { get; set; }
-        public string PauseHotkey { get; set; } = "";
         public bool ContinueAfterConversion { get; set; }
         public bool Learning { get; set; } = true;
         public bool SeparateKeyRoles { get; set; }
@@ -288,7 +287,6 @@ internal static class CompositionTests
                 GitHubRepository = () => GitHubRepository,
                 GitHubTitles = () => GitHubTitles,
                 ClipboardCandidates = () => ClipboardCandidates,
-                PauseHotkey = () => PauseHotkey,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
                 Punctuation = () => Punctuation,
@@ -2310,7 +2308,7 @@ internal static class CompositionTests
         var list = KeyShortcut.ParseList("Ctrl+Alt+F10");
         Assert.Equal(1, list.Count);
         Assert.True(list[0].Matches(0x79, true, true, false, false), "Ctrl+Alt+F10");
-        Assert.Equal("", new Keyboard().PauseHotkey, "既定は空 (組み込みの Ctrl+Alt+F12)");
+        Assert.Equal("", new Meltype.Config.Settings().PauseHotkey, "既定は空 (組み込みの Ctrl+Alt+F12)");
     }
 
     [Test]

@@ -99,7 +99,6 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             GitHubRepository = options.GitHubRepository,
             GitHubTitles = options.GitHubTitles,
             ClipboardCandidates = options.ClipboardCandidates,
-            PauseHotkey = options.PauseHotkey,
             Punctuation = options.Punctuation,
             TranslationHistory = options.TranslationHistory ?? new TranslationHistory(Config.AppPaths.TranslationHistoryFile),
             Predictor = options.Predictor ?? new Predictor(new PhraseHistory(Config.AppPaths.PhraseHistoryFile), UserDictionary, History),
