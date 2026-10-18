@@ -86,11 +86,31 @@ internal static class ZenzaiConverterTests
     }
 
     [Test]
+    public static void ShortReadingsWithoutContext_AreLeftToOtherEngines()
+    {
+        using var server = new FakeServer { Answer = p => "強" };
+        using var zenzai = new ZenzaiConverter(server.Endpoint);
+        Assert.True(zenzai.ConvertClauses("きょう") is null, "文脈なしの短い読みは頼まない");
+        Assert.Equal(0, server.Prompts.Count, "サーバーにも聞かない");
+        Assert.True(zenzai.ConvertClauses("きょう", "明日は") is [{ Text: "強" }], "文脈があれば短くても使う");
+        Assert.True(zenzai.ConvertClauses("きょうはいいてんき") is [{ Text: "強" }], "長い読みは文脈なしでも使う");
+    }
+
+    [Test]
+    public static void UnchangedAnswer_IsNotUsed_AndDoesNotCountAsFailure()
+    {
+        using var server = new FakeServer { Answer = p => "かんたんなもんだい" };
+        using var zenzai = new ZenzaiConverter(server.Endpoint);
+        for (var i = 0; i < 4; i++) Assert.True(zenzai.ConvertClauses("かんたんなもんだい", "前の文") is null, "読みのままなら null");
+        Assert.True(zenzai.IsAvailable, "変換しなかっただけでは諦めない");
+    }
+
+    [Test]
     public static void ServerErrors_FallBackAndGiveUp()
     {
         using var server = new FakeServer { Status = 500 };
         using var zenzai = new ZenzaiConverter(server.Endpoint);
-        for (var i = 0; i < 3; i++) Assert.True(zenzai.ConvertClauses("あ" + new string('い', i)) is null, "失敗したら null");
+        for (var i = 0; i < 3; i++) Assert.True(zenzai.ConvertClauses("あ" + new string('い', i), "前の文") is null, "失敗したら null");
         Assert.True(!zenzai.IsAvailable, "3 回失敗したら諦める");
         Assert.True(!new ZenzaiConverter("/no/such/llama-server", "/no/such.gguf").IsAvailable, "実行ファイルが無ければ使えない");
     }
@@ -100,9 +120,9 @@ internal static class ZenzaiConverterTests
     {
         using var server = new FakeServer { Answer = p => { Thread.Sleep(300); return "遅い"; } };
         using var zenzai = new ZenzaiConverter(server.Endpoint, timeoutMs: 100);
-        Assert.True(zenzai.ConvertClauses("あ") is null, "間に合わなければ null");
+        Assert.True(zenzai.ConvertClauses("あ", "前の文") is null, "間に合わなければ null");
         var before = server.Prompts.Count;
-        Assert.True(zenzai.ConvertClauses("い") is null, "しばらくは頼まない");
+        Assert.True(zenzai.ConvertClauses("い", "前の文") is null, "しばらくは頼まない");
         Thread.Sleep(50);
         Assert.Equal(before, server.Prompts.Count, "遅いあいだはサーバーに頼まない");
         Assert.True(zenzai.IsAvailable, "遅いだけでは諦めない (また使える)");
@@ -118,7 +138,7 @@ internal static class ZenzaiConverterTests
         var same = hybrid.ConvertClauses("たんいをとる");
         Assert.True(same is [{ Text: "単位を" }, { Text: "取る" }], "同じなら区切りを使う: " + string.Join("|", same?.Select(c => c.Text) ?? []));
         // 違えば Zenzai の結果
-        var other = hybrid.ConvertClauses("たんい");
+        var other = hybrid.ConvertClauses("たんい", "前の文");
         Assert.True(other is [{ Reading: "たんい", Text: "ひらがな" }], "違えば Zenzai: " + string.Join("|", other?.Select(c => c.Text) ?? []));
         // 使わない設定 (null) なら今までどおり
         var off = new HybridConverter(() => ConversionEngine.System, null, new CompositionTests.FakeConverter(), null, () => null);

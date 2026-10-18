@@ -28,6 +28,12 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     private const int MaxContext = 40;
     private const int MaxCache = 256;
 
+    /// <summary>
+    /// 文脈が無いときに Zenzai に任せない、短い読みの長さ。文脈の無い短い読み (きょう → 強、あつい → 厚い) は、
+    /// モデルの癖で外れやすい (実測)。Mozc の頻度の方が合うので、Mozc などに任せる。文脈があれば短くても使う (明日は + きょう → 今日)
+    /// </summary>
+    internal const int ShortReading = 3;
+
     private readonly string _serverPath;
     private readonly string _modelPath;
     private readonly int _timeoutMs;
@@ -85,6 +91,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     {
         if (string.IsNullOrEmpty(hiragana) || hiragana.Length > MaxReading || !IsAvailable || Environment.TickCount64 < Interlocked.Read(ref _pausedUntil)) return null;
         context = context is { Length: > MaxContext } ? context[^MaxContext..] : context;
+        if (string.IsNullOrEmpty(context) && hiragana.Length <= ShortReading) return null;
         var key = context + "\u0000" + hiragana;
         lock (_gate)
         {
@@ -94,11 +101,14 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
         }
         var started = Environment.TickCount64;
         var text = Complete(Prompt(hiragana, context));
+        // 読みのまま (変換していない: かんたん → かんたん) は、Zenzai の答えとして使わない。Mozc などに任せる
+        var unchanged = text == hiragana;
+        if (unchanged) text = null;
         var slow = Environment.TickCount64 - started >= _timeoutMs;
         lock (_gate)
         {
             if (slow) Interlocked.Exchange(ref _pausedUntil, Environment.TickCount64 + BackoffMs);
-            if (text is null && !slow) _failures++;
+            if (text is null && !slow && !unchanged) _failures++;
             else if (text is not null) _failures = 0;
             if (_cache.Count >= MaxCache) _cache.Clear();
             if (text is not null) _cache[key] = text;
