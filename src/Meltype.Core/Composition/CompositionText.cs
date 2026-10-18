@@ -1212,10 +1212,10 @@ public sealed class CompositionText
         return _detector.Romaji.ConvertLenient(pending.ToLowerInvariant(), final);
     }
 
-    /// <summary>日本語の中で打った記号 (Microsoft IME と同じく全角)。英語の区間では打ったままの半角で出す。数字と括弧は半角のまま。</summary>
     /// <summary>( ) を全角にするか (設定「カッコを全角で入力」)。</summary>
     public bool FullWidthParentheses { get; set; }
 
+    /// <summary>日本語の中で打った記号 (Microsoft IME と同じく全角)。英語の区間では打ったままの半角で出す。数字と括弧は半角のまま。</summary>
     private char Symbol(char c) => c switch
     {
         '-' => 'ー',
