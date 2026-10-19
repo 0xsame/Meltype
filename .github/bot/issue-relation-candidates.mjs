@@ -77,7 +77,11 @@ export function extractIssueSignals(issue) {
   const references = [...new Set([...text.matchAll(/(?:^|[^\w])#(\d+)\b/g)].map(match => Number(match[1])))];
   const identifiers = extractIdentifiers(text);
   const terms = extractTerms(title, body).slice(0, MAX_EXTRACTED_TERMS);
-  const labels = new Set((issue?.labels ?? []).map(label => typeof label === 'string' ? label : label.name).filter(Boolean));
+  const labels = new Set(
+    (issue?.labels ?? [])
+      .map(label => typeof label === 'string' ? label : label.name)
+      .filter(Boolean),
+  );
   return { title, text: text.toLowerCase(), references, identifiers, terms, labels };
 }
 function selectSearchTerms(terms) {
@@ -92,9 +96,18 @@ function selectSearchTerms(terms) {
     const lengthBonus = normalized.length >= 8 ? 4 : normalized.length >= 5 ? 2 : 0;
     const priority = weight + lengthBonus + (identifier ? 100 : 0);
     const previous = unique.get(normalized);
-    if (!previous || priority > previous.priority) unique.set(normalized, { term: normalized, priority });
+    if (!previous || priority > previous.priority) {
+      unique.set(normalized, { term: normalized, priority });
+    }
   }
-  return [...unique.values()].sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term)).slice(0, MAX_SEARCH_TERMS).map(entry => entry.term);
+  return [...unique.values()]
+    .sort((a, b) =>
+      b.priority - a.priority ||
+      b.term.length - a.term.length ||
+      a.term.localeCompare(b.term),
+    )
+    .slice(0, MAX_SEARCH_TERMS)
+    .map(entry => entry.term);
 }
 
 export function buildSearchQuery(repo, terms, label = null) {
@@ -109,7 +122,9 @@ export function buildSearchQuery(repo, terms, label = null) {
 export function buildSearchQueries(repo, issue) {
   const signals = extractIssueSignals(issue);
   const labels = [...signals.labels];
-  const preferredLabel = labels.find(label => CATEGORY_LABELS.has(label)) ?? labels.find(label => FALLBACK_LABEL_PATTERN.test(label));
+  const preferredLabel =
+    labels.find(label => CATEGORY_LABELS.has(label)) ??
+    labels.find(label => FALLBACK_LABEL_PATTERN.test(label));
   const primary = buildSearchQuery(repo, signals.terms, preferredLabel ?? null);
   const fallback = buildSearchQuery(repo, signals.terms);
   return [...new Set([primary, fallback].filter(Boolean))].slice(0, MAX_SEARCH_QUERIES);
@@ -165,14 +180,36 @@ export function scoreCandidate(currentIssue, candidate) {
     .sort((a, b) => b.weight - a.weight || b.term.length - a.term.length);
   score.value += Math.min(MAX_TITLE_MATCHES, distinctTitleMatches.length) * 2;
   score.value += Math.min(MAX_BODY_MATCHES, distinctBodyMatches.length);
-  if (score.matchedTerms.length >= 2) score.reasons.push('特徴語が一致: ' + score.matchedTerms.slice(0, 3).map(item => item.term).join('、'));
-  const sharedLabels = [...current.labels].filter(label => other.labels.has(label) && CATEGORY_LABELS.has(label));
+  if (score.matchedTerms.length >= MIN_DISTINCT_MATCHES) {
+    score.reasons.push(
+      '特徴語が一致: ' +
+      score.matchedTerms.slice(0, MAX_IDENTIFIER_REASONS).map(item => item.term).join('、'),
+    );
+  }
+  const sharedLabels = [...current.labels].filter(
+    label => other.labels.has(label) && CATEGORY_LABELS.has(label),
+  );
   if (sharedLabels.length) {
     score.value += sharedLabels.length;
-    if (score.matchedTerms.length >= 2) score.reasons.push('分類ラベルも一致: ' + sharedLabels.join('、'));
+    if (score.matchedTerms.length >= MIN_DISTINCT_MATCHES) {
+      score.reasons.push('分類ラベルも一致: ' + sharedLabels.join('、'));
+    }
   }
-  if (!score.reasons.length || (score.value < 4 && !current.references.includes(candidate.number) && sharedIds.length === 0)) return null;
-  if (!current.references.includes(candidate.number) && sharedIds.length === 0 && score.matchedTerms.length < 2) return null;
+  if (
+    !score.reasons.length ||
+    (score.value < MIN_CANDIDATE_SCORE &&
+      !current.references.includes(candidate.number) &&
+      sharedIds.length === 0)
+  ) {
+    return null;
+  }
+  if (
+    !current.references.includes(candidate.number) &&
+    sharedIds.length === 0 &&
+    score.matchedTerms.length < MIN_DISTINCT_MATCHES
+  ) {
+    return null;
+  }
   return { issue: candidate, score: score.value, reasons: score.reasons };
 }
 function rankCandidates(issue, candidates, maxCandidates) {
@@ -183,7 +220,10 @@ function rankCandidates(issue, candidates, maxCandidates) {
     .slice(0, maxCandidates);
 }
 
-export async function findRelatedIssues(issue, { repo, search, getIssue, maxCandidates = MAX_CANDIDATES }) {
+export async function findRelatedIssues(
+  issue,
+  { repo, search, getIssue, maxCandidates = MAX_CANDIDATES },
+) {
   if (!issue || issue.pull_request || !repo) return [];
   const current = extractIssueSignals(issue);
   const candidates = new Map();
