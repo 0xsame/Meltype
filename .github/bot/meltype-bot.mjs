@@ -97,12 +97,12 @@ async function updateRelatedIssues(issue) {
       search: searchIssues,
       getIssue: async number => gh('GET', '/issues/' + number),
     });
-    // Successful zero-result searches remove stale candidate comments; failures preserve them.
-    const existing = await findBotComment(issue.number, 'related-issues');
     if (candidates.length > 0) {
       await upsertComment(issue.number, 'related-issues', formatRelatedIssueComment(issue, candidates, repo));
-    } else if (existing) {
-      await gh('DELETE', `/issues/comments/${existing.id}`);
+    } else {
+      // Only a successful zero-result search removes stale candidates; failures preserve them.
+      const existing = await findBotComment(issue.number, 'related-issues');
+      if (existing) await gh('DELETE', `/issues/comments/${existing.id}`);
     }
   } catch (error) {
     // Keep the last successful comment when GitHub search is rate-limited or unavailable.
