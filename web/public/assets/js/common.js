@@ -108,6 +108,19 @@ export function initHeader() {
     };
     update();
     window.addEventListener("scroll", update, { passive: true });
+    // マウスで乗せたときは、少し待ってから広げ、離れても少し待ってから縮める。
+    // 通りすがりのカーソルでヒョっと広がったり、端をかすめただけで閉じたりしないように。
+    let peekTimer = 0;
+    const setPeek = (on, delay) => {
+      clearTimeout(peekTimer);
+      peekTimer = setTimeout(() => header.classList.toggle("is-peek", on), delay);
+    };
+    bar.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "mouse") setPeek(true, scrolled ? 90 : 0);
+    });
+    bar.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "mouse") setPeek(false, 320);
+    });
     bar.addEventListener("pointerdown", (event) => {
       tappedIsland = event.pointerType !== "mouse" && scrolled && !header.classList.contains("is-open");
     });
