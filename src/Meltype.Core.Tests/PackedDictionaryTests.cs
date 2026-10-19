@@ -57,6 +57,85 @@ internal static class PackedDictionaryTests
     }
 
     [Test]
+    public static void PackedLines_FindsLinesByKeyInTextOrder()
+    {
+        // 同じ見出しの行は本文の順。欄が足りない行・# の行・空行は飛ばす
+        var lines = PackedLines.FromText("# 見出し\r\nはし\tn\tbridge\r\nあめ\tn\train\r\nはし\tn\tchopsticks\r\nはし\tn\r\n\r\nあ\tn\tah\r\n");
+        Assert.Equal(3, lines.Count);
+        Assert.Equal(4, lines.LineCount);
+        Assert.Equal(2, lines.MaxKeyLength);
+        var (first, count) = lines.Find("はし");
+        Assert.Equal(2, count);
+        Assert.Equal("bridge", lines.Field(first, 2).ToString());
+        Assert.Equal("chopsticks", lines.Field(first + 1, 2).ToString());
+        Assert.Equal("はし", lines.Key(first).ToString());
+        Assert.True(lines.Position(first) < lines.Position(first + 1), "本文の順");
+        Assert.Equal(0, lines.Find("は").Count);
+        Assert.Equal(0, lines.Find("はしご").Count);
+        Assert.Equal(1, lines.Find("あ").Count);
+    }
+
+    [Test]
+    public static void Meanings_StemPicksTheWordWrittenFirst()
+    {
+        // 同じ語幹 (持) の語がいくつかあれば、本文で先に書いてある語の意味を出す
+        Assert.Equal("A", MeaningDictionary.Parse("持つ\t\tA\n持る\t\tB\n").Lookup("持って", null));
+        Assert.Equal("B", MeaningDictionary.Parse("持る\t\tB\n持つ\t\tA\n").Lookup("持って", null));
+        Assert.Equal("① A\n② B", MeaningDictionary.Parse("持る\t\tA\n持つ\t\tC\n持る\t\tB\n").Lookup("持って", null));
+        // 語そのものが辞書にあれば、語幹より先に使う
+        Assert.Equal("C", MeaningDictionary.Parse("持つ\t\tA\n持\t\tC\n").Lookup("持って", null));
+    }
+
+    [Test]
+    public static void Meanings_SelectReadingsBeforeLimitingSenses()
+    {
+        var meanings = MeaningDictionary.Parse("橋\t\t共通\n橋\tはし\t渡る\n橋\tはし\t架かる\n橋\tきょう\t脳\n");
+        Assert.Equal("① 渡る\n② 架かる", meanings.Lookup("橋を", "はしを"));
+        Assert.Equal("共通", meanings.Lookup("橋", "ほか"));
+        var marked = MeaningDictionary.Parse("橋\tはし\t渡る\n橋\tきょう\t脳\n橋\tはし\t架かる\n");
+        Assert.Equal("① 渡る\n② 脳", marked.Lookup("橋", "ほか"));
+        Assert.Equal("① 渡る\n② 脳", marked.Lookup("橋", null));
+        var oneMatch = MeaningDictionary.Parse("橋\tはし\t端\n橋\t\t印なし\n橋\tきょう\t京\n");
+        Assert.Equal("① 京\n② 印なし", oneMatch.Lookup("橋", "きょう"));
+    }
+
+    [Test]
+    public static void Meanings_DoNotUseKatakanaOnlyStems()
+    {
+        var meanings = MeaningDictionary.Parse("ナウい\t\t流行に合っている\n");
+        Assert.Equal("流行に合っている", meanings.Lookup("ナウい", null));
+        Assert.Equal(null, meanings.Lookup("ナウかった", null));
+    }
+
+    [Test]
+    public static void Meanings_DoNotMatchPartOfAKanjiWord()
+    {
+        Assert.Equal(null, MeaningDictionary.Parse("橋\t\tA\n").Lookup("橋渡し", null));
+        Assert.Equal(null, TranslationDictionary.Parse("橋\tn\tbridge\n").Meaning("橋渡し"));
+    }
+
+    [Test]
+    public static void Translations_KeepKindOrderAndDropRepeatedWords()
+    {
+        var translations = TranslationDictionary.Parse("複雑\tna\tcomplex,complicated\n複雑\tn\tcomplexity\n複雑\tna\tcomplex\n複雑\tv\n");
+        // な が付くなら な形容詞の訳を先に (同じ訳は 1 つ)。を が付くなら名詞を先にして、を を付けたまま
+        Assert.Equal("complex|complicated|complexity", string.Join("|", translations.Lookup("複雑な", "")));
+        Assert.Equal("complexityを|complexを|complicatedを", string.Join("|", translations.Lookup("複雑を", "")));
+        Assert.Equal("complexityです|complexです|complicatedです", string.Join("|", translations.Lookup("複雑です", "")));
+        // 助詞・だ・です などでないもの (複雑|ます) が続くなら出さない
+        Assert.Equal(0, translations.Lookup("複雑ます", "").Count);
+        Assert.Equal("complex, complicated, complexity", translations.Meaning("複雑を"));
+    }
+
+    [Test]
+    public static void Translations_LimitDistinctWordsInPriorityOrder()
+    {
+        var translations = TranslationDictionary.Parse("複雑\tn\tA,B,A,C,D,E,F\n複雑\tna\tG,H,G,I,J,K,L\n");
+        Assert.Equal("G|H|I|J|K", string.Join("|", translations.Lookup("複雑な", "")));
+        Assert.Equal("A, B, C, D", translations.Meaning("複雑"));
+    }
+
+    [Test]
     public static void RomajiTypos_KnowReadingsAndTheirForms()
     {
         var romaji = new RomajiDetector(null);
