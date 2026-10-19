@@ -9,10 +9,11 @@ using Meltype.Config;
 
 namespace Meltype.UI;
 
-/// <summary>タスクトレイ (設計書 §28)。Ctrl+Alt+F12 で自動切替の一時停止/再開。</summary>
+/// <summary>タスクトレイ (設計書 §28)。Ctrl+Alt+F12 で Meltype の一時停止/再開。</summary>
 internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly MeltypeEngine _engine;
+    private static readonly Meltype.Composition.GitHubIssueTitles GitHubTitlesShared = new();
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _enabledItem;
@@ -23,7 +24,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Icon _directIcon = CreateIcon("A", Color.FromArgb(0, 120, 212));
     private readonly Icon _offIcon = CreateIcon("A", Color.FromArgb(120, 120, 120));
     private readonly ToolStripMenuItem _keyboardModeItem;
-    private readonly ToolStripMenuItem _autoSwitchModeItem;
     private readonly ToolStripMenuItem _levelItem;
     private readonly ToolStripMenuItem _profileItem;
     private readonly Composition.CompositionService _composition;
@@ -67,9 +67,35 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ContinueAfterConversion = () => _engine.Settings.ContinueAfterConversion,
             Learning = () => _engine.Settings.LearningEnabled,
             SeparateKeyRoles = () => _engine.Settings.SeparateKeyRoles,
+            EnglishFirstInput = () => _engine.Settings.EnglishFirstInput,
+            ConsonantAbbreviations = () => _engine.Settings.ConsonantAbbreviations,
             CorrectTypos = () => _engine.Settings.CorrectTypos,
             SlashAsMiddleDot = () => _engine.Settings.SlashAsMiddleDot,
             SpaceAroundEnglish = () => _engine.Settings.SpaceAroundEnglish,
+            ShiftSpaceHalfWidth = () => _engine.Settings.ShiftSpaceHalfWidth,
+            EnterCommitsAsShown = () => _engine.Settings.EnterCommitsAsShown,
+            AlphanumericKeyStartsAsTyped = () => _engine.Settings.AlphanumericKeyStartsAsTyped,
+            FullWidthParentheses = () => _engine.Settings.FullWidthParentheses,
+            FullWidthSlash = () => _engine.Settings.FullWidthSlash,
+            SquareBrackets = () => _engine.Settings.SquareBrackets,
+            EscStepsBack = () => _engine.Settings.EscStepsBack,
+            EscRevertsSelectedClause = () => _engine.Settings.EscRevertsSelectedClause,
+            FunctionKeysAffectSelectedClause = () => _engine.Settings.FunctionKeysAffectSelectedClause,
+            CompatibleShortcuts = () => _engine.Settings.CompatibleShortcuts,
+            PartialCommit = () => _engine.Settings.PartialCommit,
+            MacControlKeys = () => _engine.Settings.MacControlKeys,
+            CursorIntoBrackets = () => _engine.Settings.CursorIntoBrackets,
+            ControlKeyBindings = () => _engine.Settings.ControlKeyBindings,
+            CalculatorCandidates = () => _engine.Settings.CalculatorCandidates,
+            LogKeyIntervals = () => _engine.Settings.LogKeyIntervals,
+            LaughterAfterKana = () => _engine.Settings.LaughterAfterKana,
+            ContextualLearning = () => _engine.Settings.ContextualLearning,
+            FullWidthSpaceByDefault = () => _engine.Settings.FullWidthSpaceByDefault,
+            ShowCandidatesWhileTyping = () => _engine.Settings.ShowCandidatesWhileTyping,
+            GitHubIssueCandidates = () => _engine.Settings.GitHubIssueCandidates,
+            GitHubRepository = () => _engine.Settings.GitHubRepository,
+            GitHubTitles = () => GitHubTitlesShared,
+            ClipboardCandidates = () => _engine.Settings.ClipboardCandidates,
             Punctuation = () => _engine.Settings.Punctuation,
             KanaInput = () => _engine.Settings.InputStyle == InputStyle.Kana,
             ModeIndicator = () => _engine.Settings is { Enabled: true, Mode: InputMode.Keyboard, ShowModeIndicator: true },
@@ -91,14 +117,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _statusItem = new ToolStripMenuItem { Enabled = false };
         _enabledItem = new ToolStripMenuItem("Meltype を有効にする", null, (_, _) => ToggleEnabled()) { CheckOnClick = false };
         _keyboardModeItem = new ToolStripMenuItem("Meltype キーボード (変換ボックスで入力)", null, (_, _) => SetMode(InputMode.Keyboard));
-        _autoSwitchModeItem = new ToolStripMenuItem("IME 自動切替 (Microsoft IME を使う)", null, (_, _) => SetMode(InputMode.AutoSwitch));
         _tsfModeItem = new ToolStripMenuItem("Meltype IME (入力欄に直接入力)", null, (_, _) => SetMode(InputMode.Tsf));
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_enabledItem);
         menu.Items.Add(_tsfModeItem);
         menu.Items.Add(_keyboardModeItem);
-        menu.Items.Add(_autoSwitchModeItem);
         // 自動判定の強さ (積極的 / 標準 / 慎重 / 手動)
         _levelItem = new ToolStripMenuItem("自動判定の強さ");
         foreach (var level in Enum.GetValues<DetectionLevel>())
@@ -151,12 +175,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _tray = new NotifyIcon { ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => ToggleEnabled();
-        _hotkey = new HotkeyWindow(ToggleEnabled);
+        _hotkey = new HotkeyWindow(ToggleEnabled, HotkeyWindow.WithCustom(_engine.Settings.PauseHotkey, HotkeyWindow.ToggleKeys));
         _registerHotkey = new HotkeyWindow(RegisterSelectedWord, HotkeyWindow.RegisterWordKeys, "単語の登録");
         _engine.ToggleRequested += OnToggleRequested;
         _enabledItem.Text = _hotkey.Name is { } hotkey ? $"Meltype を有効にする (Ctrl+半角/全角, {hotkey})" : "Meltype を有効にする (Ctrl+半角/全角)";
         _engine.StatusChanged += OnEngineStatusChanged;
-        _engine.ImeSuggested += OnImeSuggested;
         _updater = new Updater(() => _engine.Settings.AutoUpdate);
         _updater.Ready += OnUpdateReady;
         ShowUpdateItem();
@@ -327,7 +350,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             // 判定は新しい版の Meltype.exe を起動して待つので、UI スレッドの外で行う (待つ間も Meltype IME に応答するため)
             if (Updater.Staged() is { } staged)
             {
-                var words = _composition.Languages.Entries().Select(e => e.Word).ToList();
+                var words = _composition.Languages.Entries().Select(e => e.Word).Distinct().ToList();
                 var preview = await Task.Run(() => Updater.PreviewChanges(words));
                 if (!UpdateChangesDialog.Confirm(_composition.Languages, staged.Version, _engine.Settings, preview)) return;
             }
@@ -355,22 +378,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private void OnToggleRequested()
     {
         if (_invoker.IsHandleCreated && !_invoker.IsDisposed) _invoker.BeginInvoke(ToggleEnabled);
-    }
-
-    private long _lastSuggestion = long.MinValue;
-
-    private void OnImeSuggested()
-    {
-        if (!_invoker.IsHandleCreated || _invoker.IsDisposed) return;
-        _invoker.BeginInvoke(() =>
-        {
-            // 打つたびに出るとうるさいので 30 秒に 1 回まで。
-            var now = Environment.TickCount64;
-            if (now - _lastSuggestion < 30000) return;
-            _lastSuggestion = now;
-            if (!_engine.Settings.ShowNotifications) return;
-            ShowBalloonTip(2000, "Meltype (手動)", "日本語を打っているようです。半角/全角 で日本語入力にできます。");
-        });
     }
 
     private void OnEngineStatusChanged()
@@ -477,7 +484,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var tsf = settings.Mode == InputMode.Tsf;
         _enabledItem.Checked = enabled;
         _keyboardModeItem.Checked = keyboard;
-        _autoSwitchModeItem.Checked = settings.Mode == InputMode.AutoSwitch;
         _tsfModeItem.Checked = tsf;
         // Meltype IME を使えない (ARM64 の Windows・登録されていない・キーボードの一覧に無い) なら選べない
         // (選ぶとキーボードフックが止まり、どこでも何も起きなくなる)
@@ -498,16 +504,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _tray.Icon = _onIcon;
             status = registered ? "Meltype IME (Win + Space で Meltype を選んで入力)" : "Meltype IME が登録されていません (Install.cmd か Install-Meltype.ps1 で入れるか、別の動作モードを選んでください)";
         }
-        else if (keyboard)
+        else
         {
             _tray.Icon = _engine.KeyboardDirect ? _directIcon : _onIcon;
             status = _engine.KeyboardDirect ? "キーボード: 直接入力 (半角/全角 で日本語)" : "キーボード: 日本語";
-        }
-        else
-        {
-            _tray.Icon = _onIcon;
-            var last = _engine.LastDecision;
-            status = last is null || last.Text.Length == 0 ? "IME 自動切替: ON" : $"IME 自動切替: ON / 直前の判定: {last.Verdict}";
         }
         _statusItem.Text = status;
         var tip = $"Meltype — {status}";
@@ -661,20 +661,20 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void ResetLearning()
     {
-        var answer = MessageBox.Show("学習データ (自動切替の学習 model.json、選び直した変換 conversions.json、英字 / かなに直した語 languages.json、予測変換の語句 phrases.txt、選んだ英訳 translations.json) をすべて削除します。よろしいですか？\n\nユーザー辞書 (userdict.txt) と設定は消えません。", "Meltype", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
+        var answer = MessageBox.Show("学習データ (選び直した変換 conversions.json、英字 / かなに直した語 languages.json、予測変換の語句 phrases.txt、選んだ英訳 translations.json) をすべて削除します。よろしいですか？\n\nユーザー辞書 (userdict.txt) と設定は消えません。", "Meltype", MessageBoxButtons.OKCancel, MessageBoxIcon.Question);
         if (answer == DialogResult.OK)
         {
-            _engine.ResetLearning();
             _composition.History.Clear();
             _composition.Languages.Clear();
             _composition.Phrases?.Clear();
             _composition.TranslationHistory?.Clear();
+            Diagnostics.Log.Info("学習データをリセットしました。");
         }
     }
 
     /// <summary>
     /// 最近覚えたものだけを忘れる (一時的な入力・間違えて覚えたものを、全体をリセットせずに消す: issue #277)。
-    /// 選び直した変換・英字 / かなに直した語・予測変換の語句が対象。自動切替の学習と英訳の記録は覚えた時刻を持たないので、「すべて」で消す。
+    /// 選び直した変換・英字 / かなに直した語・予測変換の語句が対象。英訳の記録は覚えた時刻を持たないので、「すべて」で消す。
     /// </summary>
     private void ForgetRecentLearning(DateTime sinceUtc, string label)
     {
@@ -732,7 +732,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         _engine.StatusChanged -= OnEngineStatusChanged;
         _engine.ToggleRequested -= OnToggleRequested;
-        _engine.ImeSuggested -= OnImeSuggested;
         _tipServer.Dispose();
         _engine.DetachComposition();
         _composition.Dispose();
@@ -798,6 +797,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
             (MOD_CONTROL, 0x76, "Ctrl+F7"),
             (MOD_CONTROL | MOD_ALT, 0x76, "Ctrl+Alt+F7"),
         ];
+
+        /// <summary>設定「一時停止 / 再開のホットキー」(Ctrl+Alt+F10 など) を先頭の候補にする。読めなければ組み込みの候補だけ。</summary>
+        public static (uint Modifiers, uint Key, string Name)[] WithCustom(string? setting, (uint Modifiers, uint Key, string Name)[] defaults)
+        {
+            var custom = Meltype.Input.KeyShortcut.ParseList(setting).Take(1)
+                .Select(shortcut => (
+                    (shortcut.Ctrl ? MOD_CONTROL : 0u) | (shortcut.Alt ? MOD_ALT : 0u) | (shortcut.Shift ? MOD_SHIFT : 0u) | (shortcut.Win ? 0x0008u : 0u),
+                    (uint)shortcut.Vk,
+                    setting!.Trim()))
+                .ToArray();
+            return [.. custom, .. defaults];
+        }
 
         public string? Name { get; }
 
