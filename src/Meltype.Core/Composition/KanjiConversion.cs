@@ -31,6 +31,16 @@ public interface IWideContextConverter
     string? WideContext { get; set; }
 }
 
+/// <summary>
+/// 文節ごとの候補に足す「その読みだけの変換」を、Zenzai を使わずに出せる変換エンジン (HybridConverter)。
+/// 文節の数だけ頼むので、Zenzai に頼むと 1 文節ごとに待たされる (CPU のみで、文節に分かれた文の変換 1 回あたり中央値 98 ミリ秒増えた)。
+/// 最初の候補 (文の中での変換結果) は ConvertClauses のままなので、Zenzai の結果が使われる。
+/// </summary>
+public interface IStandaloneConverter
+{
+    string? ConvertStandalone(string hiragana);
+}
+
 /// <summary>確定した変換を覚えられる変換エンジン (Mozc)。次から同じ読みで同じ文字列を先に出す。</summary>
 public interface ILearningConverter
 {

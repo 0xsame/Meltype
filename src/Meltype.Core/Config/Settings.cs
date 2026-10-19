@@ -336,7 +336,7 @@ public sealed class Settings
     public ConversionEngine ConversionEngine { get; set; } = ConversionEngine.Hybrid;
 
     [Category("1. 全般"), DisplayName("Zenzai を使う (Windows・実験)"),
-     Description("ニューラルかな漢字変換モデル Zenzai (azooKey の zenz) で変換します。llama.cpp の llama-server と zenz の GGUF ファイルを自分で用意し、下の 2 つの場所を指定してください (どちらも Meltype には同梱しません)。使えないとき・応答が遅いときは、今までの変換エンジンで変換します。変換結果は読み全体で 1 つの文節になります。既定は OFF です。")]
+     Description("ニューラルかな漢字変換モデル Zenzai (azooKey の zenz) で変換します。llama.cpp の llama-server と zenz の GGUF ファイルを自分で用意し、下の 2 つの場所を指定してください (どちらも Meltype には同梱しません)。使えないとき・応答が遅いときは、今までの変換エンジンで変換します。変換結果は、Mozc の文節ごとの候補で作れるときは Mozc の文節に分け、作れないときは読み全体で 1 つの文節になります。既定は OFF です。")]
     public bool UseZenzai { get; set; }
 
     [Category("1. 全般"), DisplayName("Zenzai: llama-server の場所"),
