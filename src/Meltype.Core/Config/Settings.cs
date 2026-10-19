@@ -292,7 +292,7 @@ public sealed class Settings
     public bool ContextualLearning { get; set; }
 
     [Category("1. 全般"), DisplayName("スペースを全角で入力 (Shift + Space で半角)"),
-     Description("日本語入力のときの Space (何も打っていないとき) を全角スペースにし、Shift + Space を半角スペースにします (全角スペースを多く使う人向け。Meltype キーボードで使えます)。")]
+     Description("日本語入力のときの Space (何も打っていないとき) を全角スペースにし、Shift + Space を半角スペースにします (全角スペースを多く使う人向け。Meltype キーボード・Meltype IME で使えます)。")]
     public bool FullWidthSpaceByDefault { get; set; }
 
     [Category("1. 全般"), DisplayName("入力中も変換候補をいくつか表示"),

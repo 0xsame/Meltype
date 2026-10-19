@@ -151,6 +151,7 @@ private:
     bool serverActive_ = false;
     bool directDetection_ = false; // 英数状態でもローマ字検知が有効 (Meltype.exe の応答)
     bool directEnglishWord_ = false;
+    bool fullWidthSpace_ = false;  // 設定「スペースを全角で入力」(Meltype.exe の応答の fullWidthSpace。日本語入力のときは Space も受け取る)
     ULONGLONG lastHello_ = 0;
     bool open_ = true;
     bool codeApp_ = false;         // コードエディター・ターミナル (Meltype.exe の応答の code)
