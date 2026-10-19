@@ -53,6 +53,15 @@ fcitx5 のアドオンは、Ubuntu 24.04 の fcitx5 5.1 で作っています。
    bash install.sh
    ```
 
+Debian / Ubuntu では、`.deb` からも入れられます (apt で外せます。中身は `install.sh` で入れるものと同じです)。
+[Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `meltype_<version>_amd64.deb` をダウンロードして、次を実行します。
+
+```bash
+sudo apt install ./meltype_<version>_amd64.deb
+```
+
+`.deb` は IBus と fcitx5 の両方に入れます (IBus の部品は「おすすめ」なので、ふつうは一緒に入ります)。新しい版は、新しい `.deb` を同じように入れると更新されます。
+
 <a name="ibus-のとき"></a>
 <img src="../docs/images/headings/linux/s01.svg" alt="IBus のとき" height="40">
 
@@ -114,6 +123,8 @@ bash uninstall.sh
 # 設定と学習データも消すなら
 bash uninstall.sh --data
 ```
+
+`.deb` で入れたときは `sudo apt remove meltype` で外します (設定と学習データ `~/.local/share/Meltype` は残るので、要らなければ消してください)。
 
 <br>
 
