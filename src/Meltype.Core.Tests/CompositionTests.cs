@@ -392,6 +392,15 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Issue887_ExeStaysEnglish()
+    {
+        // xe (ぇ) の小書きの綴りで最後まで読めても、拡張子の exe は英字のまま (えぇ になっていた)
+        var k = new Keyboard();
+        k.Type("exe");
+        Assert.Equal("exe", k.Showing, "exe は英字のまま");
+    }
+
+    [Test]
     public static void Issue835_DocsSlashStaysEnglish()
     {
         var k = new Keyboard();
