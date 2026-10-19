@@ -288,6 +288,8 @@ internal sealed class SettingsForm : Form, IMessageFilter
     {
         var properties = typeof(Settings).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.CanWrite && p.GetCustomAttribute<BrowsableAttribute>()?.Browsable != false)
+            // ポータブル版では動作モードと IME 切替の詳細設定を使わないため、設定画面には表示しない。
+            .Where(p => !AppPaths.IsPortable || (p.GetCustomAttribute<CategoryAttribute>()?.Category != "6. IME" && p.Name != nameof(Settings.Mode)))
             .GroupBy(p => p.GetCustomAttribute<CategoryAttribute>()?.Category ?? "その他")
             .OrderBy(g => g.Key, StringComparer.Ordinal);
         foreach (var category in properties)
@@ -343,7 +345,8 @@ internal sealed class SettingsForm : Form, IMessageFilter
             var values = Enum.GetValues(type).Cast<object>().ToList();
             var combo = DropDown(values.Select(v => EnumName(type, v)).ToArray());
             // Meltype IME を使えない (ARM64 の Windows・登録されていない・キーボードの一覧に無い) なら、灰色にして選ばせない
-            if (property.Name == nameof(Settings.Mode) && _engine.Settings.Mode != InputMode.Tsf && !Tip.TipServer.IsUsable)
+            if (!AppPaths.IsPortable && property.Name == nameof(Settings.Mode) &&
+                _engine.Settings.Mode != InputMode.Tsf && !Tip.TipServer.IsUsable)
                 DisableChoice(combo, values.IndexOf(InputMode.Tsf));
             return new Binding(property, combo,
                 s => combo.SelectedIndex = values.IndexOf(property.GetValue(s)!),

@@ -33,6 +33,12 @@ internal static class SelfTest
 
         ApplicationConfiguration.Initialize();
         Check("バージョン", () => AppInfo.Version);
+        Check("ポータブル版のデータ保存先", () =>
+        {
+            if (!Config.AppPaths.IsPortable) return "portable marker が無い通常版";
+            Directory.CreateDirectory(Config.AppPaths.DataDirectory);
+            return Config.AppPaths.DataDirectory;
+        });
         Check("設定", () => new Config.Settings().Clone().Normalize().Mode.ToString());
         Check("設定の保存と読み込み", () =>
         {
