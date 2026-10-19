@@ -15,7 +15,7 @@
 3. GitHub Actions が Windows (build.yml)・Mac (mac.yml)・Linux (linux.yml) の配布物を作り、リリースに付ける
    - Windows: `Meltype-<版>-setup.exe` (インストーラー)、`Meltype-<版>-windows.zip`、`Meltype-<版>-windows-portable.zip`
    - Mac: `Meltype-<版>-mac.zip`、Linux: `Meltype-<版>-linux.zip` と `meltype_<版>_amd64.deb`、ARM64 の `Meltype-<版>-linux-arm64.zip` と `meltype_<版>_arm64.deb` (どれもプレビュー版。.deb の版は `1.2.2-pre.2` なら `1.2.2~pre.2`)
-   - Mac はタグのとき、Homebrew Cask を作り、このリポジトリの `Casks/meltype.rb` を更新します
+   - Mac はタグのとき、Homebrew Cask の更新 PR を作ります。PR を main に入れると、このリポジトリの `Casks/meltype.rb` が更新されます
 4. リリースのページにリリースノートを書く (bot を使うと、リリースノートの下書きまで自動で作ります。下の「bot でリリースする」)
 5. 使っている人の Meltype (Windows) は、自動で新しい版に更新されます
 
@@ -71,7 +71,7 @@ node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-windows.zip dist/Meltype-
   - setup.exe を渡すと、インストーラー (このユーザーだけに入れる・管理者権限なし) のマニフェストになります。Meltype IME・起動時の起動が入り、Meltype の自動更新と同じ場所に入るので、こちらを使います (渡さなければ zip の portable)
   - **2 つ目の版からは自動**: 最初の版が取り込まれたら、`microsoft/winget-pkgs` をフォークし、`public_repo` の権限のトークンを秘密 `WINGET_TOKEN` に登録します。以後はリリースを公開するたびに `.github/workflows/winget.yml` が新しい版の Pull Request を出します (`WINGET_TOKEN` が無ければ何もしません)。使う人は `winget install Yukishiro.Meltype` / `winget upgrade Yukishiro.Meltype`
 - **Scoop**: 自分のバケット (例: `yksr-melt/scoop-bucket`) を作り、`scoop/meltype.json` を `bucket/` に置く。使う人は `scoop bucket add yksr-melt https://github.com/yksr-melt/scoop-bucket` → `scoop install meltype`
-- **Homebrew Cask**: タグのリリース時に `Casks/meltype.rb` を自動更新します。このリポジトリを tap として登録します:
+- **Homebrew Cask**: タグのリリース時に `Casks/meltype.rb` の更新 PR が自動で作られます。PR を main に入れると、新しい版をこのリポジトリからインストールできます。このリポジトリを tap として登録します:
   ```bash
   brew tap yksr-melt/Meltype https://github.com/yksr-melt/Meltype.git
   brew install --cask yksr-melt/Meltype/meltype
@@ -81,6 +81,7 @@ node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-windows.zip dist/Meltype-
   - 署名と公証 (mac.yml の秘密) が無い版は、自分用の署名 (ad hoc) です。cask は隔離属性を外しますが、Homebrew の本家 (homebrew/cask) には出せません (自分の tap なら使えます)
 - **apt (.deb)**: linux.yml が amd64 / arm64 の `.deb` を作り、リリースに付けます。署名鍵を登録すると、署名付き apt リポジトリを GitHub Pages に自動公開します。
   - 初回だけ GitHub の Settings → Pages → Build and deployment → Source を「GitHub Actions」にします
+  - Settings → Environments → `github-pages` → Deployment branches and tags で、タグのルール `v*` を許可します (リリースタグからの公開に必要です)
   - Linux / WSL で GPG 鍵を作り、できた Base64 の文字列を Actions secret `APT_SIGNING_KEY_B64` に登録します。秘密鍵はコミットしません:
     ```bash
     gpg --batch --pinentry-mode loopback --passphrase '' --quick-generate-key "Meltype APT repository" rsa4096 sign 0
