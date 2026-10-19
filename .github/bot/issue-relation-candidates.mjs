@@ -105,14 +105,28 @@ export function scoreCandidate(currentIssue, candidate) {
     score.value += 12 * sharedIds.length;
     score.reasons.push('エラー識別子が一致: ' + sharedIds.slice(0, 3).join(', '));
   }
+  // Compare signals in both directions. Otherwise a related term that survives
+  // the 80-term cap on only one issue can be missed depending on which issue
+  // triggered the search.
+  const currentBody = current.text.slice(current.title.length + 1);
+  const otherBody = other.text.slice(other.title.length + 1);
+  const sharedTerms = new Map();
+  for (const [term, weight] of [...current.terms, ...other.terms]) {
+    if (term.length < 3 || STOPWORDS.has(term)) continue;
+    sharedTerms.set(term, Math.max(sharedTerms.get(term) ?? 0, weight));
+  }
   const titleMatches = [];
   const bodyMatches = [];
-  const otherBody = other.text.slice(other.title.length + 1);
-  for (const [term, weight] of current.terms) {
-    if (term.length < 3 || STOPWORDS.has(term)) continue;
-    if (other.title.toLowerCase().includes(term)) {
+  for (const [term, weight] of sharedTerms) {
+    const inCurrentTitle = current.title.toLowerCase().includes(term);
+    const inOtherTitle = other.title.toLowerCase().includes(term);
+    const inCurrentBody = term.length >= 5 && currentBody.includes(term);
+    const inOtherBody = term.length >= 5 && otherBody.includes(term);
+    if ((inCurrentTitle && inOtherTitle) ||
+        (inCurrentTitle && inOtherBody) ||
+        (inOtherTitle && inCurrentBody)) {
       titleMatches.push({ term, weight });
-    } else if (term.length >= 5 && otherBody.includes(term)) {
+    } else if (inCurrentBody && inOtherBody) {
       bodyMatches.push({ term, weight });
     }
   }
