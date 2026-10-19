@@ -92,7 +92,7 @@ function selectSearchTerms(terms) {
     if (typeof term !== 'string') continue;
     const normalized = term.trim().toLowerCase().replace(/["\\]/g, '');
     if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\d+$/.test(normalized)) continue;
-    const identifier = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\d{2})$/i.test(normalized);
+    const identifier = IDENTIFIER_PATTERN.test(normalized);
     const lengthBonus = normalized.length >= 8 ? 4 : normalized.length >= 5 ? 2 : 0;
     const priority = weight + lengthBonus + (identifier ? 100 : 0);
     const previous = unique.get(normalized);
