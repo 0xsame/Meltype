@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Akatuki1121
 // Small live evaluation of the candidate pipeline against public historical Issues.
-// Run manually with a read-only GITHUB_TOKEN; not on every PR push.
+// Runs on relevant PR changes or manually with a read-only GITHUB_TOKEN; checks only fixed cases.
 import { findRelatedIssues, scoreCandidate } from './issue-relation-candidates.mjs';
 
 const repo = process.env.EVALUATION_REPOSITORY || 'yksr-melt/Meltype';
@@ -59,7 +59,7 @@ const positives = results.filter(result => result.related);
 const negatives = results.filter(result => !result.related);
 console.log(JSON.stringify({
   mode: 'live GitHub Issue API + candidate search/scoring pipeline',
-  boundedRequests: '4 source Issues, 4 expected Issues, 4 Issue searches, plus explicit-reference lookups only',
+  boundedRequests: '4 source Issues, 4 expected Issues, at most 8 bounded Issue searches, plus explicit-reference lookups only',
   summary: {
     cases: results.length,
     passed: results.filter(result => result.pass).length,
