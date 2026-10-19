@@ -150,7 +150,7 @@ test('does not use priority labels as the classification filter', () => {
   const issue = {
     number: 46,
     title: 'A specific startup failure',
-    body: '### Details\\nWin32Error 0x80004005',
+    body: '### Details\nWin32Error 0x80004005',
     labels: [{ name: '優先: 高' }],
   };
   const queries = buildSearchQueries('yksr-melt/Meltype', issue);
@@ -162,13 +162,13 @@ test('does not issue the keyword fallback when the label query already finds a s
   const current = {
     number: 47,
     title: 'Win32Error startup failure',
-    body: '### Details\\n0x80004005',
+    body: '### Details\n0x80004005',
     labels: [{ name: 'bug' }],
   };
   const related = {
     number: 48,
     title: 'Win32Error 0x80004005 startup failure',
-    body: '### Details\\nStartup fails with 0x80004005',
+    body: '### Details\nStartup fails with 0x80004005',
     labels: [{ name: 'bug' }],
   };
   const calls = [];
