@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Akatuki1121
 
+const MAX_SEARCH_TERMS = 5;
+const MAX_SEARCH_QUERIES = 2;
+const MAX_EXTRACTED_TERMS = 80;
+const MAX_CANDIDATES = 5;
+const MAX_IDENTIFIER_REASONS = 3;
+const MAX_TITLE_MATCHES = 3;
+const MAX_BODY_MATCHES = 4;
+const MIN_BODY_TERM_LENGTH = 5;
+const IDENTIFIER_PATTERN = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\\d{2})$/i;
+const FALLBACK_LABEL_PATTERN = /^(?:win10|win11|windows|mac|linux)$|^アプリ:/i;
+
 const STOPWORDS = new Set([
   'this', 'that', 'with', 'from', 'have', 'when', 'where', 'what', 'which',
   'would', 'could', 'should', 'there', 'their', 'about', 'into', 'issue',
@@ -65,7 +76,7 @@ export function extractIssueSignals(issue) {
   const text = title + '\n' + body;
   const references = [...new Set([...text.matchAll(/(?:^|[^\w])#(\d+)\b/g)].map(match => Number(match[1])))];
   const identifiers = extractIdentifiers(text);
-  const terms = extractTerms(title, body).slice(0, 80);
+  const terms = extractTerms(title, body).slice(0, MAX_EXTRACTED_TERMS);
   const labels = new Set((issue?.labels ?? []).map(label => typeof label === 'string' ? label : label.name).filter(Boolean));
   return { title, text: text.toLowerCase(), references, identifiers, terms, labels };
 }
@@ -83,7 +94,7 @@ function selectSearchTerms(terms) {
     const previous = unique.get(normalized);
     if (!previous || priority > previous.priority) unique.set(normalized, { term: normalized, priority });
   }
-  return [...unique.values()].sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term)).slice(0, 5).map(entry => entry.term);
+  return [...unique.values()].sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term)).slice(0, MAX_SEARCH_TERMS).map(entry => entry.term);
 }
 
 export function buildSearchQuery(repo, terms, label = null) {
@@ -98,10 +109,10 @@ export function buildSearchQuery(repo, terms, label = null) {
 export function buildSearchQueries(repo, issue) {
   const signals = extractIssueSignals(issue);
   const labels = [...signals.labels];
-  const preferredLabel = labels.find(label => CATEGORY_LABELS.has(label)) ?? labels.find(label => /^(?:win10|win11|windows|mac|linux)$|^アプリ:/i.test(label));
+  const preferredLabel = labels.find(label => CATEGORY_LABELS.has(label)) ?? labels.find(label => FALLBACK_LABEL_PATTERN.test(label));
   const primary = buildSearchQuery(repo, signals.terms, preferredLabel ?? null);
   const fallback = buildSearchQuery(repo, signals.terms);
-  return [...new Set([primary, fallback].filter(Boolean))].slice(0, 2);
+  return [...new Set([primary, fallback].filter(Boolean))].slice(0, MAX_SEARCH_QUERIES);
 }
 export function scoreCandidate(currentIssue, candidate) {
   if (!candidate || candidate.pull_request || candidate.number === currentIssue.number) return null;
@@ -115,7 +126,7 @@ export function scoreCandidate(currentIssue, candidate) {
   const sharedIds = current.identifiers.filter(id => other.identifiers.includes(id));
   if (sharedIds.length) {
     score.value += 12 * sharedIds.length;
-    score.reasons.push('エラー識別子が一致: ' + sharedIds.slice(0, 3).join(', '));
+    score.reasons.push('エラー識別子が一致: ' + sharedIds.slice(0, MAX_IDENTIFIER_REASONS).join(', '));
   }
   // Compare signals in both directions. Otherwise a related term that survives
   // the 80-term cap on only one issue can be missed depending on which issue
@@ -132,7 +143,7 @@ export function scoreCandidate(currentIssue, candidate) {
   for (const [term, weight] of sharedTerms) {
     const inCurrentTitle = current.title.toLowerCase().includes(term);
     const inOtherTitle = other.title.toLowerCase().includes(term);
-    const inCurrentBody = term.length >= 5 && currentBody.includes(term);
+    const inCurrentBody = term.length >= MIN_BODY_TERM_LENGTH && currentBody.includes(term);
     const inOtherBody = term.length >= 5 && otherBody.includes(term);
     if ((inCurrentTitle && inOtherTitle) ||
         (inCurrentTitle && inOtherBody) ||
@@ -152,8 +163,8 @@ export function scoreCandidate(currentIssue, candidate) {
   const distinctBodyMatches = meaningfulMatches(bodyMatches);
   score.matchedTerms = [...distinctTitleMatches, ...distinctBodyMatches]
     .sort((a, b) => b.weight - a.weight || b.term.length - a.term.length);
-  score.value += Math.min(3, distinctTitleMatches.length) * 2;
-  score.value += Math.min(4, distinctBodyMatches.length);
+  score.value += Math.min(MAX_TITLE_MATCHES, distinctTitleMatches.length) * 2;
+  score.value += Math.min(MAX_BODY_MATCHES, distinctBodyMatches.length);
   if (score.matchedTerms.length >= 2) score.reasons.push('特徴語が一致: ' + score.matchedTerms.slice(0, 3).map(item => item.term).join('、'));
   const sharedLabels = [...current.labels].filter(label => other.labels.has(label) && CATEGORY_LABELS.has(label));
   if (sharedLabels.length) {
@@ -164,7 +175,15 @@ export function scoreCandidate(currentIssue, candidate) {
   if (!current.references.includes(candidate.number) && sharedIds.length === 0 && score.matchedTerms.length < 2) return null;
   return { issue: candidate, score: score.value, reasons: score.reasons };
 }
-export async function findRelatedIssues(issue, { repo, search, getIssue, maxCandidates = 5 }) {
+function rankCandidates(issue, candidates, maxCandidates) {
+  return [...candidates.values()]
+    .map(candidate => scoreCandidate(issue, candidate))
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || b.issue.number - a.issue.number)
+    .slice(0, maxCandidates);
+}
+
+export async function findRelatedIssues(issue, { repo, search, getIssue, maxCandidates = MAX_CANDIDATES }) {
   if (!issue || issue.pull_request || !repo) return [];
   const current = extractIssueSignals(issue);
   const candidates = new Map();
@@ -177,16 +196,18 @@ export async function findRelatedIssues(issue, { repo, search, getIssue, maxCand
       // References to deleted or inaccessible issues are ignored.
     }
   }
-  // Label-filtered search first, then one keyword-only fallback. Never scan all Issues.
+  // Try the label-scoped query first. Use the keyword fallback only if it yields
+  // no evidence-backed candidates; this keeps the normal path to one search request.
   const queries = buildSearchQueries(repo, issue);
   for (const query of queries) {
     const result = await search(query);
     for (const candidate of (result?.items ?? result ?? [])) {
       if (candidate?.number && !candidate.pull_request) candidates.set(candidate.number, candidate);
     }
+    const ranked = rankCandidates(issue, candidates, maxCandidates);
+    if (ranked.length > 0) return ranked;
   }
-  return [...candidates.values()].map(candidate => scoreCandidate(issue, candidate)).filter(Boolean)
-    .sort((a, b) => b.score - a.score || b.issue.number - a.issue.number).slice(0, maxCandidates);
+  return rankCandidates(issue, candidates, maxCandidates);
 }
 function safeTitle(title) {
   return String(title ?? '').replace(/[\r\n]+/g, ' ').replace(/[<>]/g, '')
