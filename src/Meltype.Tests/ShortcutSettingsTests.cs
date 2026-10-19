@@ -42,11 +42,14 @@ internal static class ShortcutSettingsTests
         JsonDocument Hello() => JsonDocument.Parse(server.Handle("{\"op\":\"hello\",\"process\":\"harness\"}", sessions));
         using var first = Hello();
         Assert.True(first.RootElement.GetProperty("active").GetBoolean(), "IME モードでは有効");
+        Assert.True(!first.RootElement.GetProperty("fullWidthSpace").GetBoolean(), "全角スペースの既定値も送る");
         var bindings = first.RootElement.GetProperty("toggleShortcuts");
         Assert.Equal(1, bindings.GetArrayLength(), "単独押しを除外して IME に送る");
         Assert.Equal(0x20, bindings[0].GetProperty("key").GetInt32());
         Assert.Equal(2, bindings[0].GetProperty("mods").GetInt32());
+        settings.FullWidthSpaceByDefault = true;
         using var same = Hello();
+        Assert.True(same.RootElement.GetProperty("fullWidthSpace").GetBoolean(), "キー一覧と全角スペースの設定を同時に反映");
         Assert.Equal(bindings.GetRawText(), same.RootElement.GetProperty("toggleShortcuts").GetRawText(), "同じ設定の配列を送る");
         settings = new Settings { Mode = InputMode.Tsf, ToggleShortcuts = [] }.Normalize();
         using var cleared = Hello();

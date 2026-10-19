@@ -248,6 +248,9 @@ public sealed record CompositionOptions
     /// <summary>予測変換の候補を出すか (設定)。変換ボックスに候補の一覧を出せる画面 (Windows) だけ true にする。</summary>
     public Func<bool> Predictions { get; init; } = () => false;
 
+    /// <summary>予測変換の候補に、読みから英字の社名・サービス名・語も出すか (設定。しゃお → Xiaomi、issue #890)。</summary>
+    public Func<bool> EnglishNamePredictions { get; init; } = () => false;
+
     /// <summary>変換ボックスのフォント (空なら既定のフォント)。</summary>
     public Func<string> Font { get; init; } = () => "";
 
@@ -1535,13 +1538,16 @@ public sealed class CompositionController
             _converting = true;
             return;
         }
-        // 設定「#番号で GitHub の Issue・PR のタイトルを候補に出す」: #123 の形 (issue #291)
-        if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && !_text.KanaInput && _text.Mode == DisplayMode.Auto &&
-            _text.Raw is ['#', .. { Length: > 0 } digits] && digits.All(char.IsAsciiDigit) && digits.Length <= 7 &&
-            titles.Lookup(_options.GitHubRepository(), int.Parse(digits)) is { Length: > 0 } title)
+        // #123 の形は、# と数字を別々の文節にしない (issue #865)。
+        // 設定「#番号で GitHub の Issue・PR のタイトルを候補に出す」なら、タイトルも候補に出す (issue #291)
+        if (!_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is ['#', .. { Length: > 0 } digits] && digits.All(char.IsAsciiDigit) && digits.Length <= 7)
         {
-            var repository = _options.GitHubRepository();
-            _clauses = [new Clause(_text.Raw, true, Distinct([_text.Raw, $"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"])) { Raw = _text.Raw }];
+            var repository = GitHubIssueTitles.Normalize(_options.GitHubRepository());
+            var hashCandidates = new List<string> { _text.Raw };
+            if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits)) is { Length: > 0 } title)
+                hashCandidates.AddRange([$"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"]);
+            hashCandidates.Add(CompositionText.ToFullWidth(_text.Raw));
+            _clauses = [new Clause(_text.Raw, true, Distinct([.. hashCandidates])) { Raw = _text.Raw }];
             _selectedClause = 0;
             _converting = true;
             return;
@@ -2928,7 +2934,18 @@ public sealed class CompositionController
         }
         var kana = _text.AllKana(final: false);
         var predictions = new List<string>();
-        if (kana.All(KanaChars.IsHiraganaOrLongMark)) predictions.AddRange(predictor.PredictJapanese(kana));
+        if (kana.All(KanaChars.IsHiraganaOrLongMark))
+        {
+            predictions.AddRange(predictor.PredictJapanese(kana));
+            // 英字で書く社名・サービス名 (しゃお → Xiaomi)。日本語の予測の後ろに足す
+            if (_options.EnglishNamePredictions())
+            {
+                foreach (var word in predictor.PredictEnglishNames(kana))
+                {
+                    if (predictions.Count < Predictor.MaxPredictions && !predictions.Contains(word)) predictions.Add(word);
+                }
+            }
+        }
         // 長い英単語は、打ち終わるまでローマ字として見えていることがある (decis → でしs)。英字だけを 4 文字以上打っていれば英単語の続きも出す
         if (_text.Raw.Length >= 4 && _text.Raw.All(char.IsAsciiLetter))
         {
