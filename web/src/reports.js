@@ -104,6 +104,7 @@ export async function createReport(request, env) {
   if (Object.keys(errors).length) return error(422, "書いていない所か、直してほしい所があります", { fields: errors });
   const checked = validateFiles(body.files);
   if (checked.error) return error(422, checked.error, { files: checked.error });
+  if (checked.files.length && !env.FILES) return error(422, "いまは添付を受け付けていません。文章だけで送ってください", { files: "いまは添付を受け付けていません" });
   if (!env.IP_HASH_SALT) {
     console.error("IP_HASH_SALT が設定されていないため、報告を受け付けていません");
     return error(503, "いまは報告を受け付けられません。時間をおいてもう一度試してください");
@@ -183,6 +184,7 @@ export async function uploadFile(request, env, id, index) {
   const at = now();
   if (report.upload_expires_at < at) return error(410, "添付の受付時間 (1 時間) が過ぎました");
 
+  if (!env.FILES) return error(503, "いまは添付を受け付けていません");
   const file = await env.DB.prepare("SELECT name, mime, size, uploaded_at FROM attachments WHERE report_id = ? AND idx = ?").bind(id, index).first();
   if (!file) return error(404, "そのファイルは報告に含まれていません");
   if (file.uploaded_at) return error(409, "このファイルはもう届いています");
@@ -270,6 +272,7 @@ function parseRange(header, size) {
 }
 
 export async function getFile(env, request, id, index, url) {
+  if (!env.FILES) return error(404, "そのファイルは見つかりません");
   const file = await env.DB.prepare("SELECT name, mime, size, uploaded_at FROM attachments WHERE report_id = ? AND idx = ?").bind(id, index).first();
   if (!file || !file.uploaded_at) return error(404, "そのファイルは見つかりません");
   const range = parseRange(request.headers.get("range"), file.size);

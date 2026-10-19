@@ -12,6 +12,7 @@ function days(value, fallback) {
 }
 
 async function deleteObjects(env, rows) {
+  if (!env.FILES) return;
   const keys = rows.map((row) => `reports/${row.report_id}/${row.idx}`);
   for (let i = 0; i < keys.length; i += 1000) await env.FILES.delete(keys.slice(i, i + 1000));
 }

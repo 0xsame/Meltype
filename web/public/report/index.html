@@ -95,19 +95,19 @@
               </div>
               <div class="fields" data-optional></div>
               <div class="fields attachments">
-                <div class="field is-wide">
+                <div class="field is-wide" data-attachments>
                   <span class="label-like" id="files-label"><b>添付</b></span>
                   <span class="hint">スクリーンショット・画面の録画・ログ・設定ファイル (config.json) など</span>
                 </div>
-                <label class="dropzone" data-dropzone>
+                <label class="dropzone" data-dropzone data-attachments>
                   <svg class="ic"><use href="/assets/img/icons.svg#i-upload"/></svg>
                   <b>ここにドロップするか、クリックして選ぶ</b>
                   <small data-file-rules></small>
                   <small>スクリーンショットは <kbd>Ctrl</kbd>+<kbd>V</kbd> で貼り付けることもできます</small>
                   <input class="sr-only" type="file" multiple aria-labelledby="files-label" data-file-input>
                 </label>
-                <ul class="file-list" data-file-list></ul>
-                <p class="files-total" data-files-total></p>
+                <ul class="file-list" data-file-list data-attachments></ul>
+                <p class="files-total" data-files-total data-attachments></p>
                 <p class="field-error" data-files-error role="alert"></p>
               </div>
             </section>
