@@ -85,7 +85,7 @@ export function buildSearchQuery(repo, terms) {
   }
   const usable = [...unique.values()]
     .sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term))
-    .slice(0, 6)
+    .slice(0, 5)
     .map(entry => entry.term);
   if (usable.length === 0) return null;
   const alternatives = usable.map(term => '"' + term + '"').join(' OR ');
