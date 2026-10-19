@@ -76,6 +76,23 @@ internal static class PackedDictionaryTests
     }
 
     [Test]
+    public static void WordList_KeepsEveryPrefix()
+    {
+        var words = Enumerable.Range(0, 2000).Select(i => "w" + i.ToString("x")).ToList();
+        // 1 語ずつ足して prefix の表が何度も大きくなっても、まとめて渡して (同じ語が 2 度あっても) 頭の数から表を作っても、どの語のどの先頭も引ける
+        var added = new WordList();
+        foreach (var word in words) added.Add(word);
+        foreach (var (name, list) in new[] { ("Add", added), ("まとめて", new WordList(words.Concat(words))) })
+        {
+            Assert.Equal(words.Count, list.Count);
+            Assert.True(words.All(w => Enumerable.Range(1, w.Length).All(n => list.HasPrefix(w[..n]))), $"{name}: 語の先頭");
+            Assert.True(words.All(list.ContainsWord), $"{name}: 語");
+            Assert.True(!list.HasPrefix("") && !list.HasPrefix("x") && !list.HasPrefix("w7d0q"), $"{name}: 無い先頭");
+            Assert.True(!list.ContainsWord("w"), $"{name}: 先頭だけの語");
+        }
+    }
+
+    [Test]
     public static void Meanings_StemPicksTheWordWrittenFirst()
     {
         // 同じ語幹 (持) の語がいくつかあれば、本文で先に書いてある語の意味を出す

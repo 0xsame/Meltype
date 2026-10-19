@@ -55,12 +55,7 @@ public sealed partial class CompositionDetector
         return new CompositionDetector(romaji, japanese, english, new TypoDetector(japanese.Words), proper, new KanaDetector(japaneseWords, romaji));
     }
 
-    private static readonly Lazy<WordList> ReadableEnglish = new(() =>
-    {
-        var list = new WordList();
-        foreach (var word in DictionarySource.Load("english-readable.txt", null)) list.Add(word);
-        return list;
-    });
+    private static readonly Lazy<WordList> ReadableEnglish = new(() => new WordList(DictionarySource.Load("english-readable.txt", null)));
 
     /// <summary>english.txt の「日本語由来で英語としても使われる語」(sushi, anime, tofu …)。</summary>
     private static readonly Lazy<HashSet<string>> JapaneseOriginWords = new(() =>

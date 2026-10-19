@@ -22,17 +22,35 @@ internal static class HashIndex
 /// </summary>
 internal sealed class HashIndex<T> where T : unmanaged, IEquatable<T>
 {
-    private readonly T[] _slots;
+    private T[] _slots;
+    private int _count;
 
     /// <summary>count 個入れても 3/4 までしか埋まらない大きさで作る。</summary>
     public HashIndex(int count) => _slots = new T[(int)Math.Max(4, BitOperations.RoundUpToPowerOf2((uint)(count + count / 3 + 1)))];
 
+    /// <summary>もう 1 つ入れると 3/4 を超えるか。超えるなら Add の前に Grow する。</summary>
+    public bool IsFull => (_count + 1) * 4 > _slots.Length * 3;
+
     public void Add(int hash, T value)
     {
-        var mask = _slots.Length - 1;
+        Place(_slots, hash, value);
+        _count++;
+    }
+
+    /// <summary>表を倍の大きさにする。hashOf は値が表す文字列のハッシュ。</summary>
+    public void Grow(Func<T, int> hashOf)
+    {
+        var slots = new T[_slots.Length * 2];
+        foreach (var value in _slots) if (!value.Equals(default)) Place(slots, hashOf(value), value);
+        _slots = slots;
+    }
+
+    private static void Place(T[] slots, int hash, T value)
+    {
+        var mask = slots.Length - 1;
         var slot = hash & mask;
-        while (!_slots[slot].Equals(default)) slot = (slot + 1) & mask;
-        _slots[slot] = value;
+        while (!slots[slot].Equals(default)) slot = (slot + 1) & mask;
+        slots[slot] = value;
     }
 
     /// <summary>ハッシュが hash の文字列を表すかもしれない値 (ハッシュの位置から空きまで)。</summary>
