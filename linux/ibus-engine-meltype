@@ -160,6 +160,8 @@ class MeltypeEngine(IBus.Engine):
         self._session = _lib.meltype_create()
         self._direct = False
         self._preedit_visible = False
+        # 確定し直しが実際に効いたかを次の入力で確かめるための期待値 (効かなければ以降やめる)
+        self._replace_expect = None
         self._lookup = IBus.LookupTable.new(9, 0, True, True)
         self._lookup.set_orientation(IBus.Orientation.VERTICAL)
         self._candidates = []
@@ -173,6 +175,7 @@ class MeltypeEngine(IBus.Engine):
     # IBus からの呼び出し
 
     def do_process_key_event(self, keyval, keycode, state):
+        self._check_replace()
         if state & IBus.ModifierType.RELEASE_MASK or not self._session:
             return False
         # 入力中の 変換・無変換・ひらがな/カタカナ: 設定で役割を分けていれば、本体が変換ボックスで処理する (#199)
@@ -210,10 +213,21 @@ class MeltypeEngine(IBus.Engine):
         self._apply(result)
         return bool(result.get("consumed"))
 
+    def _finalize_on_focus_loss(self):
+        """フォーカスが外れる・Reset のときの後始末。
+
+        表示は確定される形にしてあるので、確定そのものは IBus が preedit から行う。ここで確定を
+        送ると二重になる。ただし表示していないのに未確定が残っているときは、送らないと文字が消える。
+        """
+        if not self._session:
+            return
+        edit = _result(_lib.meltype_commit(self._session))
+        if edit is not None and not self._preedit_visible and (edit.get("commits") or []):
+            self._apply(edit)
+
     def do_focus_out(self):
-        # 別の入力欄・アプリに移るときは、未確定の内容をそのまま確定する。
-        if self._session:
-            self._apply(_result(_lib.meltype_commit(self._session)))
+        # 別の入力欄・アプリに移るときは、未確定の内容を確定する。
+        self._finalize_on_focus_loss()
 
     def do_set_capabilities(self, caps):
         # 周りの文字 (surrounding text) に対応していない入力欄では、確定済みの文字を消せない。
@@ -232,9 +246,8 @@ class MeltypeEngine(IBus.Engine):
                 print(f"Meltype: 報告の画面を開けませんでした: {error}", file=sys.stderr)
 
     def do_reset(self):
-        # COMMIT モードの preedit は IBus/クライアントが Reset 時に処理済み。本体の確定を再送しない。
-        if self._session:
-            _result(_lib.meltype_commit(self._session))
+        # Reset でも IBus は「表示中の preedit」を確定する。表示は確定される形にしてある。
+        self._finalize_on_focus_loss()
         self._hide_preedit()
         self._hide_candidates()
 
@@ -266,6 +279,7 @@ class MeltypeEngine(IBus.Engine):
             # 変換中の文字には触れないので、表示を消す前に消してよい。
             if edit.get("deleteBefore", 0) > 0:
                 # 確定し直し: キャレットの前の文字を消してから入れる (入力欄が対応していれば)。
+                self._note_replace(edit)
                 self.delete_surrounding_text(-edit["deleteBefore"], edit["deleteBefore"])
             if edit.get("text"):
                 self.commit_text(IBus.Text.new_from_string(edit["text"]))
@@ -278,7 +292,9 @@ class MeltypeEngine(IBus.Engine):
             self._hide_candidates()
 
     def _show_preedit(self, view):
-        text = view.get("text", "")
+        # IBus は「表示中の preedit」をそのまま確定する (COMMIT モード)。表示と確定が違うと、
+        # フォーカスが外れたときに「かn」が入って本体の「かん」とずれるので、確定される形を出す。
+        text = view.get("committed") or view.get("text", "")
         attributes = IBus.AttrList()
         clauses = view.get("clauses") or []
         if view.get("converting") and clauses:
@@ -363,6 +379,46 @@ class MeltypeEngine(IBus.Engine):
             return value[max(0, cursor - 20):cursor], value[cursor:cursor + 20]
         except Exception:
             return None, None
+
+    def _surrounding_value(self):
+        """入力欄に入っている文字列とキャレットの位置 (取り出せなければ None)。"""
+        try:
+            text, cursor, _anchor = self.get_surrounding_text()
+            return ((text.get_text() if text else ""), cursor)
+        except Exception:
+            return None
+
+    def _note_replace(self, edit):
+        """確定し直しのあと、実際に入力欄から消えているかを、次の入力のときに確かめる。
+
+        Wayland + Chromium では delete_surrounding_text が無視されることがあり、その場合は
+        前の語が残ったまま書き足されて文書が壊れる (I love sushi すしがすき)。消えたかどうかは
+        送ったあとでしか分からないので、ここで期待する文字列を控えておく。
+        """
+        self._replace_expect = None
+        surrounding = self._surrounding_value()
+        if surrounding is None:
+            return
+        value, cursor = surrounding
+        count = edit["deleteBefore"]
+        if cursor < count:
+            return
+        self._replace_expect = value[:cursor - count] + (edit.get("text") or "")
+
+    def _check_replace(self):
+        """前回の確定し直しが実際に効いていたかを確かめる。効いていなければ以降はやめる。"""
+        expected, self._replace_expect = self._replace_expect, None
+        if expected is None or not self._session:
+            return
+        surrounding = self._surrounding_value()
+        if surrounding is None:
+            return
+        value, cursor = surrounding
+        if value[:cursor] == expected:
+            return
+        _lib.meltype_set_can_delete(self._session, 0)
+        print("Meltype: この入力欄は文字を消せないため、確定し直しをやめます "
+              f"(期待 {expected!r} / 実際 {value[:cursor]!r})", file=sys.stderr)
 
 
 # ---- 起動 ----

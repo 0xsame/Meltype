@@ -24,7 +24,13 @@ public sealed record CompositionView(
     string? Suggestion = null,
     IReadOnlyList<string>? Predictions = null,
     int SelectedPrediction = -1,
-    string? Typed = null);
+    string? Typed = null,
+    /// <summary>
+    /// この表示を確定したときに文書へ入る文字列。IBus はフォーカスが外れたとき
+    /// 「表示中の preedit」をそのまま確定するので、表示と確定が違うと文書と本体の認識がずれる
+    /// (「かn」を表示したまま確定すると、本体は「かん」で確定していて食い違う)。
+    /// </summary>
+    string? Committed = null);
 
 /// <summary>CompositionController が外界とやり取りする口。テストでは偽物に差し替える。</summary>
 public interface ICompositionHost
@@ -2487,7 +2493,8 @@ public sealed class CompositionController
                 CandidateNotes(selected),
                 _options.CandidateMeanings() ? CandidateMeaning(selected) : null,
                 MisspellingSuggestion(),
-                Typed: TypedKeys()));
+                Typed: TypedKeys(),
+                Committed: string.Concat(_clauses.Select(c => c.Text))));
         }
         else
         {
@@ -2500,7 +2507,8 @@ public sealed class CompositionController
             var selected = _predictionIndex >= 0 ? _predictions[_predictionIndex] : null;
             var display = selected ?? CurrentDisplay(final: false);
             _host.Show(new CompositionView(display, preview ?? [], preview?.IndexOf(display) ?? -1, false, hint, Suggestion: misspelling,
-                Predictions: _predictions.Count > 0 ? _predictions : null, SelectedPrediction: _predictionIndex, Typed: TypedKeys()));
+                Predictions: _predictions.Count > 0 ? _predictions : null, SelectedPrediction: _predictionIndex, Typed: TypedKeys(),
+                Committed: selected ?? CurrentDisplay(final: true)));
         }
     }
 

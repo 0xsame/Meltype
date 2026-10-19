@@ -340,6 +340,53 @@ class PrivateDaemonTests(unittest.TestCase):
                     self.context.set_client_commit_preedit(False)
                     self.pump()
 
+    def test_reset_commits_the_text_that_would_be_committed(self):
+        # 表示と確定が違う入力 (語末の n)。IBus は Reset で「表示中の preedit」を確定するので、
+        # 表示が「かn」のままだと文書に「かn」が入り、本体が確定した「かん」とずれる。
+        for client_commits in (False, True):
+            with self.subTest(client_commit_preedit=client_commits):
+                self.context.set_client_commit_preedit(client_commits)
+                try:
+                    self.reset_client()
+                    self.type_text("kan")
+                    shown = self.client.preedit
+                    # 確定される形が表示されていること (ここが「かn」だと文書と本体がずれる)
+                    self.assertEqual("かん", shown, self.client.describe())
+                    if client_commits:
+                        # このモードでは実クライアントが Reset のときに表示をローカルで確定する。
+                        self.client.document += shown
+                        self.client.preedit = ""
+                    self.context.reset()
+                    self.pump(0.3)
+                    self.assert_document("かん")
+                    self.assertEqual([] if client_commits else ["かん"], self.client.commits,
+                                     self.client.describe())
+                finally:
+                    self.context.set_client_commit_preedit(False)
+                    self.pump()
+
+    def test_focus_out_commits_the_text_that_would_be_committed(self):
+        for client_commits in (False, True):
+            with self.subTest(client_commit_preedit=client_commits):
+                self.context.set_client_commit_preedit(client_commits)
+                try:
+                    self.reset_client()
+                    self.type_text("shinbun")
+                    shown = self.client.preedit
+                    self.assertEqual("しんぶん", shown, self.client.describe())
+                    if client_commits:
+                        self.client.document += shown
+                        self.client.preedit = ""
+                    self.context.focus_out()
+                    self.pump(0.3)
+                    self.assert_document("しんぶん")
+                    self.assertEqual([] if client_commits else ["しんぶん"], self.client.commits,
+                                     self.client.describe())
+                finally:
+                    self.context.set_client_commit_preedit(False)
+                    self.context.focus_in()
+                    self.pump()
+
     def test_reset_selected_candidate_commits_once(self):
         self.type_text("kyou")
         self.assertTrue(self.key(self.IBus.KEY_space))
