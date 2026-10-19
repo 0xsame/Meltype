@@ -2,6 +2,13 @@
 name: Historical issue candidate evaluation
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/bot/issue-relation-candidates.mjs'
+      - '.github/bot/evaluate-historical-issues.mjs'
+      - '.github/bot/tests/**'
+      - '.github/workflows/historical-issue-evaluation.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,8 +23,9 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-      - name: Evaluate against live historical Issues
+      - name: Evaluate a bounded set of live historical Issues
         run: node .github/bot/evaluate-historical-issues.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_API_URL: ${{ github.api_url }}
+          EVALUATION_REPOSITORY: yksr-melt/Meltype
