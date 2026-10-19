@@ -6,6 +6,7 @@ const MAX_SEARCH_QUERIES = 2;
 const MAX_EXTRACTED_TERMS = 80;
 const MAX_CANDIDATES = 5;
 const MAX_IDENTIFIER_REASONS = 3;
+const MAX_MATCHED_TERMS_IN_REASON = 3;
 const MAX_TITLE_MATCHES = 3;
 const MAX_BODY_MATCHES = 4;
 const MIN_BODY_TERM_LENGTH = 5;
@@ -183,7 +184,7 @@ export function scoreCandidate(currentIssue, candidate) {
   if (score.matchedTerms.length >= MIN_DISTINCT_MATCHES) {
     score.reasons.push(
       '特徴語が一致: ' +
-      score.matchedTerms.slice(0, MAX_IDENTIFIER_REASONS).map(item => item.term).join('、'),
+      score.matchedTerms.slice(0, MAX_MATCHED_TERMS_IN_REASON).map(item => item.term).join('、'),
     );
   }
   const sharedLabels = [...current.labels].filter(
