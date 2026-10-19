@@ -130,9 +130,8 @@ export function buildSearchQueries(repo, issue) {
   const fallback = buildSearchQuery(repo, signals.terms);
   return [...new Set([primary, fallback].filter(Boolean))].slice(0, MAX_SEARCH_QUERIES);
 }
-export function scoreCandidate(currentIssue, candidate) {
+export function scoreCandidate(currentIssue, candidate, current = extractIssueSignals(currentIssue)) {
   if (!candidate || candidate.pull_request || candidate.number === currentIssue.number) return null;
-  const current = extractIssueSignals(currentIssue);
   const other = extractIssueSignals(candidate);
   const score = { value: 0, reasons: [], matchedTerms: [] };
   if (current.references.includes(candidate.number)) {
@@ -213,9 +212,9 @@ export function scoreCandidate(currentIssue, candidate) {
   }
   return { issue: candidate, score: score.value, reasons: score.reasons };
 }
-function rankCandidates(issue, candidates, maxCandidates) {
+function rankCandidates(issue, candidates, maxCandidates, currentSignals) {
   return [...candidates.values()]
-    .map(candidate => scoreCandidate(issue, candidate))
+    .map(candidate => scoreCandidate(issue, candidate, currentSignals))
     .filter(Boolean)
     .sort((a, b) => b.score - a.score || b.issue.number - a.issue.number)
     .slice(0, maxCandidates);
@@ -245,7 +244,7 @@ export async function findRelatedIssues(
     for (const candidate of (result?.items ?? result ?? [])) {
       if (candidate?.number && !candidate.pull_request) candidates.set(candidate.number, candidate);
     }
-    const ranked = rankCandidates(issue, candidates, maxCandidates);
+    const ranked = rankCandidates(issue, candidates, maxCandidates, current);
     if (ranked.length > 0) return ranked;
   }
   return rankCandidates(issue, candidates, maxCandidates);
