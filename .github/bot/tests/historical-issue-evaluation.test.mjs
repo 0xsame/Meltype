@@ -86,3 +86,21 @@ test('historical recall: explicit relation from #316 retrieves #261 even when ke
   assert.ok(calls.length === 1, 'the regular search path should still be exercised');
   assert.ok(found.some(candidate => candidate.issue.number === 261), 'explicitly referenced #261 must not be missed');
 });
+
+test('historical end-to-end candidate flow: search results rank #338 and suppress unrelated #717/#725', async () => {
+  const calls = [];
+  const found = await findRelatedIssues(historical[234], {
+    repo: 'yksr-melt/Meltype',
+    search: async query => {
+      calls.push(query);
+      return { items: [historical[717], historical[725], historical[338]] };
+    },
+    getIssue: async () => null,
+  });
+
+  assert.equal(calls.length, 1, 'candidate discovery should use one bounded search request');
+  assert.match(calls[0], /^repo:yksr-melt\/Meltype is:issue/);
+  assert.ok((calls[0].match(/ OR /g) ?? []).length <= 5, 'query must stay within GitHub OR limits');
+  assert.deepEqual(found.map(candidate => candidate.issue.number), [338]);
+  assert.match(found[0].reasons.join(' '), /特徴語が一致/);
+});
