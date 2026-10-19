@@ -63,10 +63,10 @@ internal sealed class PackedLines
     public int LineCount => _lines.Length;
 
     /// <summary>見出しの順で index 番目の行の見出し。</summary>
-    public ReadOnlySpan<char> Key(int index) => _text.AsSpan(_lines[index] >> 8, _lines[index] & 0xFF);
+    public ReadOnlySpan<char> Key(int index) => _text.AsSpan(_lines[index] >>> 8, _lines[index] & 0xFF);
 
     /// <summary>index 番目の行が本文の何文字目から始まるか (行が本文のどちらに先に書いてあるかを比べる)。</summary>
-    public int Position(int index) => _lines[index] >> 8;
+    public int Position(int index) => _lines[index] >>> 8;
 
     /// <summary>見出しが key の行の範囲 (見出しの順での最初の番号と数)。無ければ数が 0。</summary>
     public (int First, int Count) Find(ReadOnlySpan<char> key)
