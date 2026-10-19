@@ -153,6 +153,18 @@ internal static class PackedDictionaryTests
     }
 
     [Test]
+    public static void Candidates_KeepAddedOrderAndDropRepeatedWords()
+    {
+        var dictionary = new CandidateDictionary();
+        dictionary.AddText("はし 橋 箸\nはし 端 橋\n");
+        dictionary.Add("はし", ["箸", "嘴"]);
+        dictionary.AddTabText("はし\t🌉\t🥢\n");
+        Assert.Equal("橋|箸|端|嘴", string.Join("|", dictionary.LookupWords("はし")));
+        Assert.Equal("🌉|🥢", string.Join("|", dictionary.LookupEmoji("はし")));
+        Assert.Equal("橋を|箸を|端を|嘴を|🌉を|🥢を", string.Join("|", dictionary.Lookup("はしを")));
+    }
+
+    [Test]
     public static void RomajiTypos_KnowReadingsAndTheirForms()
     {
         var romaji = new RomajiDetector(null);
