@@ -201,7 +201,9 @@ test('uses a label-filtered query and a bounded keyword fallback', async () => {
     search: async query => { calls.push(query); return { items: [] }; },
     getIssue: async () => null,
   });
-  assert.ok(calls.length <= 2);
+  assert.equal(calls.length, 2, 'run the fallback only when the label query yields no supported candidates');
   assert.match(calls[0], /label:"bug"/);
+  assert.ok(!/label:/.test(calls[1]), 'fallback should not add another label constraint');
   assert.ok(calls.every(query => query.includes('(') && query.includes(' OR ')));
+  assert.ok(calls.every(query => (query.match(/ OR /g) ?? []).length <= 4));
 });
