@@ -280,7 +280,7 @@ General Public License for more details.
   <a href="https://github.com/01mercurylampe"><img src="https://github.com/01mercurylampe.png?size=120" width="60" alt="@01mercurylampe" title="@01mercurylampe"></a>
 </p>
 <!-- sponsors:end -->
-<sub>名前を公開にして応援してくださった方を、毎日自動で載せています (.github/workflows/sponsors.yml)。</sub>
+<sub>名前を公開にして応援してくださった方を載せています。</sub>
 
 <a name="テスト版で協力してくださった方々"></a>
 <img src="docs/images/headings/readme/s05.svg" alt="テスト版で協力してくださった方々" height="40">
