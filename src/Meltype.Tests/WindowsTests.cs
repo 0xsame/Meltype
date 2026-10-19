@@ -246,6 +246,21 @@ internal static class WindowsTests
     }
 
     [Test]
+    public static void Portable_UsesDataFolderBesideExecutable()
+    {
+        Assert.Equal(Path.Combine(@"C:\Apps\Meltype", "data"), AppPaths.ResolveDataDirectory(true, null, @"C:\Apps\Meltype", @"C:\Users\User\AppData\Local"));
+        Assert.Equal(@"D:\MeltypeData", AppPaths.ResolveDataDirectory(true, @"D:\MeltypeData", @"C:\Apps\Meltype", @"C:\Users\User\AppData\Local"), "開発用の上書き先は portable より優先");
+    }
+
+    [Test]
+    public static void Portable_StartupResetsModeToKeyboard()
+    {
+        var x64 = System.Runtime.InteropServices.Architecture.X64;
+        Assert.True(global::Meltype.Program.ShouldUseKeyboardOnStartup(new Settings { Mode = InputMode.Tsf }, isPortable: true, knownUnregistered: false, inUserLanguageList: true, x64), "ポータブル版は Meltype IME から戻す");
+        Assert.True(!global::Meltype.Program.ShouldUseKeyboardOnStartup(new Settings { Mode = InputMode.Keyboard }, isPortable: true, knownUnregistered: false, inUserLanguageList: true, x64), "キーボード方式は維持");
+    }
+
+    [Test]
     public static void AffinityCandidate_RejectsOtherProductsAndMenus()
     {
         Assert.True(FocusInspector.IsAffinityCanvasCandidate("AFFINITY.EXE", UiAutomation.ControlTypePane, "Static"), "大小文字と Pane");

@@ -118,7 +118,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_enabledItem);
-        menu.Items.Add(_tsfModeItem);
+        if (!AppPaths.IsPortable) menu.Items.Add(_tsfModeItem);
         menu.Items.Add(_keyboardModeItem);
         // 自動判定の強さ (積極的 / 標準 / 慎重 / 手動)
         _levelItem = new ToolStripMenuItem("自動判定の強さ");
@@ -132,9 +132,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _profileItem.DropDownItems.Add("(読み込み中)");
         _profileItem.DropDownOpening += (_, _) => FillProfiles();
         menu.Items.Add(_profileItem);
-        var startup = new ToolStripMenuItem("Windows の起動時に起動", null, (_, _) => ToggleStartup());
-        startup.ToolTipText = "サインインしたらすぐ起動するよう、タスク スケジューラに「Meltype」というタスクを登録します (OFF にすると消します)。";
-        menu.Items.Add(startup);
+        ToolStripMenuItem? startup = null;
+        if (!AppPaths.IsPortable)
+        {
+            startup = new ToolStripMenuItem("Windows の起動時に起動", null, (_, _) => ToggleStartup());
+            startup.ToolTipText = "サインインしたらすぐ起動するよう、タスク スケジューラに「Meltype」というタスクを登録します (OFF にすると消します)。";
+            menu.Items.Add(startup);
+        }
         menu.Items.Add("使い方...", null, (_, _) => ShowWelcome());
         menu.Items.Add("設定...", null, (_, _) => ShowSettings());
         menu.Items.Add("ユーザー辞書...", null, (_, _) => ShowUserDictionary());
@@ -155,7 +159,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         forget.DropDownItems.Add("今日覚えたもの...", null, (_, _) => ForgetRecentLearning(DateTime.Today.ToUniversalTime(), "今日"));
         forget.DropDownItems.Add("すべて (リセット)...", null, (_, _) => ResetLearning());
         menu.Items.Add(forget);
-        menu.Items.Add("アンインストール...", null, (_, _) => Uninstall());
+        if (!AppPaths.IsPortable) menu.Items.Add("アンインストール...", null, (_, _) => Uninstall());
         // 更新: 自動更新の ON/OFF、今すぐ確認、ダウンロード済みなら更新して再起動
         var updates = new ToolStripMenuItem("更新");
         _autoUpdateItem = new ToolStripMenuItem("自動で更新する", null, (_, _) => ToggleAutoUpdate());
@@ -164,10 +168,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _updateItem = new ToolStripMenuItem("", null, (_, _) => ApplyUpdate()) { Visible = false };
         updates.DropDownItems.Add(_updateItem);
         updates.DropDownOpening += (_, _) => _autoUpdateItem.Checked = _engine.Settings.AutoUpdate;
-        menu.Items.Add(updates);
+        if (!AppPaths.IsPortable) menu.Items.Add(updates);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => ExitThread());
-        menu.Opening += (_, _) => startup.Checked = Startup.IsEnabled;
+        if (startup is not null) menu.Opening += (_, _) => startup.Checked = Startup.IsEnabled;
         menu.Opening += (_, _) => UpdateStatus();
 
         _tray = new NotifyIcon { ContextMenuStrip = menu, Visible = true };
@@ -177,7 +181,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _engine.ToggleRequested += OnToggleRequested;
         _enabledItem.Text = _hotkey.Name is { } hotkey ? $"Meltype を有効にする (Ctrl+半角/全角, {hotkey})" : "Meltype を有効にする (Ctrl+半角/全角)";
         _engine.StatusChanged += OnEngineStatusChanged;
-        _updater = new Updater(() => _engine.Settings.AutoUpdate);
+        _updater = new Updater(() => !AppPaths.IsPortable && _engine.Settings.AutoUpdate);
         _updater.Ready += OnUpdateReady;
         ShowUpdateItem();
         UpdateStatus();
@@ -192,7 +196,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         // Meltype IME が入る前の版から更新した人に、一度だけ Meltype IME を入れるかを聞く
         // (初めて起動した人には、インストーラーが聞いている)
-        if (!_engine.Settings.TsfOffered)
+        if (!AppPaths.IsPortable && !_engine.Settings.TsfOffered)
         {
             var next = _engine.Settings.Clone();
             next.TsfOffered = true;
@@ -208,7 +212,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     /// </summary>
     private void IntroduceTsf()
     {
-        if (_engine.Settings.TsfIntroduced || !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList ||
+        if (AppPaths.IsPortable || _engine.Settings.TsfIntroduced || !Tip.TipServer.IsRegistered || !Tip.TipServer.IsInUserLanguageList ||
             RuntimeInformation.OSArchitecture == Architecture.Arm64) return;
         var wasTsf = _engine.Settings.Mode == InputMode.Tsf;
         var next = _engine.Settings.Clone();
@@ -464,6 +468,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void SetMode(InputMode mode)
     {
+        if (AppPaths.IsPortable && mode != InputMode.Keyboard) return;
         var wasTsf = _engine.Settings.Mode == InputMode.Tsf;
         var next = _engine.Settings.Clone();
         next.Mode = mode;
