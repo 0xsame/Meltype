@@ -4,7 +4,9 @@
 # -Version を付けると、公開するリリースの名前 (dist\Meltype-<版>-windows.zip) にする (GitHub Actions がタグから付ける)。
 # -Portable を付けると、アプリ内にデータを保存するポータブル版 zip を作る。
 # -ReuseBuild を -Portable と一緒に付けると、直前に作った通常版の app を再利用する (CI 用)。
-param([string]$Version = '', [switch]$Portable, [switch]$ReuseBuild)
+# -Step Build は通常版の app を作って自己診断するところまで、-Step Sign はその app に署名して zip を作るところだけを行う (CI 用)。
+# 署名の秘密 (MELTYPE_SIGN_PFX / MELTYPE_SIGN_PASSWORD) がある間に、ビルドしたもの (Meltype.exe・Mozc のヘルパー) を実行しないため。
+param([string]$Version = '', [switch]$Portable, [switch]$ReuseBuild, [ValidateSet('All', 'Build', 'Sign')][string]$Step = 'All')
 
 $ErrorActionPreference = 'Stop'
 
@@ -28,8 +30,11 @@ $zip = if ($Version) {
 elseif ($Portable) { Join-Path $dist "Meltype-test-$stamp-windows-portable.zip" }
 else { Join-Path $dist "Meltype-test-$stamp-windows.zip" }
 
-if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $stage | Out-Null
+if ($Portable -and $Step -ne 'All') { throw '-Step は通常版だけで使えます。' }
+if ($Step -ne 'Sign') {
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $stage | Out-Null
+}
 
 $mozcBin = Join-Path $root 'native\mozc\bin'
 $dotnetRoot = Split-Path -Parent (Get-Command dotnet).Source
@@ -72,6 +77,15 @@ if ($Portable -and $ReuseBuild) {
     Remove-Item -LiteralPath (Join-Path $app 'tip') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $app 'meltype-ime.ps1'), (Join-Path $app 'update.ps1') -Force -ErrorAction SilentlyContinue
     Write-Host '通常版のビルド済みアプリを再利用し、ポータブル版を作ります。'
+}
+else {
+if ($Step -eq 'Sign') {
+    # -Step Build で作った app をそのまま使う。ここでは何も実行しない。
+    if (-not (Test-Path -LiteralPath (Join-Path $app 'Meltype.exe'))) {
+        throw '署名する通常版のビルドがありません。先に Build-Package.ps1 -Step Build を実行してください。'
+    }
+    $version = (Get-ChildItem (Join-Path $runtime 'shared\Microsoft.NETCore.App') -Directory | Sort-Object { [version]$_.Name } | Select-Object -Last 1).Name
+    $imeBuilt = Test-Path -LiteralPath (Join-Path $app 'tip')
 }
 else {
 dotnet publish (Join-Path $root 'src\Meltype\Meltype.csproj') -c Release -o $app -p:DebugType=none `
@@ -199,6 +213,11 @@ if (-not $Portable) {
         Copy-Item -LiteralPath (Join-Path $root 'native\tip\Register-Tip.ps1') -Destination $tip
         Copy-Item -LiteralPath (Join-Path $root 'packaging\meltype-ime.ps1') -Destination $app
     }
+}
+}
+if ($Step -eq 'Build') {
+    Write-Host "通常版の app を作りました: $app (署名と zip は -Step Sign で行います)"
+    return
 }
 
 # コード署名 (証明書があるときだけ): 環境変数 MELTYPE_SIGN_PFX (証明書の .pfx) と MELTYPE_SIGN_PASSWORD を設定すると、
