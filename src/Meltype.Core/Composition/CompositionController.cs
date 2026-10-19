@@ -248,6 +248,9 @@ public sealed record CompositionOptions
     /// <summary>予測変換の候補を出すか (設定)。変換ボックスに候補の一覧を出せる画面 (Windows) だけ true にする。</summary>
     public Func<bool> Predictions { get; init; } = () => false;
 
+    /// <summary>予測変換の候補に、読みから英字の社名・サービス名・語も出すか (設定。しゃお → Xiaomi、issue #890)。</summary>
+    public Func<bool> EnglishNamePredictions { get; init; } = () => false;
+
     /// <summary>変換ボックスのフォント (空なら既定のフォント)。</summary>
     public Func<string> Font { get; init; } = () => "";
 
@@ -2913,7 +2916,18 @@ public sealed class CompositionController
         }
         var kana = _text.AllKana(final: false);
         var predictions = new List<string>();
-        if (kana.All(KanaChars.IsHiraganaOrLongMark)) predictions.AddRange(predictor.PredictJapanese(kana));
+        if (kana.All(KanaChars.IsHiraganaOrLongMark))
+        {
+            predictions.AddRange(predictor.PredictJapanese(kana));
+            // 英字で書く社名・サービス名 (しゃお → Xiaomi)。日本語の予測の後ろに足す
+            if (_options.EnglishNamePredictions())
+            {
+                foreach (var word in predictor.PredictEnglishNames(kana))
+                {
+                    if (predictions.Count < Predictor.MaxPredictions && !predictions.Contains(word)) predictions.Add(word);
+                }
+            }
+        }
         // 長い英単語は、打ち終わるまでローマ字として見えていることがある (decis → でしs)。英字だけを 4 文字以上打っていれば英単語の続きも出す
         if (_text.Raw.Length >= 4 && _text.Raw.All(char.IsAsciiLetter))
         {
