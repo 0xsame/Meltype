@@ -737,6 +737,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _engine.ToggleRequested -= OnToggleRequested;
         _tipServer.Dispose();
         _engine.DetachComposition();
+        Composition.LearningSaves.FlushAll();
         _composition.Dispose();
         _settingsForm?.Close();
         _logForm?.Close();
