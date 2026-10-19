@@ -911,9 +911,6 @@ em {
 }
 
 .pills {
-  position: sticky;
-  top: calc(var(--header-h) + 8px);
-  z-index: 10;
   display: flex;
   gap: 8px;
   overflow-x: auto;
@@ -958,7 +955,6 @@ em {
 
 /* タブとして使うとき (site.js の initFeatureTabs): 選んだ種類だけを出す */
 .pills.is-tabs {
-  position: static;
   flex-wrap: wrap;
   margin-bottom: 0;
   background: none;
