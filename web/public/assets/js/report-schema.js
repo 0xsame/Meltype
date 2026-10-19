@@ -40,7 +40,7 @@ const CONTACT = {
   label: "連絡先",
   type: "text",
   placeholder: "GitHub: @name / Discord: name",
-  hint: "詳しく聞きたいときに連絡してよい場合だけ。メールアドレスは要りません",
+  hint: "詳しく聞くために連絡してもよい場合だけ書いてください。メールアドレスでなくてもかまいません",
   max: LIMITS.contact,
 };
 

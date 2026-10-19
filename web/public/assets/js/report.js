@@ -406,7 +406,7 @@ async function submit(event) {
   const { errors } = validateFields(state.form, values);
   showErrors(errors);
   if (Object.keys(errors).length) {
-    setStatus("danger", "書いていない所があります。赤い所を確かめてください");
+    setStatus("danger", "書いていない欄があります。赤く示した欄を確かめてください");
     const first = formElement.querySelector(".is-invalid input, .is-invalid select, .is-invalid textarea");
     if (first) first.focus();
     return;
