@@ -69,27 +69,39 @@ export function extractIssueSignals(issue) {
   const labels = new Set((issue?.labels ?? []).map(label => typeof label === 'string' ? label : label.name).filter(Boolean));
   return { title, text: text.toLowerCase(), references, identifiers, terms, labels };
 }
-export function buildSearchQuery(repo, terms) {
+function selectSearchTerms(terms) {
   const unique = new Map();
   for (const entry of terms) {
     const term = Array.isArray(entry) ? entry[0] : entry;
     const weight = Array.isArray(entry) && Number.isFinite(entry[1]) ? entry[1] : 0;
     if (typeof term !== 'string') continue;
-    const normalized = term.trim().toLowerCase().replace(/["\\]/g, '');
-    if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\d+$/.test(normalized)) continue;
-    const identifier = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\d{2})$/i.test(normalized);
+    const normalized = term.trim().toLowerCase().replace(/["\\\\]/g, '');
+    if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\\d+$/.test(normalized)) continue;
+    const identifier = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\\d{2})$/i.test(normalized);
     const lengthBonus = normalized.length >= 8 ? 4 : normalized.length >= 5 ? 2 : 0;
     const priority = weight + lengthBonus + (identifier ? 100 : 0);
     const previous = unique.get(normalized);
     if (!previous || priority > previous.priority) unique.set(normalized, { term: normalized, priority });
   }
-  const usable = [...unique.values()]
-    .sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term))
-    .slice(0, 5)
-    .map(entry => entry.term);
+  return [...unique.values()].sort((a, b) => b.priority - a.priority || b.term.length - a.term.length || a.term.localeCompare(b.term)).slice(0, 5).map(entry => entry.term);
+}
+
+export function buildSearchQuery(repo, terms, label = null) {
+  const usable = selectSearchTerms(terms);
   if (usable.length === 0) return null;
   const alternatives = usable.map(term => '"' + term + '"').join(' OR ');
-  return 'repo:' + repo + ' is:issue (' + alternatives + ')';
+  const labelFilter = label ? ' label:"' + label.replace(/["\\\\]/g, '') + '"' : '';
+  return 'repo:' + repo + ' is:issue' + labelFilter + ' (' + alternatives + ')';
+}
+
+// Bounded strategy: one label-filtered query, followed by one keyword fallback.
+export function buildSearchQueries(repo, issue) {
+  const signals = extractIssueSignals(issue);
+  const labels = [...signals.labels];
+  const preferredLabel = labels.find(label => CATEGORY_LABELS.has(label)) ?? labels.find(label => /^(?:win10|win11|windows|mac|linux)$|^アプリ:/i.test(label));
+  const primary = buildSearchQuery(repo, signals.terms, preferredLabel ?? null);
+  const fallback = buildSearchQuery(repo, signals.terms);
+  return [...new Set([primary, fallback].filter(Boolean))].slice(0, 2);
 }
 export function scoreCandidate(currentIssue, candidate) {
   if (!candidate || candidate.pull_request || candidate.number === currentIssue.number) return null;
@@ -165,8 +177,9 @@ export async function findRelatedIssues(issue, { repo, search, getIssue, maxCand
       // References to deleted or inaccessible issues are ignored.
     }
   }
-  const query = buildSearchQuery(repo, current.terms);
-  if (query) {
+  // Label-filtered search first, then one keyword-only fallback. Never scan all Issues.
+  const queries = buildSearchQueries(repo, issue);
+  for (const query of queries) {
     const result = await search(query);
     for (const candidate of (result?.items ?? result ?? [])) {
       if (candidate?.number && !candidate.pull_request) candidates.set(candidate.number, candidate);
