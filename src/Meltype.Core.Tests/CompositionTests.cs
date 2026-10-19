@@ -241,7 +241,7 @@ internal static class CompositionTests
         public Keyboard(bool live = false, bool direct = false, ConversionHistory? history = null, IKanjiConverter? converter = null,
             Func<string, IReadOnlyList<string>>? moreCandidates = null, UserDictionary? userDictionary = null, LanguageMemory? languages = null,
             TranslationDictionary? translations = null, TranslationHistory? translationHistory = null, bool slashAsMiddleDot = false, Predictor? predictor = null,
-            Func<DateTime>? now = null, bool showTypedKeys = false, bool tabConversion = false)
+            Func<DateTime>? now = null, bool showTypedKeys = false, bool tabConversion = false, bool englishNamePredictions = false)
         {
             Direct = direct;
             Controller = new CompositionController(Gate, Detector, converter ?? Converter, Host, new CompositionOptions
@@ -290,6 +290,7 @@ internal static class CompositionTests
                 ClipboardCandidates = () => ClipboardCandidates,
                 Predictor = predictor,
                 Predictions = () => predictor is not null,
+                EnglishNamePredictions = () => englishNamePredictions,
                 Punctuation = () => Punctuation,
                 SlashAsMiddleDot = () => slashAsMiddleDot,
                 Now = now ?? (() => DateTime.Now),
@@ -653,6 +654,36 @@ internal static class CompositionTests
         k.Press(VirtualKeys.Return);
         Assert.Equal(first, k.Host.Document);
     }
+
+    [Test]
+    public static void Issue890_EnglishNamePredictions_FromKanaPrefix()
+    {
+        // #890: 社名・サービス名を読みで打ちかけたら、英字の名前も予測の候補に出す (設定が ON のとき)
+        var predictor = new Predictor(null, null, null);
+        Assert.True(predictor.PredictEnglishNames("しゃお").Contains("Xiaomi"), string.Join(",", predictor.PredictEnglishNames("しゃお")));
+        Assert.True(predictor.PredictEnglishNames("ぎっと") is { } git && git.Contains("GitHub") && git.Contains("GitLab"), string.Join(",", predictor.PredictEnglishNames("ぎっと")));
+        Assert.True(predictor.PredictEnglishNames("しゃおみ").Contains("Xiaomi"), "読みを打ち終わっても出す");
+        Assert.Equal(1, predictor.PredictEnglishNames("しゃおみ").Count(w => w == "Xiaomi"), "同じ語は 1 つだけ (しゃおみ・しゃおみー)");
+        Assert.Equal(0, predictor.PredictEnglishNames("しゃ").Count, "2 文字では出さない");
+        Assert.True(predictor.PredictEnglishNames("あいあ").Count <= Predictor.MaxPredictions, "多すぎない");
+        Assert.Equal(0, predictor.PredictEnglishNames("ゐゐゐ").Count, "無い読みは出さない");
+
+        var on = new Keyboard(predictor: predictor, englishNamePredictions: true);
+        on.Type("shao");
+        Assert.True(on.Host.View!.Predictions?.Contains("Xiaomi") == true, "ON なら出る: " + string.Join(",", on.Host.View.Predictions ?? []));
+        on.Press(VirtualKeys.Tab);
+        while (on.Showing != "Xiaomi" && on.Host.View!.SelectedPrediction < (on.Host.View.Predictions?.Count ?? 0) - 1) on.Press(VirtualKeys.Tab);
+        on.Press(VirtualKeys.Return);
+        Assert.Equal("Xiaomi", on.Host.Document);
+
+        var off = new Keyboard(predictor: predictor);
+        off.Type("shao");
+        Assert.True(off.Host.View!.Predictions?.Contains("Xiaomi") != true, "OFF (既定) なら出さない");
+    }
+
+    [Test]
+    public static void Issue890_EnglishNamePredictions_OffByDefault() =>
+        Assert.True(!new Meltype.Config.Settings().EnglishNamePredictions, "既定で OFF");
 
     [Test]
     public static void Prediction_OffWithoutPredictor()
