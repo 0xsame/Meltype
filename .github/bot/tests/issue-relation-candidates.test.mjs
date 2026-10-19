@@ -2,7 +2,14 @@
 // Copyright (C) 2026 Akatuki1121
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSearchQuery, buildSearchQueries, extractIssueSignals, findRelatedIssues, formatRelatedIssueComment, scoreCandidate } from '../issue-relation-candidates.mjs';
+import {
+  buildSearchQuery,
+  buildSearchQueries,
+  extractIssueSignals,
+  findRelatedIssues,
+  formatRelatedIssueComment,
+  scoreCandidate,
+} from '../issue-relation-candidates.mjs';
 
 test('extracts identifiers and excludes log/environment sections', () => {
   const signals = extractIssueSignals({
@@ -135,7 +142,6 @@ test('comment explains evidence and requires human review', () => {
   assert.match(comment, /関連性を確定できません/);
 });
 
- 
 test('builds at most two searches and prioritizes an existing classification label', () => {
   const issue = {
     number: 44,
