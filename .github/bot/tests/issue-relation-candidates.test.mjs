@@ -158,6 +158,33 @@ test('does not use priority labels as the classification filter', () => {
   assert.ok(!queries.some(query => /label:/.test(query)));
 });
 
+test('does not issue the keyword fallback when the label query already finds a supported candidate', async () => {
+  const current = {
+    number: 47,
+    title: 'Win32Error startup failure',
+    body: '### Details\\n0x80004005',
+    labels: [{ name: 'bug' }],
+  };
+  const related = {
+    number: 48,
+    title: 'Win32Error 0x80004005 startup failure',
+    body: '### Details\\nStartup fails with 0x80004005',
+    labels: [{ name: 'bug' }],
+  };
+  const calls = [];
+  const found = await findRelatedIssues(current, {
+    repo: 'yksr-melt/Meltype',
+    search: async query => {
+      calls.push(query);
+      return { items: [related] };
+    },
+    getIssue: async () => null,
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /label:"bug"/);
+  assert.equal(found[0]?.issue.number, 48);
+});
+
 test('uses a label-filtered query and a bounded keyword fallback', async () => {
   const current = {
     number: 45, title: 'Brave PWA input failure',
