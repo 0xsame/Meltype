@@ -151,6 +151,19 @@ std::wstring ProcessName() {
     return result;
 }
 
+// Chromium 系のブラウザーか。本物のパスワード欄では、Chromium は IME を無効にした入力欄 (空の文書) に切り替える (ContextDisabled で分かる)。
+// 一方で、ふつうの入力欄 (Twitch のコメント欄・U-NEXT の検索欄など) を、アプリが知らせる入力欄の種類でパスワードと言ってくることがある (issue #878)
+bool IsChromiumBrowser() {
+    static const bool chromium = [] {
+        std::wstring name = ProcessName();
+        for (const wchar_t* browser : {L"chrome", L"msedge", L"brave", L"vivaldi", L"opera", L"chromium"}) {
+            if (_wcsicmp(name.c_str(), browser) == 0) return true;
+        }
+        return false;
+    }();
+    return chromium;
+}
+
 }  // namespace
 
 HRESULT RunEditSession(ITfContext* context, TfClientId clientId, DWORD flags, std::function<HRESULT(TfEditCookie)> action) {
@@ -459,8 +472,11 @@ bool TextService::IsSecretField(TfEditCookie ec, ITfContext* context) {
     if (FAILED(context->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &selection, &fetched)) || fetched == 0) return false;
     const wchar_t* failed = nullptr;
     bool secret = false;
+    bool appSaysSecret = false;
+    std::wstring secretScopes;  // 調べるとき用: パスワードとみなした入力欄の種類 (数値)
     for (ITfReadOnlyProperty* property : {static_cast<ITfReadOnlyProperty*>(windowsProperty.Get()), appProperty.Get()}) {
         if (property == nullptr) continue;
+        bool fromApp = property == appProperty.Get();
         VARIANT value;
         VariantInit(&value);
         if (FAILED(property->GetValue(ec, selection.range, &value))) {
@@ -475,7 +491,11 @@ bool TextService::IsSecretField(TfEditCookie ec, ITfContext* context) {
                 failed = L"GetInputScopes";
             } else {
                 for (UINT i = 0; i < count; i++) {
-                    if (IsSecretScope(scopes[i])) secret = true;
+                    if (IsSecretScope(scopes[i])) {
+                        if (fromApp) appSaysSecret = true;
+                        else secret = true;
+                        secretScopes += (secretScopes.empty() ? L"" : L", ") + std::wstring(fromApp ? L"アプリ " : L"Windows ") + std::to_wstring(static_cast<int>(scopes[i]));
+                    }
                     if (scopes[i] == IS_PRIVATE) privateField_ = true;
                 }
             }
@@ -488,6 +508,16 @@ bool TextService::IsSecretField(TfEditCookie ec, ITfContext* context) {
     }
     selection.range->Release();
     if (failed != nullptr) return unreadable(failed);
+    if (appSaysSecret) {
+        // Chromium 系のブラウザーで、アプリだけがパスワードと言い、IME も無効にしていない入力欄は、パスワード欄とみなさない (issue #878)
+        if (IsChromiumBrowser() && !secret && !ContextDisabled(context)) {
+            if (lastSecretScopes_ != secretScopes) TipLog(L"アプリがパスワード欄と知らせてきましたが、IME を無効にしていないので入力欄として扱います (%s)", secretScopes.c_str());
+        } else {
+            secret = true;
+        }
+    }
+    if (secret && lastSecretScopes_ != secretScopes) TipLog(L"パスワードの入力欄の種類: %s", secretScopes.c_str());
+    lastSecretScopes_ = secretScopes;
     return secret;
 }
 
