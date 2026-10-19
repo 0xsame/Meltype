@@ -48,6 +48,10 @@ public sealed record SessionResult(bool Consumed, IReadOnlyList<TextEdit> Commit
         }
         builder.Append("{\"text\":");
         AppendString(builder, view.Text);
+        // この表示を確定したときに入る文字列 (IBus がフォーカスを外したときに確定するのは表示中の文字)。
+        builder.Append(",\"committed\":");
+        if (view.Committed is { } committed) AppendString(builder, committed);
+        else builder.Append("null");
         builder.Append(",\"converting\":").Append(view.Converting ? "true" : "false");
         builder.Append(",\"selectedIndex\":").Append(view.SelectedIndex);
         builder.Append(",\"selectedClause\":").Append(view.SelectedClause);

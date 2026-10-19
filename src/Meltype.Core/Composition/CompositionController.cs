@@ -24,7 +24,13 @@ public sealed record CompositionView(
     string? Suggestion = null,
     IReadOnlyList<string>? Predictions = null,
     int SelectedPrediction = -1,
-    string? Typed = null);
+    string? Typed = null,
+    /// <summary>
+    /// この表示を確定したときに文書へ入る文字列。IBus はフォーカスが外れたとき
+    /// 「表示中の preedit」をそのまま確定するので、表示と確定が違うと文書と本体の認識がずれる
+    /// (「かn」を表示したまま確定すると、本体は「かん」で確定していて食い違う)。
+    /// </summary>
+    string? Committed = null);
 
 /// <summary>CompositionController が外界とやり取りする口。テストでは偽物に差し替える。</summary>
 public interface ICompositionHost
@@ -664,6 +670,16 @@ public sealed class CompositionController
             {
                 // Ctrl+U/I/O/P: F6/F7/F10/F9 と同じ (ATOK と同じ割り当て。続けて押すと大文字・小文字も切り替わる)。Ctrl+H は BackSpace。
                 vk = function;
+            }
+            else if (!_text.IsEmpty && vk == VirtualKeys.Return)
+            {
+                // 変換中の Ctrl+Enter (送信のショートカット) は確定だけを行う。キーはアプリへ渡さない。
+                // 渡すと、アプリが確定を反映する前に送信してしまい、確定した文字が欠けた内容が送られる
+                // (X のリプライで「田所工事」と「田所工事だよ」が二重に投稿された)。日本語 IME の通例どおり、
+                // 変換中の Enter は確定、送信は次の Enter にする。
+                CommitIfAny();
+                _swallowedControl.Clear();
+                return;
             }
             else
             {
@@ -2863,7 +2879,8 @@ public sealed class CompositionController
                 CandidateNotes(selected),
                 _options.CandidateMeanings() ? CandidateMeaning(selected) : null,
                 MisspellingSuggestion(),
-                Typed: TypedKeys()));
+                Typed: TypedKeys(),
+                Committed: string.Concat(_clauses.Select(c => c.Text))));
         }
         else
         {
@@ -2878,7 +2895,8 @@ public sealed class CompositionController
             // 設定「入力中も変換候補をいくつか表示」: Space の前から候補を出す (issue #666)
             if (preview is null && selected is null && misspelling is null) preview = TypingCandidates();
             _host.Show(new CompositionView(display, preview ?? [], preview?.IndexOf(display) ?? -1, false, hint, Suggestion: misspelling,
-                Predictions: _predictions.Count > 0 ? _predictions : null, SelectedPrediction: _predictionIndex, Typed: TypedKeys()));
+                Predictions: _predictions.Count > 0 ? _predictions : null, SelectedPrediction: _predictionIndex, Typed: TypedKeys(),
+                Committed: selected ?? CurrentDisplay(final: true)));
         }
     }
 
