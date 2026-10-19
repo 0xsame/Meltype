@@ -95,7 +95,7 @@ async function relatedIssues(number, body, keys) {
       if (response.ok) {
         for (const item of (await response.json()).items ?? []) {
           if (item.number !== number && !item.pull_request && !found.has(item.number)) {
-            found.set(item.number, { title: item.title, state: item.state, reason: `同じ「打ったもの」(\`${keys}\`) の報告` });
+            found.set(item.number, { title: item.title, state: item.state, reason: `同じ「打ったもの」(${code(keys)}) の報告` });
           }
         }
       }
@@ -103,7 +103,7 @@ async function relatedIssues(number, body, keys) {
   } catch (error) {
     console.error('関連の Issue を調べられませんでした:', error.message);
   }
-  return [...found].slice(0, 5).map(([n, v]) => `- #${n} ${v.title} (${v.state === 'open' ? '未解決' : '解決済み'}) — ${v.reason}`);
+  return [...found].slice(0, 5).map(([n, v]) => `- #${n} ${md(v.title)} (${v.state === 'open' ? '未解決' : '解決済み'}) — ${v.reason}`);
 }
 
 const LabelInfo = {
@@ -146,14 +146,14 @@ function environmentLabels(text) {
   }
   const result = [];
   const os = env['OS'] ?? '';
-  if (/^Windows 11/.test(os)) result.push({ label: 'win11', reason: `OS が ${os}` });
-  else if (/^Windows 10/.test(os)) result.push({ label: 'win10', reason: `OS が ${os}` });
+  if (/^Windows 11/.test(os)) result.push({ label: 'win11', reason: `OS が ${md(os)}` });
+  else if (/^Windows 10/.test(os)) result.push({ label: 'win10', reason: `OS が ${md(os)}` });
   if (/Enterprise|Education/i.test(os)) result.push({ label: '企業PC', reason: 'Windows のエディションが Enterprise / Education (会社・学校の PC は制限があることが多い)' });
   if (/^Meltype \S/.test(`Meltype ${env['Meltype'] ?? ''}`) && /^\d+\.\d+\.\d+/.test(env['Meltype'] ?? '')) result.push({ label: `v${env['Meltype'].match(/^\d+\.\d+\.\d+/)[0]}`, reason: '実行環境の版' });
   if (/はい/.test(env['管理者として実行'] ?? '')) result.push({ label: '管理者で実行', reason: 'Meltype を管理者として実行していた' });
   if (/Mozc:\s*なし/.test(env['変換エンジン'] ?? '')) result.push({ label: 'Mozcなし', reason: 'Mozc の変換ヘルパーが無い' });
   if (/Kana/.test(env['入力方式'] ?? '')) result.push({ label: 'かな入力', reason: '入力方式がかな入力' });
-  if (/日本語以外/.test(env['キーボード'] ?? '')) result.push({ label: 'USキーボード', reason: `キーボードが ${env['キーボード']}` });
+  if (/日本語以外/.test(env['キーボード'] ?? '')) result.push({ label: 'USキーボード', reason: `キーボードが ${md(env['キーボード'])}` });
   const scale = Number((env['画面'] ?? '').match(/拡大率\s*(\d+)/)?.[1] ?? 100);
   if (scale > 100) result.push({ label: '高DPI', reason: `画面の拡大率が ${scale}%` });
   return result;
@@ -388,6 +388,11 @@ async function parse() {
 }
 
 const code = text => '`' + String(text ?? '').replace(/`/g, 'ˋ') + '`';
+// 表のセルに入れるコード。| はコードスパンの中でもセルの区切りになるので \| にする (表の中では | と表示される)
+const cell = text => code(text).replace(/\|/g, '\\|');
+// 利用者が書いた文をそのまま出す。リンク・画像・HTML にならないよう ASCII の記号を \ でエスケープし、
+// @ の後ろに幅の無い空白を入れてメンションにしない
+const md = text => String(text ?? '').replace(/[!-/:-?[-`{-~]/g, '\\$&').replace(/@/g, '@\u200b');
 
 function readJson(file) {
   try {
@@ -429,8 +434,8 @@ async function report() {
       if (!r) { rows.push(`| ${name} | (失敗) |`); continue; }
       if (r.engine) engine = r.engine;
       const result = (r.committed ?? '') + (r.composing ?? '');
-      const extra = r.converted && r.converted !== result ? ` / Space: ${code(r.converted)}` : '';
-      rows.push(`| ${name} | ${code(result)}${extra} |`);
+      const extra = r.converted && r.converted !== result ? ` / Space: ${cell(r.converted)}` : '';
+      rows.push(`| ${name} | ${cell(result)}${extra} |`);
       if (name === 'main' || name === 'pr') {
         if (expected && (result === expected || r.converted === expected)) verdicts.push('match');
         else if (reported && (result === reported || r.converted === reported)) verdicts.push('reproduced');
@@ -476,10 +481,10 @@ async function report() {
     }
     const clauseCell = ({ r }) => {
       if (!r) return '(失敗)';
-      if (r.clauses) return r.clauses.map(code).join(' ｜ ');
+      if (r.clauses) return r.clauses.map(cell).join(' ｜ ');
       // 変換中でも文節に分かれていないときは clauses が無い (Repro.cs)。変換した結果をそのまま出す
-      if (r.candidates) return code(r.converted);
-      return `変換されず ${code((r.committed ?? '') + (r.composing ?? ''))} と確定しました`;
+      if (r.candidates) return cell(r.converted);
+      return `変換されず ${cell((r.committed ?? '') + (r.composing ?? ''))} と確定しました`;
     };
     const names = results.map(v => v.name);
     const lines = [
@@ -494,7 +499,7 @@ async function report() {
     if (count > 0) {
       lines.push('最初の文節の候補:', '', `| # | ${names.join(' | ')} |`, `|---|${names.map(() => '---').join('|')}|`);
       for (let i = 0; i < count; i++) {
-        const cells = results.map(v => { const c = v.r?.candidates?.[i]; return c == null ? '' : code(c); });
+        const cells = results.map(v => { const c = v.r?.candidates?.[i]; return c == null ? '' : cell(c); });
         lines.push(`| ${i + 1} | ${cells.join(' | ')} |`);
       }
       lines.push('');
@@ -519,7 +524,7 @@ async function report() {
       return;
     }
     if (data.error) {
-      await upsertComment(issue, `jht-${process.env.BOT_COMMENT_ID}`, `⚠️ ${data.error}\n\n漢字を含む文は \`/jht 文 / 読み\` の形で読みを書いてください (例: \`/jht 私はgoogleが好きです / わたしはgoogleがすきです\`)。\n\n[実行結果](${runUrl})`);
+      await upsertComment(issue, `jht-${process.env.BOT_COMMENT_ID}`, `⚠️ ${md(data.error)}\n\n漢字を含む文は \`/jht 文 / 読み\` の形で読みを書いてください (例: \`/jht 私はgoogleが好きです / わたしはgoogleがすきです\`)。\n\n[実行結果](${runUrl})`);
       return;
     }
     const results = data.results ?? [];
@@ -527,8 +532,8 @@ async function report() {
     const okFirst = results.filter(r => r.firstOk).length;
     const rows = results.slice(0, 12).map(r => {
       const mark = r.liveOk ? '✅' : r.firstOk ? '🔶' : '❌';
-      const note = (r.notes ?? []).slice(0, 2).join('; ');
-      return `| ${mark} ${code(r.keys)} | ${code(r.entered)} | ${code(r.first)} | ${note || ''} |`;
+      const note = (r.notes ?? []).slice(0, 2).map(md).join('; ');
+      return `| ${mark} ${cell(r.keys)} | ${cell(r.entered)} | ${cell(r.first)} | ${note || ''} |`;
     });
     const head = action === 'test-jht' ? ` (PR ${process.env.BOT_SHA?.slice(0, 7)})` : '';
     const lines = [
