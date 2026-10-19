@@ -37,7 +37,7 @@ Windows 版と同じく、日本語を打っている途中の英単語は英字
 <a name="動く環境"></a>
 <img src="../docs/images/headings/linux/01.svg" alt="動く環境" height="53"><br>
 
-- Ubuntu 24.04 など (x86_64)
+- Ubuntu 24.04 など (x86_64 / ARM64)
 - 入力の仕組みが IBus (GNOME、Ubuntu の標準) か fcitx5 (KDE など) のもの
 
 fcitx5 のアドオンは、Ubuntu 24.04 の fcitx5 5.1 で作っています。版が大きく違う fcitx5 では動かないことがあります。
@@ -54,10 +54,18 @@ fcitx5 のアドオンは、Ubuntu 24.04 の fcitx5 5.1 で作っています。
    ```
 
 Debian / Ubuntu では、`.deb` からも入れられます (apt で外せます。中身は `install.sh` で入れるものと同じです)。
-[Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `meltype_<version>_amd64.deb` (ARM64 は `meltype_<version>_arm64.deb`) をダウンロードして、次を実行します。
+[Releases](https://github.com/yksr-melt/Meltype/releases/latest) から CPU に合う `.deb` をダウンロードして、次のコマンドでインストールします。
+
+x86_64:
 
 ```bash
 sudo apt install ./meltype_<version>_amd64.deb
+```
+
+ARM64:
+
+```bash
+sudo apt install ./meltype_<version>_arm64.deb
 ```
 
 `.deb` は IBus と fcitx5 の両方に入れます (IBus の部品は「おすすめ」なので、ふつうは一緒に入ります)。新しい版は、新しい `.deb` を同じように入れると更新されます。
