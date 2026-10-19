@@ -350,8 +350,68 @@ function initTabs(os) {
   if (preferred) select(preferred, false);
 }
 
+// 「混ぜて打つ」「変換」などの機能の種類をタブにして、選んだ 1 つだけを出す。
+// (前はページ内リンクだったため、6 つの節が全部開いたまま縦に並び、開閉できるように見えて閉じられなかった)
+// JS が動かないときは今までどおり全部見える。#f-code のようなリンクで来たときはその種類を開く。
+function initFeatureTabs() {
+  const list = document.querySelector(".pills");
+  if (!list) return;
+  const tabs = [...list.querySelectorAll('a[href^="#f-"]')];
+  const panels = tabs.map((tab) => document.querySelector(tab.getAttribute("href")));
+  if (panels.some((panel) => !panel)) return;
+  list.setAttribute("role", "tablist");
+  tabs.forEach((tab, index) => {
+    const panel = panels[index];
+    tab.id = `tab-${panel.id}`;
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", panel.id);
+    panel.setAttribute("role", "tabpanel");
+    panel.setAttribute("aria-labelledby", tab.id);
+  });
+  const select = (index, focus) => {
+    tabs.forEach((tab, i) => {
+      const on = i === index;
+      tab.setAttribute("aria-selected", String(on));
+      tab.tabIndex = on ? 0 : -1;
+      tab.classList.toggle("is-current", on);
+      const panel = panels[i];
+      if (on && panel.hidden) {
+        panel.hidden = false;
+        // 開いた節の中身はスクロールで出す動きを待たずに見せ、節ごとふわっと出す
+        panel.querySelectorAll("[data-reveal]").forEach((element) => element.classList.add("is-in"));
+        panel.classList.remove("is-entering");
+        void panel.offsetWidth;
+        panel.classList.add("is-entering");
+      } else if (!on) {
+        panel.hidden = true;
+      }
+    });
+    if (focus) tabs[index].focus();
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener("click", (event) => {
+      event.preventDefault();
+      select(index, false);
+      history.replaceState(null, "", tab.getAttribute("href"));
+      tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
+    tab.addEventListener("keydown", (event) => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+      if (event.key === "Home") select(0, true);
+      else if (event.key === "End") select(tabs.length - 1, true);
+      else if (step) select((index + step + tabs.length) % tabs.length, true);
+      else return;
+      event.preventDefault();
+    });
+  });
+  panels.forEach((panel) => (panel.hidden = true));
+  const fromHash = panels.findIndex((panel) => `#${panel.id}` === location.hash);
+  select(Math.max(0, fromHash), false);
+  list.classList.add("is-tabs");
+}
+
 function initScrollSpy() {
-  const links = [...document.querySelectorAll('.site-nav a[href^="#"], .pills a[href^="#"]')];
+  const links = [...document.querySelectorAll('.site-nav a[href^="#"]')];
   const targets = new Map();
   for (const link of links) {
     const target = document.querySelector(link.getAttribute("href"));
@@ -367,11 +427,7 @@ function initScrollSpy() {
     }
     const ordered = [...targets.keys()].filter((t) => visible.has(t));
     links.forEach((link) => link.classList.remove("is-current"));
-    const navTarget = ordered.find((t) => targets.get(t).some((l) => l.closest(".site-nav")));
-    const pillTarget = ordered.find((t) => targets.get(t).some((l) => l.closest(".pills")));
-    for (const target of [navTarget, pillTarget]) {
-      if (target) targets.get(target).forEach((link) => link.classList.add("is-current"));
-    }
+    if (ordered[0]) targets.get(ordered[0]).forEach((link) => link.classList.add("is-current"));
   }, { rootMargin: "-30% 0px -60% 0px" });
   targets.forEach((_, target) => observer.observe(target));
 }
@@ -461,7 +517,8 @@ function renderReleases(data) {
   const stable = data.releases.filter((r) => !r.prerelease);
   const latest = stable[0];
   const preview = data.releases.find((r) => r.prerelease && (!latest || new Date(r.publishedAt) > new Date(latest.publishedAt)));
-  const shown = [latest, preview, ...stable.slice(1, 3)].filter(Boolean);
+  // 更新情報は 3 件まで (最新の版・新しいプレビュー版・その前の版)
+  const shown = [latest, preview, ...stable.slice(1)].filter(Boolean).slice(0, 3);
   box.innerHTML = shown
     .map((release) => {
       const badges = [];
@@ -585,6 +642,7 @@ initCopyButtons();
 const os = detectOs();
 initDownloadLabel(os);
 initTabs(os);
+initFeatureTabs();
 initScrollSpy();
 initSnow();
 initReveal();
