@@ -47,14 +47,14 @@ fcitx5 のアドオンは、Ubuntu 24.04 の fcitx5 5.1 で作っています。
 <a name="インストール"></a>
 <img src="../docs/images/headings/linux/02.svg" alt="インストール" height="53"><br>
 
-1. [Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `Meltype-<version>-linux.zip` をダウンロードして展開する
+1. [Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `Meltype-<version>-linux.zip` (ARM64 のパソコンは `Meltype-<version>-linux-arm64.zip`) をダウンロードして展開する
 2. 「端末」(ターミナル) を開いて、展開したフォルダーで次を実行する (管理者のパスワードを聞かれます。足りない部品があれば自動で入れます)
    ```bash
    bash install.sh
    ```
 
 Debian / Ubuntu では、`.deb` からも入れられます (apt で外せます。中身は `install.sh` で入れるものと同じです)。
-[Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `meltype_<version>_amd64.deb` をダウンロードして、次を実行します。
+[Releases](https://github.com/yksr-melt/Meltype/releases/latest) から `meltype_<version>_amd64.deb` (ARM64 は `meltype_<version>_arm64.deb`) をダウンロードして、次を実行します。
 
 ```bash
 sudo apt install ./meltype_<version>_amd64.deb
