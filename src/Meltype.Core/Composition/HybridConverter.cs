@@ -58,7 +58,7 @@ public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter
     /// </summary>
     internal static IReadOnlyList<ConversionClause>? Align(IReadOnlyList<(ConversionClause Clause, IReadOnlyList<string> Candidates)> clauses, string text)
     {
-        var lists = clauses.Select(c => CompositionController.Particles.Contains(c.Clause.Reading)
+        var lists = clauses.Select(c => JapaneseParticles.IsParticle(c.Clause.Reading)
             ? [c.Clause.Reading]
             : (c.Candidates.Contains(c.Clause.Text) ? c.Candidates : [c.Clause.Text, .. c.Candidates])
                 .Select(candidate => CompositionController.NormalizeHalfWidth(candidate, c.Clause.Reading)).ToList()).ToList();

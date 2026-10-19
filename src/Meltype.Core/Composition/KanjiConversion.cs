@@ -7,6 +7,17 @@ namespace Meltype.Composition;
 public sealed record ConversionClause(string Reading, string Text);
 
 /// <summary>
+/// 助詞だけの文節の読み。変換エンジンは助詞だけの文節を漢字にしてしまう (github + に + push → 二) ので、かなのまま使う。
+/// CompositionController (文節の候補) と HybridConverter (Zenzai の結果の当てはめ) で同じものを使う。
+/// </summary>
+internal static class JapaneseParticles
+{
+    private static readonly HashSet<string> Readings = ["は", "が", "を", "に", "で", "と", "も", "へ", "の", "や", "か", "から", "まで", "より"];
+
+    internal static bool IsParticle(string reading) => Readings.Contains(reading);
+}
+
+/// <summary>
 /// ひらがな → 漢字かな混じりの変換。Meltype 自身は変換の辞書を持たず、OS や外部の変換エンジンを借りる
 /// (Windows: Microsoft IME、Mac / Linux: Mozc など)。
 /// </summary>
