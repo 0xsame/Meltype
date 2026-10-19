@@ -704,6 +704,17 @@ internal static class SessionFacadeTests
         session = Create();
         session.CodeInput = true;
         Assert.True(Type(session, "/help", before: "").All(r => !r.Consumed), "コードの /help はアプリへ");
+        // コードの入力欄でも、コメント・文字列の中は ・。
+        session = Create();
+        session.CodeInput = true;
+        Assert.Equal("・", Type(session, "/", before: "// メモ ")[0].View?.Text);
+        session = Create();
+        session.CodeInput = true;
+        Assert.Equal("・", Type(session, "/", before: "var text = \"メモ ")[0].View?.Text);
+        // ターミナルの AI の入力行 (Claude Code の「> 」の後) は /command を打つ所なので、今までどおりアプリへ。
+        session = Create();
+        session.CodeInput = true;
+        Assert.True(!Type(session, "/", before: "> ")[0].Consumed && Type(session, "help").All(r => !r.Consumed), "AI の入力行の /help はアプリへ");
     }
 
     [Test]
