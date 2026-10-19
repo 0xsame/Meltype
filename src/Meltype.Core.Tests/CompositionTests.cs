@@ -4196,6 +4196,9 @@ internal static class CompositionTests
             ("commitsitekara", "commitしてから"),
             ("pushsite", "pushして"),
             ("gitpushsite", "gitpushして"),
+            // #886: 知らない短い英字 (dl) + する の活用も、英字 + して (全体が英字の dlshite になっていた)
+            ("dlshite", "dlして"),
+            ("dlsuru", "dlする"),
             ("website", "website"),
             ("websitewomiru", "websiteをみる"),
             ("tetsudou", "てつどう"),
@@ -4215,6 +4218,27 @@ internal static class CompositionTests
             {
                 Detector.SpellChecker = null;
             }
+        }
+    }
+
+    [Test]
+    public static void DLsite_IsVerbOnlyAfterJapanese()
+    {
+        // #886: dlsite はサイト名 (DLsite) とも dl + して とも読める。前が日本語 (ファイルを) なら dlして、
+        // 単独・後ろに助詞が続く (dlsiteで) ならサイト名のまま。
+        foreach (var (before, typed, expected) in new[]
+        {
+            ("ファイルを", "dlsite", "ファイルをdlして"),
+            ("", "fairuwodlsite", "ふぁいるをdlして"),
+            ("", "dlsite", "dlsite"),
+            ("", "dlsitede", "dlsiteで"),
+            ("", "dlsitenokaiin", "dlsiteのかいいん"),
+        })
+        {
+            var k = new Keyboard();
+            if (before.Length > 0) k.Host.PrecedingText = before;
+            k.Type(typed + "\n");
+            Assert.Equal(expected, before + k.Host.Document, typed);
         }
     }
 
