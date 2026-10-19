@@ -199,14 +199,16 @@ const Help = [
   '| `/explain <打ったキー>` | 英数状態の検知での 1 文字ずつの判定理由 | だれでも |',
   '| `/ca <打ったキー>` | Space で変換して、文節の区切りと最初の文節の候補 (9 件まで) を出す | だれでも |',
   '| `/jht <出てほしい文> [/ 読み]` | 考えられるローマ字打ちで変換テスト (読みはオプション) | だれでも |',
-  '| `/test` | Pull Request のコードでテストを流す | メンテナー |',
-  '| `/pack` | Pull Request のコードでテスト版の zip を作る | メンテナー |',
-  '| `/test-repro <キー>` | PR のコードで `/repro` | メンテナー |',
-  '| `/test-jht <文> [/ 読み]` | PR のコードで `/jht` | メンテナー |',
-  '| `/test-explain <キー>` | PR のコードで `/explain` | メンテナー |',
+  '| `/test <SHA>` | Pull Request のコードでテストを流す | メンテナー |',
+  '| `/pack <SHA>` | Pull Request のコードでテスト版の zip を作る | メンテナー |',
+  '| `/test-repro <SHA> <キー>` | PR のコードで `/repro` | メンテナー |',
+  '| `/test-jht <SHA> <文> [/ 読み]` | PR のコードで `/jht` | メンテナー |',
+  '| `/test-explain <SHA> <キー>` | PR のコードで `/explain` | メンテナー |',
   '| `/release <版>` | 版 (例: `1.2.3`) のタグとリリースの下書きを作り、Windows・Mac・Linux の配布物のビルドを始める。csproj・Info.plist の版が <版> でなければ止める | 管理者 |',
   '| `/pre-release <版>` | `/release` のプレリリース版 (版は `1.2.3-pre.1` の形) | 管理者 |',
   '| `/help` | この一覧 | だれでも |',
+  '',
+  'PR のコードを動かすコマンドの `<SHA>` は、中身を確かめた commit の SHA (40 桁)。PR の今の head と違えば動かしません。',
 ].join('\n');
 
 // /release <版>・/pre-release <版> (issue #665)。管理者 (admin / maintain) だけ。
@@ -325,25 +327,37 @@ async function parse() {
       await upsertComment(issue, `error-${event.comment.id}`, `\`/${command}\` はメンテナーだけが使えます (Pull Request のコードを動かすため)。`);
       return output({ action: 'none' });
     }
-    await react('eyes');
     const pr = await gh('GET', `/pulls/${issue}`);
+    // メンテナーが確かめた commit だけを動かす。コメントの後に head を差し替えられても、見ていないコードは動かさない。
+    // 40 桁の完全一致だけを受け付ける (短い前方一致だと、先頭が同じ無害な commit と悪意のある commit を作って差し替えられる)
+    const given = rest.trim().split(/\s+/)[0];
+    const sha = given.replace(/^`|`$/g, '').toLowerCase();
+    const args = rest.trim().slice(given.length).trim();
+    const head = pr.head.sha;
+    if (!/^[0-9a-f]{40}$/.test(sha) || sha !== head) {
+      const usage = { 'test-repro': ' <キー>', 'test-jht': ' <文>', 'test-explain': ' <キー>' }[command] ?? '';
+      const why = /^[0-9a-f]{40}$/.test(sha) ? `\`${sha}\` は PR の今の head と違います。` : `\`/${command}\` には、中身を確かめた commit の SHA (40 桁) を付けてください。`;
+      await upsertComment(issue, `error-${event.comment.id}`, `${why}今の head は \`${head}\` です。確かめてから \`/${command} ${head}${usage}\` と書いてください。`);
+      return output({ action: 'none' });
+    }
+    await react('eyes');
     if (command === 'test' || command === 'pack') {
       return output({ action: command, issue, sha: pr.head.sha, comment: event.comment.id });
     }
     if (command === 'test-jht') {
-      const text = rest.trim().replace(/^`|`$/g, '');
+      const text = args.replace(/^`|`$/g, '');
       if (!text) {
-        await upsertComment(issue, `error-${event.comment.id}`, '出てほしい文を書いてください (例: `/test-jht 私はgoogleが好きです` または `/test-jht 私はgoogleが好きです / わたしはgoogleがすきです`)。');
+        await upsertComment(issue, `error-${event.comment.id}`, `出てほしい文を書いてください (例: \`/test-jht ${head} 私はgoogleが好きです\` または \`/test-jht ${head} 私はgoogleが好きです / わたしはgoogleがすきです\`)。`);
         return output({ action: 'none' });
       }
       return output({ action: 'test-jht', issue, keys: text.slice(0, 500), last: '', reported: '', expected: '', kind: '', sha: pr.head.sha, comment: event.comment.id });
     }
-    const words = rest.trim().split(/\s+/);
+    const words = args.split(/\s+/);
     let last = 'enter';
     if (command === 'test-repro' && ['space', 'enter', 'none'].includes(words.at(-1)) && words.length > 1) last = words.pop();
     const keys = words.join(' ').replace(/^`|`$/g, '');
     if (!isKeys(keys)) {
-      await upsertComment(issue, `error-${event.comment.id}`, `打ったキーを英字で書いてください (例: \`/${command} nihongowohanasu\`)。`);
+      await upsertComment(issue, `error-${event.comment.id}`, `打ったキーを英字で書いてください (例: \`/${command} ${head} nihongowohanasu\`)。`);
       return output({ action: 'none' });
     }
     return output({ action: command, issue, keys: keys.slice(0, MaxKeys), last, reported: '', expected: '', kind: '', sha: pr.head.sha, comment: event.comment.id });
