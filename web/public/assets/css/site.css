@@ -956,6 +956,31 @@ em {
   scroll-margin-top: calc(var(--header-h) + 40px);
 }
 
+/* タブとして使うとき (site.js の initFeatureTabs): 選んだ種類だけを出す */
+.pills.is-tabs {
+  position: static;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.pills.is-tabs ~ .feature-group {
+  padding-top: 28px;
+}
+
+.feature-group.is-entering {
+  animation: tab-in 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 .group-head {
   margin-bottom: 20px;
 }
@@ -1556,6 +1581,19 @@ em {
 
 .thanks-block:last-child {
   margin-bottom: 0;
+}
+
+/* 寄付の欄の GitHub Sponsors のボタン: アイコンの列にくっつかないように間をあける。スマホでは全幅 */
+.thanks-block > .btn {
+  margin-top: 22px;
+}
+
+@media (max-width: 640px) {
+  .thanks-block > .btn {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
 }
 
 .sub-title {
