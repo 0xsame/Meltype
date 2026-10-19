@@ -4156,6 +4156,10 @@ internal static class CompositionTests
             ("commitsitekara", "commitしてから"),
             ("pushsite", "pushして"),
             ("gitpushsite", "gitpushして"),
+            // #886: 知らない短い英字 (dl) + する の活用も、英字 + して (全体が英字の dlsite になっていた)
+            ("dlsite", "dlして"),
+            ("dlshite", "dlして"),
+            ("dlsuru", "dlする"),
             ("website", "website"),
             ("websitewomiru", "websiteをみる"),
             ("tetsudou", "てつどう"),

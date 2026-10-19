@@ -299,21 +299,24 @@ public sealed partial class CompositionDetector
 
     private List<CompositionSegment>? UnknownWordThenJapanese(IReadOnlyList<CompositionUnit> units, string pending, List<CompositionSegment> segments, DetectionLevel level, string whole)
     {
-        // 知らない英字の語 + 助詞で始まる日本語 (grokga、grokniyoruto) を最初から打っているなら、語は英字・後ろは日本語 (grokが)。
+        // 知らない英字の語 + 助詞で始まる日本語 (grokga、grokniyoruto) や する の活用 (dlsite) を最初から打っているなら、語は英字・後ろは日本語 (grokが、dlして)。
         // 語は、ローマ字の打ちかけとしても読めない (gr) もの。後ろは最後までローマ字として読めるもの。
         if (level != DetectionLevel.Manual && !segments[0].IsEnglish && whole.All(char.IsAsciiLetter) && !IsKnownEnglishWord(whole))
         {
             for (var k = 1; k < units.Count; k++)
             {
                 var stem = Raw(units, 0, k).ToLowerInvariant();
-                if (stem.Length < 3 || _romaji.AnalyzeFragment(stem).IsValid || IsKnownEnglishWord(stem) && stem.Length >= 5) continue;
+                var rest = (Raw(units, k, units.Count) + pending).ToLowerInvariant();
+                // 後ろが する の活用 (dl + site = dlして、pc + suru = pcする: issue #886) なら、語は 2 文字でもよい
+                // (助詞と違い、site・suru は 4 文字あるので、偶然の一致で短い語を割ることは少ない)。
+                var suruTail = IsSuruTail(rest);
+                if (stem.Length < (suruTail ? 2 : 3) || _romaji.AnalyzeFragment(stem).IsValid || IsKnownEnglishWord(stem) && stem.Length >= 5) continue;
                 // 語の頭から読めない (gr): 日本語の後ろの英単語 (kyouha|google) ではない。
                 // 読めない 1 文字の後ろが最後まで読める (s|dake) なら、英字 1 文字 + 日本語。
                 var readable = _romaji.Analyze(stem).Tokens.Sum(t => t.Romaji.Length);
                 if (readable >= 2 || _romaji.Analyze(stem[(readable + 1)..]) is { IsValid: true, Partial: "" }) continue;
-                var rest = (Raw(units, k, units.Count) + pending).ToLowerInvariant();
-                if (!TrailingParticles.Any(p => rest.StartsWith(p, StringComparison.Ordinal)) ||
-                    _romaji.Analyze(rest) is not { IsValid: true, Partial: "" or "n" }) continue;
+                if (!suruTail && (!TrailingParticles.Any(p => rest.StartsWith(p, StringComparison.Ordinal)) ||
+                    _romaji.Analyze(rest) is not { IsValid: true, Partial: "" or "n" })) continue;
                 return [new CompositionSegment(true, "", Raw(units, 0, k)), Japanese(units, k, units.Count, pending)];
             }
         }
