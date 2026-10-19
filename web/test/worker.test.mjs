@@ -6,8 +6,10 @@ import { beforeEach, describe, it } from "node:test";
 
 import { ASSETS, FakeD1, FakeKV, FakeR2 } from "./fakes.mjs";
 
+let rewritten = [];
 globalThis.HTMLRewriter = class {
-  on() {
+  on(selector) {
+    rewritten.push(selector);
     return this;
   }
   transform(response) {
@@ -257,6 +259,39 @@ describe("添付 (#2)", () => {
     assert.ok(!looksLike("image/jpeg", PNG));
     assert.ok(looksLike("text/plain; charset=utf-8", new TextEncoder().encode("ok")));
     assert.ok(!looksLike("text/plain; charset=utf-8", new Uint8Array([0xff, 0xfe, 0x00])));
+  });
+});
+
+describe("R2 が無いとき", () => {
+  beforeEach(() => {
+    delete env.FILES;
+  });
+
+  it("報告の画面で添付の欄を隠す", async () => {
+    rewritten = [];
+    await call("/report/");
+    assert.ok(rewritten.includes("[data-attachments]"));
+    assert.ok(rewritten.includes("[data-report]"));
+  });
+
+  it("R2 があるときは隠さない", async () => {
+    env.FILES = new FakeR2();
+    rewritten = [];
+    await call("/report/");
+    assert.ok(!rewritten.includes("[data-attachments]"));
+  });
+
+  it("文章だけの報告は受け付ける", async () => {
+    assert.equal((await report()).status, 201);
+  });
+
+  it("添付のある報告は断る", async () => {
+    const response = await report({ form: "idea", fields: { problem: "p", idea: "i" }, files: [{ name: "shot.png", size: PNG.length }] });
+    assert.equal(response.status, 422);
+  });
+
+  it("掃除の Cron が R2 に触らずに動く", async () => {
+    await cleanup(env);
   });
 });
 

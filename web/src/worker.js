@@ -28,6 +28,12 @@ class SetAttribute {
   }
 }
 
+class Hide {
+  element(element) {
+    element.setAttribute("hidden", "");
+  }
+}
+
 class AbsoluteUrl {
   constructor(attribute, origin) {
     this.attribute = attribute;
@@ -44,7 +50,10 @@ async function page(request, env, url) {
   const response = await env.ASSETS.fetch(request);
   if (!(response.headers.get("content-type") || "").includes("text/html")) return response;
   const origin = env.SITE_ORIGIN || url.origin;
-  return new HTMLRewriter()
+  let rewriter = new HTMLRewriter();
+  // R2 (添付の置き場) が無いあいだは、添付の欄を出さない (報告の文章だけ受け付ける)
+  if (!env.FILES) rewriter = rewriter.on("[data-attachments]", new Hide()).on("[data-report]", new SetAttribute("data-no-attachments", ""));
+  return rewriter
     .on('meta[property="og:image"]', new AbsoluteUrl("content", origin))
     .on('meta[property="og:url"]', new AbsoluteUrl("content", origin))
     .on('link[rel="canonical"]', new AbsoluteUrl("href", origin))
