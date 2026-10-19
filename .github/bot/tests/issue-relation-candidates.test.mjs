@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Akatuki1121
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSearchQuery, extractIssueSignals, findRelatedIssues, formatRelatedIssueComment, scoreCandidate } from '../issue-relation-candidates.mjs';
+import { buildSearchQuery, buildSearchQueries, extractIssueSignals, findRelatedIssues, formatRelatedIssueComment, scoreCandidate } from '../issue-relation-candidates.mjs';
 
 test('extracts identifiers and excludes log/environment sections', () => {
   const signals = extractIssueSignals({
@@ -129,4 +129,36 @@ test('comment explains evidence and requires human review', () => {
   }]);
   assert.match(comment, /#11 Related issue/);
   assert.match(comment, /関連性を確定できません/);
+});
+
+ 
+test('builds at most two searches and prioritizes an existing classification label', () => {
+  const issue = {
+    number: 44,
+    title: 'Brave PWA IME input failure',
+    body: '### Details\nBrave PWA input failure with Win32Error 0x80004005',
+    labels: [{ name: 'bug' }, { name: 'win11' }, { name: '優先: 高' }],
+  };
+  const queries = buildSearchQueries('yksr-melt/Meltype', issue);
+  assert.ok(queries.length <= 2);
+  assert.match(queries[0], /label:"bug"/);
+  assert.ok(queries.every(query => (query.match(/ OR /g) ?? []).length <= 5));
+  assert.ok(queries.every(query => query.includes('repo:yksr-melt/Meltype is:issue')));
+});
+
+test('uses a label-filtered query and a bounded keyword fallback', async () => {
+  const current = {
+    number: 45, title: 'Brave PWA input failure',
+    body: '### Details\nWin32Error 0x80004005 Brave PWA',
+    labels: [{ name: 'bug' }],
+  };
+  const calls = [];
+  await findRelatedIssues(current, {
+    repo: 'yksr-melt/Meltype',
+    search: async query => { calls.push(query); return { items: [] }; },
+    getIssue: async () => null,
+  });
+  assert.ok(calls.length <= 2);
+  assert.match(calls[0], /label:"bug"/);
+  assert.ok(calls.every(query => query.includes('(') && query.includes(' OR ')));
 });
