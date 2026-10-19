@@ -10,6 +10,8 @@ const MAX_MATCHED_TERMS_IN_REASON = 3;
 const MAX_TITLE_MATCHES = 3;
 const MAX_BODY_MATCHES = 4;
 const MIN_BODY_TERM_LENGTH = 5;
+const MIN_DISTINCT_MATCHES = 2;
+const MIN_CANDIDATE_SCORE = 4;
 const IDENTIFIER_PATTERN = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\d{2})$/i;
 const FALLBACK_LABEL_PATTERN = /^(?:win10|win11|windows|mac|linux)$|^アプリ:/i;
 
