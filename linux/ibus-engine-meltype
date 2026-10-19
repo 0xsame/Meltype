@@ -235,21 +235,20 @@ class MeltypeEngine(IBus.Engine):
         """
         if not self._session:
             return
-        edit = _result(_lib.meltype_commit(self._session))
-        commits = (edit or {}).get("commits") or []
-        if not commits:
-            return
-        if self._preedit_visible:
-            # 表示中の preedit は IBus がそのまま確定する。エンジンがここで送る文字は
-            # フォーカスが外れたあとで届かない (実 IBus で確認) うえ、届いても順序が壊れる
-            # (I love sushi gasuki で がすき のあとに すし が入る)。直前の確定文字列への置換は
-            # あきらめ、本体の状態だけを「今の preedit を確定した」に進めて文書と合わせる
-            # (置換を混ぜたまま進めると、本体だけが直った前提になり、文書とずれる)。
+        # 表示中の preedit は IBus がそのまま確定する。エンジンがここで送る文字はフォーカスが
+        # 外れたあとで届かない (実 IBus で確認) うえ、届いても順序が壊れる (I love sushi gasuki で
+        # がすき のあとに すし が入る)。直前の確定文字列への置換はあきらめ、本体の状態だけを
+        # 「今の preedit を確定した」に進めて文書と合わせる (置換を混ぜたまま進めると、本体だけが
+        # 直った前提になり、文書とずれる)。meltype_commit は結果を返すだけでなく本体の状態を
+        # 進めるので、置換を無効にするのは**呼ぶ前**でなければならない (あとからでは取り消せない)。
+        replacing = self._preedit_visible
+        if replacing:
             _lib.meltype_set_can_delete(self._session, 0)
-            _result(_lib.meltype_commit(self._session))
+        edit = _result(_lib.meltype_commit(self._session))
+        if replacing:
             _lib.meltype_set_can_delete(self._session, 1 if self._can_delete else 0)
             return
-        if commits:
+        if (edit or {}).get("commits"):
             self._apply(edit)
 
     def _switch_mode(self, keyval):

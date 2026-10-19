@@ -368,6 +368,56 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(self.special(IBus.KEY_Return))
         self.assertEqual("I love すしがすき", self.engine.document)
 
+    def test_focus_out_disables_replacement_before_committing(self):
+        # 作者のレビューより: meltype_commit は結果を返すだけでなく本体の状態を進めるので、
+        # 置換を無効にするのは呼ぶ前でなければならない (あとからでは取り消せない)。
+        # あわせて、本体が確定した内容 (commit の戻り値) が実際の文書と一致することも確かめる。
+        import ctypes
+        product = type(self).product
+        original = product._lib
+        calls = []
+
+        class Spy:
+            def __getattr__(self, name):
+                attribute = getattr(original, name)
+                if name == "meltype_set_can_delete":
+                    def set_can_delete(session, value):
+                        calls.append(("can_delete", value))
+                        return attribute(session, value)
+                    return set_can_delete
+                if name == "meltype_commit":
+                    def commit(session):
+                        calls.append(("commit", None))
+                        pointer = attribute(session)
+                        calls.append(("committed", json.loads(ctypes.string_at(pointer).decode())
+                                      if pointer else None))
+                        return pointer
+                    return commit
+                return attribute
+
+        product._lib = Spy()
+        self.addCleanup(lambda: setattr(product, "_lib", original))
+
+        self.type_text("I")
+        self.special(IBus.KEY_space)
+        self.type_text("love")
+        self.special(IBus.KEY_space)
+        self.type_text("sushi")
+        self.special(IBus.KEY_space)
+        self.type_text("gasuki")
+        calls.clear()
+        self.engine.do_focus_out()
+
+        self.assertEqual([name for name, _ in calls], ["can_delete", "commit", "committed", "can_delete"],
+                         "置換を無効にしてから1回だけ commit し、そのあと元に戻す")
+        self.assertEqual(0, calls[0][1], "commit の前に置換を無効にする")
+        self.assertEqual(1, calls[3][1], "commit のあと元に戻す")
+        committed = calls[2][1]["commits"]
+        self.assertEqual(1, len(committed), committed)
+        self.assertEqual(0, committed[0]["deleteBefore"], "置換を混ぜない")
+        self.assertEqual("がすき", committed[0]["text"], "本体の確定が文書と一致する")
+        self.assertEqual("I love sushi がすき", self.engine.document)
+
     def test_reconversion_replaces_matching_previous_text(self):
         self.engine.document = "previous"
         self.engine._apply({"commits": [{"deleteBefore": 8, "expect": "previous", "text": "replacement"}], "view": None})
