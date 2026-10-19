@@ -55,44 +55,7 @@ $small[1].DrawImage($logo, 0, 0, 240, 120)
 Save-Png $small[0] (Join-Path $public "assets\img\logo-small.png")
 $small[1].Dispose(); $small[0].Dispose()
 
-$og = New-Canvas 1200 630
-$g = $og[1]
-$rect = New-Object System.Drawing.Rectangle 0, 0, 1200, 630
-$brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush $rect, (Color "#e4f5fe"), (Color "#fff1f7"), ([float]60)
-$blend = New-Object System.Drawing.Drawing2D.ColorBlend 3
-$blend.Colors = @((Color "#dff3fe"), (Color "#ffffff"), (Color "#ffeef5"))
-$blend.Positions = @([float]0, [float]0.55, [float]1)
-$brush.InterpolationColors = $blend
-$g.FillRectangle($brush, $rect)
-$random = New-Object System.Random 7
-for ($i = 0; $i -lt 70; $i++) {
-    $x = $random.Next(0, 1200); $y = $random.Next(0, 630); $r = $random.Next(3, 9)
-    $dot = New-Object System.Drawing.SolidBrush (Color ($(if ($i % 3 -eq 0) { "#ff8ab4" } else { "#7fd0f5" })) 70)
-    $g.FillEllipse($dot, $x, $y, $r, $r)
-    $dot.Dispose()
-}
-Draw-Flake $g 92 96 1.5 150
-Draw-Flake $g 1110 540 1.9 150
-Draw-Flake $g 1120 110 1.0 110
-Draw-Flake $g 80 548 1.1 110
-$g.DrawImage($logo, 150, 40, 900, 448)
-$font = New-Object System.Drawing.Font "Yu Gothic UI", 34, ([System.Drawing.FontStyle]::Bold), ([System.Drawing.GraphicsUnit]::Pixel)
-$format = New-Object System.Drawing.StringFormat
-$format.Alignment = [System.Drawing.StringAlignment]::Center
-$text = "半角/全角 キーは、もう押さなくていい！"
-$pill = New-Object System.Drawing.Drawing2D.GraphicsPath
-$pw = 700; $ph = 70; $px = (1200 - $pw) / 2; $py = 515
-$pill.AddArc($px, $py, $ph, $ph, 90, 180)
-$pill.AddArc($px + $pw - $ph, $py, $ph, $ph, 270, 180)
-$pill.CloseFigure()
-$g.FillPath((New-Object System.Drawing.SolidBrush (Color "#7391ee" 140)), $pill)
-$g.TranslateTransform(0, -6)
-$g.FillPath((New-Object System.Drawing.SolidBrush (Color "#ffffff")), $pill)
-$g.DrawPath((New-Object System.Drawing.Pen (Color "#7391ee"), 3), $pill)
-$g.ResetTransform()
-$g.DrawString($text, $font, (New-Object System.Drawing.SolidBrush (Color "#33415c")), (New-Object System.Drawing.RectangleF 0, ($py + 7), 1200, 60), $format)
-Save-Png $og[0] (Join-Path $public "og.png")
-$g.Dispose(); $og[0].Dispose()
+# リンクを貼ったときの画像 (public/og.png) は、丸ゴシックの文字で描くために scripts/make-images.mjs で作る
 
 $touch = New-Canvas 180 180
 $tg = $touch[1]

@@ -31,9 +31,9 @@
   --danger: #d9466f;
   --danger-soft: #ffe9ef;
   --header-bg: rgba(255, 255, 255, 0.82);
-  --font-head: "LINE Seed JP", "Noto Sans JP", system-ui, sans-serif;
-  --font-body: "Noto Sans JP", "LINE Seed JP", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Noto Sans JP", monospace;
+  --font-head: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  --font-body: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Zen Maru Gothic", monospace;
   --radius: 16px;
   --radius-s: 12px;
   --wrap: 1120px;
@@ -128,6 +128,7 @@ body {
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 16px;
+  font-weight: 500;
   line-height: 1.85;
   letter-spacing: 0.02em;
   font-feature-settings: "palt" 0;
@@ -1747,14 +1748,49 @@ em {
   background: none;
 }
 
+/* 上のカード 3 枚と同じ幅の 3 列にそろえ、下の Star History との間をあける */
 .link-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 24px;
-  margin: 24px 0 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 24px;
+  margin: 24px 0 40px;
   padding: 0;
   list-style: none;
   font-size: 0.93rem;
+}
+
+.link-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 100%;
+  padding: 12px 18px;
+  background: var(--surface);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-s);
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.link-list a:hover {
+  border-style: solid;
+  border-color: var(--sky-deep);
+}
+
+.link-list .ic {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+@media (max-width: 860px) {
+  .link-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
 }
 
 .star-history {
@@ -1768,6 +1804,9 @@ em {
 
 .star-history img {
   display: block;
+  width: 100%;
+  max-width: 800px;
+  height: auto;
   margin: 0 auto;
   border-radius: 10px;
 }
@@ -2370,6 +2409,47 @@ em {
   color: var(--muted);
 }
 
+/* Turnstile (幅 300px) と送信ボタンを右に縦に並べ、幅をそろえる */
+.submit-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 300px;
+  flex: none;
+}
+
+.submit-actions .cf-turnstile {
+  min-height: 65px;
+  display: flex;
+  justify-content: center;
+}
+
+.submit-actions .btn {
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .submit-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 20px 18px;
+  }
+
+  .submit-bar p {
+    flex: none;
+  }
+
+  .submit-actions {
+    width: 100%;
+    align-items: center;
+  }
+
+  .submit-actions .btn {
+    width: 100%;
+  }
+}
+
 .form-status {
   margin-top: 16px;
 }
@@ -2659,6 +2739,7 @@ em {
   position: sticky;
   top: calc(var(--header-h) + 16px);
   max-height: calc(100vh - var(--header-h) - 32px);
+  max-height: calc(100dvh - var(--header-h) - 32px);
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -3089,21 +3170,22 @@ em {
   transition: border-color 0.2s, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s;
 }
 
-/* 浮き上がりはマウスのときだけ。タッチでは押したあとに浮いたまま残るので付けない */
-@media (hover: hover) and (pointer: fine) {
-  .btn:hover {
+/* 浮き上がりはマウスで動かしているときだけ (html.is-mouse は common.js が付ける)。
+   タッチでは押したあとに :hover が残り、カードが浮いたままになるので付けない */
+@media (hover: hover) {
+  .is-mouse .btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 20px rgba(51, 65, 92, 0.14);
   }
 
-  .btn:active {
+  .is-mouse .btn:active {
     transform: scale(0.97);
   }
 
-  .link-card:hover,
-  .person:hover,
-  .feat:hover,
-  .os-tab:hover {
+  .is-mouse .link-card:hover,
+  .is-mouse .person:hover,
+  .is-mouse .feat:hover,
+  .is-mouse .os-tab:hover {
     transform: translateY(-3px);
     box-shadow: 0 12px 28px rgba(51, 65, 92, 0.1);
   }

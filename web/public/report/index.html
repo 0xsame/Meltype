@@ -21,7 +21,7 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LINE+Seed+JP:wght@400;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
   <link rel="stylesheet" href="/assets/css/site.css">
   <script type="module" src="/assets/js/report.js"></script>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
@@ -118,13 +118,14 @@
             <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" data-trap>
           </div>
 
-          <div class="cf-turnstile" data-sitekey="" data-action="report" data-turnstile></div>
-
           <div class="submit-bar">
             <p>送った内容と添付は、Meltype のメンテナーだけが見ます。添付は 30 日、報告は 180 日たつと消します。GitHub の Issue にするときは、連絡先・ログ・実行環境を外して載せます。スパム対策として、送れる回数の制限と Cloudflare Turnstile を使っています。返事がほしいときは「連絡先」を書いてください。</p>
-            <button class="btn btn-pink btn-large" type="submit" data-submit>
-              <svg class="ic"><use href="/assets/img/icons.svg#i-arrow"/></svg>送信する
-            </button>
+            <div class="submit-actions">
+              <div class="cf-turnstile" data-sitekey="" data-action="report" data-turnstile></div>
+              <button class="btn btn-pink btn-large" type="submit" data-submit>
+                <svg class="ic"><use href="/assets/img/icons.svg#i-arrow"/></svg>送信する
+              </button>
+            </div>
           </div>
           <div class="form-status" role="status" aria-live="polite" data-status></div>
         </div>

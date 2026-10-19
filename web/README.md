@@ -14,6 +14,17 @@ npm test
 
 `npm test` は D1 の代わりに `node:sqlite` を使うので、Node 22.13 以降で動かしてください (CI は Node 24)。`.dev.vars.example` には手元用の値が入っています。TurnstilehaCloudflareのテスト用キーで、テスト用キーの hostname は `example.com` になるので `TURNSTILE_HOSTNAMES` は空にしてあります。`DASHBOARD_DEV_BYPASS=1` のときは、localhostからのダッシュボードだけアクセス確認を飛ばします。
 
+## 画像を作り直す
+
+リンクを貼ったときの画像 (`public/og.png`) は `scripts/og.html` をブラウザーで 1200x630 に描いて作ります。文字は Google Fonts の Zen Maru Gothic なので、ネットにつながった状態で実行してください。
+
+```bash
+npm i --no-save playwright-core
+node scripts/make-images.mjs
+```
+
+Chrome / Edge / Chromium が見つからないときは `CHROMIUM_PATH` に場所を入れてください。`logo-small.png` と `apple-touch-icon.png` は Windows の PowerShell で `scripts/make-images.ps1` を実行して作ります。
+
 ## デプロイ
 
 初回:

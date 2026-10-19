@@ -79,7 +79,18 @@ export function initCopyButtons(root = document) {
   });
 }
 
+// いま使っているのがマウスかタッチかを html の .is-mouse で示す。
+// (hover: hover) はマウスもつながるスマホ・タブレットでも当てはまり、タップしたカードが浮いたまま残るため、
+// 浮き上がりはマウスで動かしているあいだだけにする。
+function trackPointer() {
+  const root = document.documentElement;
+  const set = (event) => root.classList.toggle("is-mouse", event.pointerType === "mouse");
+  window.addEventListener("pointermove", set, { passive: true });
+  window.addEventListener("pointerdown", set, { passive: true });
+}
+
 export function initHeader() {
+  trackPointer();
   const header = document.querySelector("[data-header]");
   const toggle = document.querySelector("[data-nav-toggle]");
   const nav = document.querySelector("[data-nav]");
