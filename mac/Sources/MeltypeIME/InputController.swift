@@ -268,12 +268,13 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
         for edit in result.commits {
             var range = NSRange(location: NSNotFound, length: 0)
             if edit.deleteBefore > 0 {
-                // 確定し直し: キャレット (変換中の文字があればその先頭) の前の文字を置き換える。
-                let marked = client.markedRange()
-                let caret = marked.location != NSNotFound && marked.length > 0 ? marked.location : client.selectedRange().location
-                if caret != NSNotFound {
-                    let length = min(edit.deleteBefore, caret)
-                    range = NSRange(location: caret - length, length: length)
+                if let verified = verifiedRange(for: edit, client: client) {
+                    // 確定し直し: キャレットの前の文字を置き換える。
+                    range = verified
+                } else {
+                    // 消す文字を確認できないときは、前の文字は消さずに今打った文字だけを入れる
+                    // (本体は text が入った前提で状態を進めるので、edit ごと捨てない)。
+                    NSLog("Meltype: 確定し直す文字を確認できないため、前の文字を消しません")
                 }
             }
             client.insertText(NSAttributedString(string: edit.text), replacementRange: range)
@@ -284,6 +285,17 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
         } else {
             hideComposition(client: client)
         }
+    }
+
+    /// 消してよいと確認できた範囲 (キャレット (変換中の文字があればその先頭) の前の DeleteBefore 文字)。確認できないときは nil。
+    private func verifiedRange(for edit: TextEdit, client: IMKTextInput) -> NSRange? {
+        let marked = client.markedRange()
+        let caret = marked.location != NSNotFound && marked.length > 0 ? marked.location : client.selectedRange().location
+        guard caret != NSNotFound, caret >= edit.deleteBefore else { return nil }
+        let candidate = NSRange(location: caret - edit.deleteBefore, length: edit.deleteBefore)
+        let previous = client.attributedSubstring(from: candidate)?.string
+        guard matchesExpectedText(previous, expected: edit.expect, deleteBefore: edit.deleteBefore) else { return nil }
+        return candidate
     }
 
     /// 変換中の文字を入力欄に下線付きで出す (変換中は文節ごと、選んでいる文節は太い下線)。
