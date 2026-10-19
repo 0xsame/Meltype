@@ -34,7 +34,11 @@ test('builds repository-scoped queries with at most four OR operators', () => {
   assert.match(query, /"win32error"/);
   assert.ok((query.match(/ OR /g) ?? []).length <= 4, 'five terms permit at most four OR operators');
   assert.equal((query.match(/"ordinarylongterm"/g) ?? []).length, 1);
-  assert.equal(buildSearchQuery('yksr-melt/Meltype', [['0x80004005', 4], ['IME自動切替', 4]]).split(' OR ').length - 1, 1);
+  const identifierQuery = buildSearchQuery(
+    'yksr-melt/Meltype',
+    [['0x80004005', 4], ['IME自動切替', 4]],
+  );
+  assert.equal(identifierQuery.split(' OR ').length - 1, 1);
   assert.equal(buildSearchQuery('yksr-melt/Meltype', []), null);
 });
 
