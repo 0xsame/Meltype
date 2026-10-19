@@ -2825,9 +2825,24 @@ em {
   padding-block: 64px;
 }
 
+/* 大きな「404」。ロゴと同じ空色から桃色へのグラデーション */
+.not-found .not-found-code {
+  margin: 8px 0 0;
+  font-family: "LINE Seed JP", sans-serif;
+  font-size: clamp(4.5rem, 3rem + 8vw, 8rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  background: linear-gradient(120deg, var(--sky) 10%, var(--peri) 50%, var(--pink) 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 .not-found h1 {
-  font-size: clamp(2rem, 1.5rem + 2vw, 3rem);
+  font-size: clamp(1.6rem, 1.2rem + 2vw, 3rem);
   margin: 12px 0;
+  text-wrap: balance;
 }
 
 .not-found p {
