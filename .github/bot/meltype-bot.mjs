@@ -93,7 +93,10 @@ async function updateRelatedIssues(issue) {
       search: searchIssues,
       getIssue: async number => gh('GET', '/issues/' + number),
     });
-    await upsertComment(issue.number, 'related-issues', formatRelatedIssueComment(issue, candidates, repo));
+    // Avoid adding a comment when there is no evidence-backed candidate.
+    if (candidates.length > 0) {
+      await upsertComment(issue.number, 'related-issues', formatRelatedIssueComment(issue, candidates, repo));
+    }
   } catch (error) {
     // Keep the last successful comment when GitHub search is rate-limited or unavailable.
     console.warn('Related-issue search failed; existing comment was left unchanged (' + (error?.message ?? 'unknown error') + ').');
@@ -209,11 +212,8 @@ const Help = [
 
 async function parse() {
   const issue = event.issue.number;
-  const isPr = Boolean(event.issue.pull_request);
-
   if (!event.comment) {
     if (event.action !== 'opened' && event.action !== 'edited') return output({ action: 'none' });
-    if (isPr) return output({ action: 'none' });
     await updateRelatedIssues(event.issue);
     const form = parseForm(event.issue.body);
     const labels = new Set(event.issue.labels.map(l => l.name));
