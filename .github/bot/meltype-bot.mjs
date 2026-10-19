@@ -387,12 +387,22 @@ async function parse() {
   return output({ action: command, issue, keys: keys.slice(0, MaxKeys), last, reported: '', expected: '', kind: '', comment: event.comment.id });
 }
 
-const code = text => '`' + String(text ?? '').replace(/`/g, 'ˋ') + '`';
+// 改行は空白にする (空行でコードスパンが切れ、後ろが Markdown として表示されるため)
+const code = text => '`' + String(text ?? '').replace(/\r?\n|\r/g, ' ').replace(/`/g, 'ˋ') + '`';
 // 表のセルに入れるコード。| はコードスパンの中でもセルの区切りになるので \| にする (表の中では | と表示される)
 const cell = text => code(text).replace(/\|/g, '\\|');
 // 利用者が書いた文をそのまま出す。リンク・画像・HTML にならないよう ASCII の記号を \ でエスケープし、
 // @ の後ろに幅の無い空白を入れてメンションにしない
-const md = text => String(text ?? '').replace(/[!-/:-?[-`{-~]/g, '\\$&').replace(/@/g, '@\u200b');
+// 改行は空白にする (表のセルの中でも 1 行に収める)
+const md = text => String(text ?? '').replace(/\r?\n|\r/g, ' ').replace(/[!-/:-?[-`{-~]/g, '\\$&').replace(/@/g, '@\u200b');
+// 複数行の出力を、そのまま見せるコードブロックにする。PR のコードが出した結果は ``` を含められるので、
+// 中のどのバッククォートの並びより長い区切りにして、途中で閉じられないようにする
+const fence = text => {
+  const body = String(text ?? '');
+  const longest = Math.max(0, ...(body.match(/`+/g) ?? []).map(run => run.length));
+  const mark = '`'.repeat(Math.max(3, longest + 1));
+  return `${mark}\n${body}\n${mark}`;
+};
 
 function readJson(file) {
   try {
@@ -431,11 +441,11 @@ async function report() {
     for (const file of versions) {
       const name = file.replace(/^repro-/, '').replace(/\.json$/, '');
       const r = readJson(path.join(dir, file));
-      if (!r) { rows.push(`| ${name} | (失敗) |`); continue; }
+      if (!r) { rows.push(`| ${md(name)} | (失敗) |`); continue; }
       if (r.engine) engine = r.engine;
       const result = (r.committed ?? '') + (r.composing ?? '');
       const extra = r.converted && r.converted !== result ? ` / Space: ${cell(r.converted)}` : '';
-      rows.push(`| ${name} | ${cell(result)}${extra} |`);
+      rows.push(`| ${md(name)} | ${cell(result)}${extra} |`);
       if (name === 'main' || name === 'pr') {
         if (expected && (result === expected || r.converted === expected)) verdicts.push('match');
         else if (reported && (result === reported || r.converted === reported)) verdicts.push('reproduced');
@@ -456,7 +466,7 @@ async function report() {
     else if (verdict === 'reproduced') lines.push('🔁 報告と同じ結果になりました。**再現しました。**');
     else if (verdict === 'match') lines.push('✅ 最新のコードでは期待どおりでした。次の版で直っているかもしれません。');
     else if (expected || reported) lines.push('報告とは違う結果になりました。アプリ・前後の文・学習で変わることがあります。');
-    lines.push('', `<sub>変換エンジン: ${engine || 'なし (判定だけ)'}。${!hasMozc ? '漢字の正しさは未確認。' : ''}[実行結果](${runUrl})</sub>`);
+    lines.push('', `<sub>変換エンジン: ${engine ? md(engine) : 'なし (判定だけ)'}。${!hasMozc ? '漢字の正しさは未確認。' : ''}[実行結果](${runUrl})</sub>`);
     await upsertComment(issue, process.env.BOT_COMMENT_ID ? `repro-${process.env.BOT_COMMENT_ID}` : 'repro', lines.join('\n'));
     if (verdict === 'reproduced') await gh('POST', `/issues/${issue}/labels`, { labels: ['再現済み'] }).catch(() => {});
     return;
@@ -486,13 +496,13 @@ async function report() {
       if (r.candidates) return cell(r.converted);
       return `変換されず ${cell((r.committed ?? '') + (r.composing ?? ''))} と確定しました`;
     };
-    const names = results.map(v => v.name);
+    const names = results.map(v => md(v.name));
     const lines = [
       `${code(keys)} を Space で変換しました。`,
       '',
       '| 版 | 文節 |',
       '|---|---|',
-      ...results.map(v => `| ${v.name} | ${clauseCell(v)} |`),
+      ...results.map(v => `| ${md(v.name)} | ${clauseCell(v)} |`),
       '',
     ];
     const count = Math.max(0, ...results.map(v => v.r?.candidates?.length ?? 0));
@@ -504,7 +514,7 @@ async function report() {
       }
       lines.push('');
     }
-    lines.push(`<sub>変換エンジン: ${engine}。[実行結果](${runUrl})</sub>`);
+    lines.push(`<sub>変換エンジン: ${md(engine)}。[実行結果](${runUrl})</sub>`);
     await upsertComment(issue, marker, lines.join('\n'));
     return;
   }
@@ -513,7 +523,7 @@ async function report() {
     const text = readText(path.join(dir, 'explain.txt'));
     const head = action === 'test-explain' ? ` (PR ${process.env.BOT_SHA?.slice(0, 7)})` : '';
     await upsertComment(issue, `explain-${process.env.BOT_COMMENT_ID}`,
-      text ? `${code(keys)} の判定理由 (英数状態の検知)${head}:\n\n\`\`\`\n${text.trim()}\n\`\`\`` : `判定理由を出せませんでした ([実行結果](${runUrl}))。`);
+      text ? `${code(keys)} の判定理由 (英数状態の検知)${head}:\n\n${fence(text.trim())}` : `判定理由を出せませんでした ([実行結果](${runUrl}))。`);
     return;
   }
 
@@ -539,7 +549,7 @@ async function report() {
     const lines = [
       `**jht**${head}: ${code(data.expected)}`,
       data.reading ? `読み: ${code(data.reading)}` : '',
-      `打ち方 ${results.length} 通り (Enter 一致 ${okLive}/${results.length}、Space 先頭 ${okFirst}/${results.length})。変換エンジン: ${data.engine ?? 'なし (判定だけ)'}${/Mozc/i.test(data.engine ?? '') ? '' : ' — **漢字変換は未検証**'}`,
+      `打ち方 ${results.length} 通り (Enter 一致 ${okLive}/${results.length}、Space 先頭 ${okFirst}/${results.length})。変換エンジン: ${data.engine ? md(data.engine) : 'なし (判定だけ)'}${/Mozc/i.test(data.engine ?? '') ? '' : ' — **漢字変換は未検証**'}`,
       '',
       '| 打ち方 | Enter | Space 先頭 | メモ |',
       '|---|---|---|---|',
@@ -559,7 +569,7 @@ async function report() {
     const failures = text ? text.split('\n').filter(l => /FAIL/.test(l)).slice(0, 20).join('\n') : '';
     await upsertComment(issue, `test-${process.env.BOT_COMMENT_ID}`, [
       `${ok ? '✅' : '❌'} テスト (${process.env.BOT_SHA?.slice(0, 7)}): ${summary ? `${summary[1]}/${summary[2]} 通過` : '結果を読めませんでした'}`,
-      failures ? `\n\`\`\`\n${failures}\n\`\`\`` : '',
+      failures ? `\n${fence(failures)}` : '',
       `\n[実行結果](${runUrl})`,
     ].join('\n'));
     return;
