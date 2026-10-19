@@ -105,6 +105,13 @@ ARM64:
 sudo dnf install ./meltype-<version>-1.aarch64.rpm
 ```
 
+dnf リポジトリから入れると、以後 `sudo dnf upgrade` で更新できます。初回だけ、リポジトリを登録します (公開鍵は最初のインストールのときに確認を求められます)。
+
+```bash
+sudo dnf config-manager addrepo --from-repofile=https://yksr-melt.github.io/Meltype/rpm/meltype.repo
+sudo dnf install meltype
+```
+
 <a name="ibus-のとき"></a>
 <img src="../docs/images/headings/linux/s01.svg" alt="IBus のとき" height="40">
 
