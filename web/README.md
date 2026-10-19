@@ -26,6 +26,7 @@ npx wrangler secret put IP_HASH_SALT
 npx wrangler secret put TURNSTILE_SECRET
 ```
 
+- **R2 は無くても動きます。** R2 を有効にするまでは `wrangler.jsonc` の `r2_buckets` をコメントのままにしておくと、報告の画面に添付の欄を出さず、文章だけ受け付けます (添付付きの送信は断ります)。R2 を有効にしたら (Cloudflare のダッシュボード → R2。支払い方法の登録が要ることがあります)、`r2_buckets` のコメントを外してデプロイし直すと、添付も受け付けます。
 - 最初の `wrangler deploy` で D1 (`meltype-reports`)・R2 (`meltype-report-files`)・KV (`CACHE`) が作られ、`database_id` と KV の `id` が `wrangler.jsonc` に書き戻されます。先に自分で作る場合は `npx wrangler d1 create meltype-reports`・`npx wrangler r2 bucket create meltype-report-files`・`npx wrangler kv namespace create CACHE` を実行して、ID を `wrangler.jsonc` に手動で書いてください。
 - `workers_dev` を `false` にしているので、`*.workers.dev` では開けません。Cloudflare のダッシュボード → Workers → `meltype-web` → 設定 → ドメインとルート で、`meltype.moe` をカスタム ドメインに追加してください。
 - `IP_HASH_SALT` には長いランダムな文字列 (`openssl rand -base64 32` など) を入れてください。ない場合、報告は503で受け付けません。IPアドレスはこの値と合わせたハッシュにしてから、レートリミットのためにそれぞれ1日間保存します。

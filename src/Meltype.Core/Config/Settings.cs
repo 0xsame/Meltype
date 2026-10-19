@@ -292,7 +292,7 @@ public sealed class Settings
     public bool ContextualLearning { get; set; }
 
     [Category("1. 全般"), DisplayName("スペースを全角で入力 (Shift + Space で半角)"),
-     Description("日本語入力のときの Space (何も打っていないとき) を全角スペースにし、Shift + Space を半角スペースにします (全角スペースを多く使う人向け。Meltype キーボードで使えます)。")]
+     Description("日本語入力のときの Space (何も打っていないとき) を全角スペースにし、Shift + Space を半角スペースにします (全角スペースを多く使う人向け。Meltype キーボード・Meltype IME で使えます)。")]
     public bool FullWidthSpaceByDefault { get; set; }
 
     [Category("1. 全般"), DisplayName("入力中も変換候補をいくつか表示"),
@@ -342,6 +342,10 @@ public sealed class Settings
     [Category("1. 全般"), DisplayName("予測変換の候補"),
      Description("打っている途中に、続きの候補を変換ボックスの下に出します (前に確定した語句・ユーザー辞書・選び直した変換の学習・英単語の続き)。Tab / Shift+Tab で選んで Enter で確定します。確定した語句は %LOCALAPPDATA%\\Meltype\\phrases.txt に暗号化せずに覚え (この PC の外には送りません)、「学習データをリセット」で消えます。")]
     public bool PredictiveCandidates { get; set; } = true;
+
+    [Category("1. 全般"), DisplayName("予測変換に英字の社名・サービス名"),
+     Description("「予測変換の候補」が ON のとき、読みを打ちかけたところで、英字で書く社名・サービス名・語の候補も出します (しゃお → Xiaomi、ぎっとは → GitHub)。読みを 3 文字以上打ったときだけ出します。英単語の続き (decis → decision) は「予測変換の候補」だけで出ます。")]
+    public bool EnglishNamePredictions { get; set; }
 
     [Category("1. 全般"), DisplayName("Tab で変換"),
      Description("打っている途中に Tab を押すと、Space と同じく変換を始めます (Microsoft IME と同じ)。Tab で始めた変換の中では Tab で次の候補、Shift+Tab で前の候補、Enter で確定します。もしかして・手動の提案・予測変換の候補が出ているときは、今までどおりそちらに使います。英語で終わっているとき・Space で始めた変換の中では、今までどおり確定してから Tab をアプリに渡します。")]

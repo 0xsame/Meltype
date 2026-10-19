@@ -1,6 +1,6 @@
 name: linux
 
-# Linux 版 (linux/、IBus) をビルドして、テスター向けの zip を実行結果 (Artifacts) に置く。
+# Linux 版 (linux/、IBus) をビルドして、テスター向けの zip と apt で入れられる .deb を実行結果 (Artifacts) に置く。
 # Actions の画面から手動で実行するか、Linux 版・Mozc のヘルパー・共通部分を変えて push したとき。タグ (v*) ならリリースにも添付する。
 # Mozc のビルドは初回 30〜40 分かかるので、Bazel の結果をキャッシュして次から速くする。
 on:
@@ -84,13 +84,37 @@ jobs:
           # タグ (v1.0.0) なら Meltype-1.0.0-linux.zip、それ以外はテスト版の名前
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then name="Meltype-${GITHUB_REF_NAME#v}-linux.zip"; else name="Meltype-linux-test-$(date +%Y%m%d-%H%M).zip"; fi
           (cd linux/build && zip -qr "$name" Meltype-linux)
+      # apt で入れられる .deb (#863)。中身は install.sh が入れるものと同じ。タグなら版、それ以外は meltype.xml の版 + テスト版の印
+      - name: Package (.deb)
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; else
+            version="$(sed -n 's|.*<version>\(.*\)</version>.*|\1|p' linux/meltype.xml | head -n 1)~test.$(date +%Y%m%d%H%M)"; fi
+          linux/build-deb.sh "$version" linux/build/Meltype-linux linux/build
+          dpkg-deb --info linux/build/meltype_*.deb
+          dpkg-deb --contents linux/build/meltype_*.deb
           ls -la linux/build
+      # 実際に apt で入れて、決まった場所に置かれるか・外せるかを確かめる
+      - name: Test .deb
+        run: |
+          sudo apt-get install -y ./linux/build/meltype_*.deb
+          test -x /opt/meltype/ibus-engine-meltype
+          test -x /opt/meltype/mozc/meltype_mozc_helper
+          grep -q '<exec>/opt/meltype/ibus-engine-meltype --ibus</exec>' /usr/share/ibus/component/meltype.xml
+          test -f /usr/share/fcitx5/inputmethod/meltype.conf
+          test -f "$(dirname "$(find /usr/lib -name libclassicui.so -path '*fcitx5*' | head -n 1)")/meltype.so"
+          sudo apt-get remove -y meltype
+          test ! -e /opt/meltype/ibus-engine-meltype
+          test ! -e /usr/share/ibus/component/meltype.xml
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: meltype-linux
-          path: linux/build/Meltype-*.zip
+          path: |
+            linux/build/Meltype-*.zip
+            linux/build/meltype_*.deb
           retention-days: 14
       - if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
         with:
-          files: linux/build/Meltype-*.zip
+          files: |
+            linux/build/Meltype-*.zip
+            linux/build/meltype_*.deb

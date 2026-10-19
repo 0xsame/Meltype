@@ -265,6 +265,8 @@ function renderFiles() {
 }
 
 function addFiles(list) {
+  // 添付を受け付けていないとき (R2 が無い) は何もしない
+  if (root.hasAttribute("data-no-attachments")) return;
   const problems = [];
   for (const original of list) {
     let file = original;

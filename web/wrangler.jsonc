@@ -19,12 +19,8 @@
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "FILES",
-      "bucket_name": "meltype-report-files"
-    }
-  ],
+  // R2 (添付の置き場) は、使えるようになったら次を足す。無いあいだは添付の欄を出さず、報告の文章だけ受け付ける (web/README.md)
+  // "r2_buckets": [{ "binding": "FILES", "bucket_name": "meltype-report-files" }],
   "kv_namespaces": [
     {
       "binding": "CACHE"

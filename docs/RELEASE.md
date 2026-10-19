@@ -14,7 +14,8 @@
 2. コミットして main に入れ、タグを付けて push する: `git tag v1.1.1 && git push origin v1.1.1`
 3. GitHub Actions が Windows (build.yml)・Mac (mac.yml)・Linux (linux.yml) の配布物を作り、リリースに付ける
    - Windows: `Meltype-<版>-setup.exe` (インストーラー)、`Meltype-<版>-windows.zip`、`Meltype-<版>-windows-portable.zip`
-   - Mac: `Meltype-<版>-mac.zip`、Linux: `Meltype-<版>-linux.zip` (どちらもプレビュー版)
+   - Mac: `Meltype-<版>-mac.zip`、Linux: `Meltype-<版>-linux.zip` と `meltype_<版>_amd64.deb` (どれもプレビュー版。.deb の版は `1.2.2-pre.2` なら `1.2.2~pre.2`)
+   - Mac はタグのとき、Homebrew の cask (`meltype.rb`) も実行結果 (Artifacts の `homebrew-cask`) に置く (下の「パッケージマネージャー」)
 4. リリースのページにリリースノートを書く (bot を使うと、リリースノートの下書きまで自動で作ります。下の「bot でリリースする」)
 5. 使っている人の Meltype (Windows) は、自動で新しい版に更新されます
 
@@ -58,7 +59,7 @@ Windows は `Build-Package.ps1` が、入っている最新の 10.0 のランタ
 <img src="images/headings/release/04.svg" alt="パッケージマネージャー" height="53"><br>
 
 
-リリースの zip から、winget・Scoop・Homebrew のマニフェストを作れます。
+リリースの zip から、winget・Scoop・Homebrew のマニフェストを作れます。Linux の .deb は linux.yml が作ります。
 
 ```
 node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-windows.zip dist/Meltype-1.2.0-mac.zip dist/Meltype-1.2.0-setup.exe
@@ -71,5 +72,11 @@ node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-windows.zip dist/Meltype-
   - **2 つ目の版からは自動**: 最初の版が取り込まれたら、`microsoft/winget-pkgs` をフォークし、`public_repo` の権限のトークンを秘密 `WINGET_TOKEN` に登録します。以後はリリースを公開するたびに `.github/workflows/winget.yml` が新しい版の Pull Request を出します (`WINGET_TOKEN` が無ければ何もしません)。使う人は `winget install Yukishiro.Meltype` / `winget upgrade Yukishiro.Meltype`
 - **Scoop**: 自分のバケット (例: `yksr-melt/scoop-bucket`) を作り、`scoop/meltype.json` を `bucket/` に置く。使う人は `scoop bucket add yksr-melt https://github.com/yksr-melt/scoop-bucket` → `scoop install meltype`
 - **Homebrew**: 自分の tap (例: `yksr-melt/homebrew-tap`) を作り、`homebrew/Casks/meltype.rb` を置く。使う人は `brew install --cask yksr-melt/tap/meltype`
+  - Mac の zip だけからも作れます: `node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-mac.zip`。タグのときは mac.yml が作って、実行結果 (Artifacts) の `homebrew-cask` に置くので、それを tap の `Casks/meltype.rb` にコミットします
+  - cask は Meltype.app を `~/Library/Input Methods` に入れ、`mac/install.sh` と同じく、隔離属性を外す・入力ソースに登録する・GUI のセッションで起動するところまでします。`brew upgrade` で更新、`brew uninstall --cask meltype` で外せます (`--zap` で設定と学習データも)
+  - 署名と公証 (mac.yml の秘密) が無い版は、自分用の署名 (ad hoc) です。cask は隔離属性を外しますが、Homebrew の本家 (homebrew/cask) には出せません (自分の tap なら使えます)
+- **apt (.deb)**: linux.yml が `meltype_<版>_amd64.deb` を作り、リリースに付けます。使う人は、ダウンロードして `sudo apt install ./meltype_<版>_amd64.deb` (外すのは `sudo apt remove meltype`)
+  - 中身は `linux/install.sh` が入れるものと同じ (`/opt/meltype`、IBus のコンポーネント、fcitx5 のアドオン)。手元では `linux/build.sh` のあと `linux/build-deb.sh` で作れます
+  - `apt update` / `apt upgrade` で更新できるようにするには、apt のリポジトリが要ります (まだありません)。作るときは: 署名用の GPG 鍵を作って秘密に登録する → `reprepro` や `aptly` などでリポジトリ (`dists/`・`pool/`) を作り、`Release` に署名する → GitHub Pages などで公開し、公開鍵と `/etc/apt/sources.list.d/meltype.sources` の書き方を README に載せる → リリースのたびに .deb を足す (linux.yml に足す)。Ubuntu の PPA (Launchpad) を使う方法もありますが、ソースからビルドし直すので、Mozc や .NET の取り込みに手間がかかります
 
 winget・Scoop で入れた場合は Install.cmd を使わないので、Windows の起動時に起動するには、トレイの「Windows の起動時に起動」を ON にしてもらいます。
