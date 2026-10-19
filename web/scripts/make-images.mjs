@@ -5,7 +5,7 @@
 // Windows 以外でも作れるように、PowerShell ではなくブラウザーで描いて撮る。
 //   npm i --no-save playwright-core
 //   node scripts/make-images.mjs            (Chrome / Edge / Chromium の場所は CHROMIUM_PATH で指定できる)
-// logo-small.png と apple-touch-icon.png は今までどおり make-images.ps1 で作る。
+// logo-small.png は今までどおり make-images.ps1 で、apple-touch-icon.png とアプリのアイコンは make-icons.mjs で作る。
 
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
