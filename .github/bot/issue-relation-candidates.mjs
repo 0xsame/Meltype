@@ -159,7 +159,7 @@ export function scoreCandidate(currentIssue, candidate, current = extractIssueSi
     const inCurrentTitle = current.title.toLowerCase().includes(term);
     const inOtherTitle = other.title.toLowerCase().includes(term);
     const inCurrentBody = term.length >= MIN_BODY_TERM_LENGTH && currentBody.includes(term);
-    const inOtherBody = term.length >= 5 && otherBody.includes(term);
+    const inOtherBody = term.length >= MIN_BODY_TERM_LENGTH && otherBody.includes(term);
     if ((inCurrentTitle && inOtherTitle) ||
         (inCurrentTitle && inOtherBody) ||
         (inOtherTitle && inCurrentBody)) {
@@ -247,7 +247,7 @@ export async function findRelatedIssues(
     const ranked = rankCandidates(issue, candidates, maxCandidates, current);
     if (ranked.length > 0) return ranked;
   }
-  return rankCandidates(issue, candidates, maxCandidates);
+  return rankCandidates(issue, candidates, maxCandidates, current);
 }
 function safeTitle(title) {
   return String(title ?? '').replace(/[\r\n]+/g, ' ').replace(/[<>]/g, '')
