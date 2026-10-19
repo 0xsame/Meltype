@@ -75,9 +75,9 @@ function selectSearchTerms(terms) {
     const term = Array.isArray(entry) ? entry[0] : entry;
     const weight = Array.isArray(entry) && Number.isFinite(entry[1]) ? entry[1] : 0;
     if (typeof term !== 'string') continue;
-    const normalized = term.trim().toLowerCase().replace(/["\\\\]/g, '');
-    if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\\d+$/.test(normalized)) continue;
-    const identifier = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\\d{2})$/i.test(normalized);
+    const normalized = term.trim().toLowerCase().replace(/["\\]/g, '');
+    if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\d+$/.test(normalized)) continue;
+    const identifier = /^(?:0x[0-9a-f]{4,}|[a-z][a-z0-9_.-]*(?:exception|error|failure)|e_fail|hresult|win32error|http[45]\d{2})$/i.test(normalized);
     const lengthBonus = normalized.length >= 8 ? 4 : normalized.length >= 5 ? 2 : 0;
     const priority = weight + lengthBonus + (identifier ? 100 : 0);
     const previous = unique.get(normalized);
@@ -90,7 +90,7 @@ export function buildSearchQuery(repo, terms, label = null) {
   const usable = selectSearchTerms(terms);
   if (usable.length === 0) return null;
   const alternatives = usable.map(term => '"' + term + '"').join(' OR ');
-  const labelFilter = label ? ' label:"' + label.replace(/["\\\\]/g, '') + '"' : '';
+  const labelFilter = label ? ' label:"' + label.replace(/["\\]/g, '') + '"' : '';
   return 'repo:' + repo + ' is:issue' + labelFilter + ' (' + alternatives + ')';
 }
 
