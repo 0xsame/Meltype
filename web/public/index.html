@@ -82,7 +82,7 @@
           <ul class="hero-stats" aria-label="GitHub の数字">
             <li><svg class="ic"><use href="/assets/img/icons.svg#i-star"/></svg><b data-stat="stars">-</b><span>Stars</span></li>
             <li><svg class="ic"><use href="/assets/img/icons.svg#i-download"/></svg><b data-stat="downloads">-</b><span>ダウンロード</span></li>
-            <li><svg class="ic"><use href="/assets/img/icons.svg#i-sparkle"/></svg><b data-stat="version">-</b><span>最新のバージョン</span></li>
+            <li><svg class="ic"><use href="/assets/img/icons.svg#i-sparkle"/></svg><b data-stat="version">-</b><span>最新の版</span></li>
           </ul>
         </div>
 
@@ -121,14 +121,8 @@
           </article>
           <article class="card">
             <h3>ぜんぶ PC の中で</h3>
-            <p>判定も変換も PC の中で完結します。外部サーバーへの転送などは行いません。</p>
+            <p>判定も変換も PC の中で完結します。打った文字を外部のサーバーへ送ることはありません。</p>
           </article>
-        </div>
-
-        <div class="example-strip" aria-label="入力の例">
-          <div class="example-row"><code>kyouhagoogledekensaku</code><svg class="ic"><use href="/assets/img/icons.svg#i-arrow"/></svg><span>今日は<em>google</em>で検索</span></div>
-          <div class="example-row"><code>ashitanomeetingwotsuika</code><svg class="ic"><use href="/assets/img/icons.svg#i-arrow"/></svg><span>明日の<em>meeting</em>を追加</span></div>
-          <div class="example-row"><code>I want to go to the park</code><svg class="ic"><use href="/assets/img/icons.svg#i-arrow"/></svg><span><em>I want to go to the park</em></span></div>
         </div>
 
         <nav class="pills" aria-label="機能の種類">
@@ -138,7 +132,6 @@
           <a href="#f-code">コード・AI</a>
           <a href="#f-apps">アプリに合わせる</a>
           <a href="#f-safe">安心して使う</a>
-          <a href="#f-modes">2つの動作モード</a>
         </nav>
 
         <div class="feature-group" id="f-mix">
@@ -149,39 +142,26 @@
           <div class="feat-grid">
             <article class="feat">
               <h4>英単語は英字のまま</h4>
-              <p>ローマ字として読めない語 (<code>google</code> <code>github</code> <code>npm</code>) は、途中で「ごおｇ」のようにならず、すぐ英字になります。</p>
+              <p>ローマ字として読めない語 (<code>google</code> <code>npm</code>)、固有名詞、大文字始まりの語 (<code>Tokyo</code>) は、途中で「ごおｇ」のようにならず英字になります。</p>
               <p class="ex"><code>kyouhagoogledekensaku</code><span>今日は<em>google</em>で検索</span></p>
             </article>
             <article class="feat">
               <h4>文脈で判断する</h4>
-              <p><code>sushi</code> <code>repo</code> のように英語とも日本語とも読める語は、カーソルの前後にある文字を見て決めます。英文の続きなら英字、日本語の続きならかなです。</p>
+              <p><code>sushi</code> のようにどちらとも読める語は、前後の文字で決めます。英文の中では <code>to</code> <code>no</code> のような短い語も英語です。</p>
               <p class="ex"><span>I love ＋ <code>sushi</code></span><span>I love <em>sushi</em></span><span>今日は ＋ <code>sushi</code></span><span>今日はすし</span></p>
             </article>
             <article class="feat">
-              <h4>英文は英文に</h4>
-              <p>空白で区切った英単語が続く英文の中では、<code>to</code> <code>no</code> のような短い語も英語として扱います。</p>
-              <p class="ex"><code>I want to go</code><span><em>I want to go</em></span></p>
-            </article>
-            <article class="feat">
-              <h4>固有名詞と大文字</h4>
-              <p><code>amazon</code> <code>netflix</code> のような固有名詞や、大文字で打ち始めた語 (<code>Tokyo</code>)、1 文字の <code>I</code> は英字。変換の候補には正しい書き方 (iPhone・GitHub) も出ます。</p>
-            </article>
-            <article class="feat">
               <h4>確定した後も直す</h4>
-              <p>英語か日本語か分からないまま確定した語も、続きを打って分かったら自動で確定し直します。</p>
+              <p>迷ったまま確定した語も、続きを打って分かったら確定し直します。英数のまま打ち始めても、ローマ字だと分かれば日本語に切り替えます。</p>
               <p class="ex"><code>i want</code><span><em>I want</em></span></p>
             </article>
             <article class="feat">
               <h4>変換を学習する</h4>
-              <p><kbd>F10</kbd> で英字に、<kbd>F6</kbd> でかなに直して確定した語は、次からその見え方で出ます。<code>api</code> を一度英字に直せば、日本語の文の中でも apiのerror のように出ます。不本意に覚えた語はトレイの「学習した語...」で 1 語ずつ消せます。</p>
+              <p><kbd>F10</kbd> で英字に、<kbd>F6</kbd> でかなに直した語は、次からはその形で出ます。覚えた語はトレイの「学習した語...」で消せます。</p>
             </article>
             <article class="feat">
               <h4>判定の強さを選べる</h4>
-              <p>積極的・標準・慎重・手動の 4 段階から選べます。手動では、Shift で打った大文字始まりの語だけを英字にして、ほかの語には「Tab で英字に」と提案を出します。</p>
-            </article>
-            <article class="feat">
-              <h4>英数のままでも気づく</h4>
-              <p>英数 (直接入力) のまま打ち始めても、ローマ字だと分かった時点で入れた文字を消して日本語入力に切り替え、変換中の文字に置き換えます。</p>
+              <p>積極的・標準・慎重・手動の 4 段階。手動では大文字始まりの語だけを英字にして、ほかは「Tab で英字に」と提案します。</p>
             </article>
           </div>
         </div>
@@ -189,46 +169,34 @@
         <div class="feature-group" id="f-convert">
           <div class="group-head">
             <h3>変換</h3>
-            <p>Windows では、かな漢字変換に Mozc (Google 日本語入力のオープンソース版) と Microsoft IME の変換エンジンを使い、候補には両方の結果が並びます。Mozc が使えないときは Microsoft IME だけで変換します。</p>
+            <p>Windows では Mozc (Google 日本語入力のオープンソース版) と Microsoft IME の両方で変換し、候補に並べます。</p>
           </div>
           <div class="feat-grid">
             <article class="feat">
-              <h4>リアルタイム変換</h4>
-              <p>4 文字以上の日本語は、Space を押さなくても打つそばから漢字になります。短い語は <kbd>Space</kbd> で変換します。</p>
-            </article>
-            <article class="feat">
-              <h4>文脈に合わせた変換</h4>
-              <p>前後の語を手がかりに最初の候補を選びます。前に選び直した変換も覚えています。</p>
+              <h4>文脈に合わせたリアルタイム変換</h4>
+              <p>4 文字以上は <kbd>Space</kbd> を押さなくても打つそばから漢字に。前後の語や、前に選び直した変換も手がかりにします。</p>
               <p class="ex"><span>この本は + あつい</span><span>厚い</span></p>
             </article>
             <article class="feat">
               <h4>予測変換</h4>
-              <p>打っている途中に続きの候補を出し、<kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd> で選べます。前に確定した語句・ユーザー辞書・英単語の続き (<code>decis</code> → decisions) から探します。</p>
+              <p>打っている途中に続きの候補を出し、<kbd>Tab</kbd> で選べます。英単語の続き (<code>decis</code> → decisions) も出ます。</p>
             </article>
             <article class="feat">
               <h4>絵文字・顔文字</h4>
-              <p>変換の候補の最後に絵文字と顔文字が並びます。変換してすぐ <kbd>↑</kbd> を押すと、よく使う絵文字になります。</p>
+              <p>候補の最後に絵文字と顔文字が並びます。変換してすぐ <kbd>↑</kbd> で絵文字に。</p>
               <p class="ex"><span>えがお</span><span>😊</span><span>ねこ</span><span>🐱 (=^・^=)</span></p>
             </article>
             <article class="feat">
               <h4>英訳と意味</h4>
-              <p>候補の後ろに英訳も出ます (複雑な → complex, complicated)。候補の上で少し止まると横に意味が出るので、同音異義語を選ぶ手がかりになります。</p>
+              <p>候補に英訳も出ます (複雑な → complex)。候補の上で少し止まると横に意味が出ます。</p>
             </article>
             <article class="feat">
-              <h4>今日の日付・今の時刻</h4>
-              <p>「きょう」「いま」を変換すると、日付や時刻のいろいろな書き方が候補に出ます。<code>3じ15ふん</code> を 3:15 にすることもできます。</p>
-            </article>
-            <article class="feat">
-              <h4>F6〜F10 と Ctrl のキー</h4>
-              <p><kbd>F6</kbd>〜<kbd>F10</kbd> で、ひらがな・カタカナ・半角カタカナ・全角英数・半角英数に直せます。半角カタカナ以外は <kbd>Ctrl</kbd>+<kbd>U</kbd> <kbd>I</kbd> <kbd>P</kbd> <kbd>O</kbd> でも直せます。英字は続けて押すと AI → Ai → ai と切り替わります。</p>
-            </article>
-            <article class="feat">
-              <h4>記号・数字・単位</h4>
-              <p><code>3ji</code> → 3時、<code>1.5</code> と <code>1,000</code> は半角のまま。<code>zh</code> → ←、<code>z.</code> → … のような z の記号も Microsoft IME と同じです。</p>
+              <h4>F6〜F10・記号・日付</h4>
+              <p><kbd>F6</kbd>〜<kbd>F10</kbd> (と <kbd>Ctrl</kbd>+<kbd>U</kbd> <kbd>I</kbd> <kbd>P</kbd> <kbd>O</kbd>) でひらがな・カタカナ・英数に直せます。<code>3ji</code> → 3時、<code>zh</code> → ← の記号、「きょう」「いま」で日付と時刻も出ます。</p>
             </article>
             <article class="feat">
               <h4>ユーザー辞書</h4>
-              <p>読みと単語を登録すると最優先で使います。Microsoft IME・Google 日本語入力・macOS の辞書を取り込めます。前面のアプリで語を選んで <kbd>Ctrl</kbd>+<kbd>F7</kbd> を押すと、その語を入れた状態で登録の画面が開きます。</p>
+              <p>登録した語は最優先で使います。Microsoft IME・Google 日本語入力・macOS の辞書を取り込めて、語を選んで <kbd>Ctrl</kbd>+<kbd>F7</kbd> ですぐ登録できます。</p>
             </article>
           </div>
         </div>
@@ -241,7 +209,7 @@
           <div class="feat-grid">
             <article class="feat">
               <h4>ローマ字の打ち間違い</h4>
-              <p>読めない子音が残ったとき、隣のキーの押し間違い・入れ替わり・抜けを 1 文字だけ直します。直した結果がよく使う語の読みになるときに限ります。</p>
+              <p>隣のキーの押し間違い・入れ替わり・抜けを 1 文字だけ直します。</p>
               <p class="ex"><code>sumimasne</code><span>すみません</span></p>
             </article>
             <article class="feat">
@@ -251,7 +219,7 @@
             </article>
             <article class="feat">
               <h4>もしかして</h4>
-              <p>よくある書き間違いがあると「もしかして」を出し、<kbd>Tab</kbd> で正しい読みに直します。</p>
+              <p>よくある書き間違いには「もしかして」を出し、<kbd>Tab</kbd> で正しい読みに直します。</p>
               <p class="ex"><span>ブレスレッド</span><span>ブレスレット</span><span>シュミレーション</span><span>シミュレーション</span></p>
             </article>
           </div>
@@ -269,25 +237,21 @@
             </article>
             <article class="feat">
               <h4>コメントと文字列だけ日本語</h4>
-              <p>カーソルの前が <code>//</code> <code>#</code> <code>--</code> <code>/*</code> <code>&lt;!--</code> のコメントか、<code>"…"</code> <code>'…'</code> <code>`…`</code> の中なら日本語を判定します。<code>#include</code> のような指令はコメントとみなしません。</p>
+              <p><code>//</code> <code>#</code> <code>/*</code> などのコメントと、<code>"…"</code> <code>`…`</code> の文字列の中だけ日本語を判定します。</p>
               <p class="ex"><code>// pythonnobug</code><span>// <em>python</em>の<em>bug</em></span></p>
             </article>
             <article class="feat">
               <h4>AI の入力欄とプロンプト</h4>
-              <p>Copilot Chat などのチャット欄と、Claude Code・Gemini CLI の「&gt; 」、Codex の「› 」の入力行では、ふつうに日本語を判定します。</p>
+              <p>Copilot Chat などのチャット欄と、Claude Code・Gemini CLI の「&gt; 」、Codex の「› 」の入力行では、通常どおり日本語を判定します。</p>
             </article>
             <article class="feat">
-              <h4>/ $ @ はそのまま</h4>
-              <p>行の先頭か空白の後の <code>/review</code> <code>$skill</code> <code>@src/app.ts</code> は変換せずにアプリへ渡すので、アプリの補完をそのまま使えます。</p>
+              <h4>/ $ @ や URL はそのまま</h4>
+              <p><code>/review</code> <code>$skill</code> <code>@src/app.ts</code> はアプリの補完に渡し、URL・メールアドレス・パスは打ったままの形で入ります。</p>
               <p class="ex"><code>/review kyouha</code><span><em>/review</em> 今日は</span></p>
             </article>
             <article class="feat">
               <h4>その行だけ日本語に</h4>
-              <p>コードの行で <kbd>半角/全角</kbd> を押すと、その行は日本語で打てます。カーソルを別の場所に動かすと英数に戻ります。</p>
-            </article>
-            <article class="feat">
-              <h4>URL やパスは打ったまま</h4>
-              <p>URL・メールアドレス・ファイルのパス・<code>@メンション</code> は、ローマ字として読めても打ったままの形で入ります。</p>
+              <p>コードの行で <kbd>半角/全角</kbd> を押すと、その行は日本語で打てます。カーソルを動かすと英数に戻ります。</p>
             </article>
           </div>
         </div>
@@ -299,28 +263,20 @@
           </div>
           <div class="feat-grid">
             <article class="feat">
-              <h4>アプリ別設定</h4>
-              <p>アプリごとに ON/OFF と種類 (一般・コード・ゲーム) を決められます。リモートデスクトップと VM は最初から OFF、Steam などのゲームでは何もしません。</p>
-            </article>
-            <article class="feat">
-              <h4>プロファイル</h4>
-              <p>仕事用・趣味用など、設定をまとめて切り替えられます。ファイルに書き出して人に渡すこともできます。</p>
+              <h4>アプリ別設定・プロファイル</h4>
+              <p>アプリごとに ON/OFF と種類 (一般・コード・ゲーム) を決められます。リモートデスクトップ・VM・ゲームでは最初から何もしません。設定は仕事用・趣味用などのプロファイルで切り替えられます。</p>
             </article>
             <article class="feat">
               <h4>定型文</h4>
-              <p><code>;sig</code> と打って <kbd>Space</kbd> を押すと、登録した署名やひな形に置き換えます。すぐ <kbd>Esc</kbd> で元に戻せます。</p>
+              <p><code>;sig</code> と打って <kbd>Space</kbd> で、登録した署名やひな形に置き換えます。<kbd>Esc</kbd> で元に戻せます。</p>
             </article>
             <article class="feat">
               <h4>好みのキーで切り替え</h4>
-              <p>「<kbd>無変換</kbd> で英数、<kbd>変換</kbd> で日本語」や「左右の <kbd>Alt</kbd> を単独で押して切り替え」も選べます。US 配列なら <kbd>Alt</kbd>+<kbd>`</kbd> でも切り替わります。</p>
+              <p>「<kbd>無変換</kbd> で英数、<kbd>変換</kbd> で日本語」や、左右の <kbd>Alt</kbd> 単独での切り替えも選べます。</p>
             </article>
             <article class="feat">
-              <h4>句読点と空白</h4>
-              <p>句読点は「、。」「，．」など 4 通りから選べます。確定するときに日本語と英単語の間へ半角スペースを入れることもできます (今日は GitHub に push した)。</p>
-            </article>
-            <article class="feat">
-              <h4>変換ボックスの見た目</h4>
-              <p>Meltype キーボードの変換ボックスの位置・文字の大きさ・フォント・色 (ライト・ダーク)・不透明度を選べます。</p>
+              <h4>句読点・空白・見た目</h4>
+              <p>句読点 (「、。」「，．」など)、日本語と英単語の間の半角スペース、変換ボックスの位置・フォント・色を選べます。</p>
             </article>
           </div>
         </div>
@@ -328,43 +284,24 @@
         <div class="feature-group" id="f-safe">
           <div class="group-head">
             <h3>安心して使う</h3>
-            <p>キー入力を扱うソフトなので、打った文字の扱いには特に気をつけています。</p>
+            <p>キー入力を扱うソフトなので、打った文字の扱いには特に気をつけています。セキュリティの方針と連絡先は <a href="https://github.com/yksr-melt/Meltype/blob/main/SECURITY.md">SECURITY.md</a> にあります。</p>
           </div>
           <div class="feat-grid">
             <article class="feat">
               <h4>打った文字は送らない</h4>
-              <p>判定も変換も PC の中で完結します。通信するのは、自動更新の確認と、自分で開いた報告のフォームだけです。</p>
+              <p>判定も変換も PC の中で完結します。通信するのは自動更新の確認と、自分で開いた報告のフォームだけです。設定・学習データ・辞書は <code>%LOCALAPPDATA%\Meltype</code> に保存します。</p>
             </article>
             <article class="feat">
               <h4>入力しない場所</h4>
-              <p>パスワードの入力欄・サインインや UAC の画面・管理者として動くアプリ・ブラウザーのシークレットウィンドウでは、何もしません。</p>
+              <p>パスワード欄・サインインや UAC の画面・管理者として動くアプリ・シークレットウィンドウでは何もしません。</p>
             </article>
             <article class="feat">
               <h4>自動更新</h4>
-              <p>新しい版は自動で入ります。入れる前に、自分で英字やかなに直したことのある語の見え方が変わらないかを確かめ、変わる語があれば一覧で見せます。</p>
+              <p>新しい版は自動で入ります。直したことのある語の表記が変わるときは、入れる前に一覧で見せます。</p>
             </article>
             <article class="feat">
               <h4>学習データは自分で消せる</h4>
-              <p>「この 1 時間」「今日」「すべて」の単位で、覚えた語をまとめて消せます。設定と学習データはバックアップして別の PC に戻せます。</p>
-            </article>
-          </div>
-        </div>
-
-        <div class="feature-group" id="f-modes">
-          <div class="group-head">
-            <h3>2 つの動作モード (Windows)</h3>
-            <p>タスクトレイのアイコンを右クリックして選びます。判定・変換・キー操作はどれも同じです。</p>
-          </div>
-          <div class="cards-2 modes">
-            <article class="card">
-              <h4>Meltype IME <span class="tag">既定</span></h4>
-              <p>Windows の IME として動きます。打った文字は下線付きで入力欄に直接入り、候補は入力位置の下に一覧で出ます。ほかの IME とは <kbd>Win</kbd>+<kbd>Space</kbd> で切り替えます。</p>
-              <p class="mode-for">インストールのときに IME を登録した人に</p>
-            </article>
-            <article class="card">
-              <h4>Meltype キーボード</h4>
-              <p>Meltype 自身の変換ボックスで入力します。<kbd>Enter</kbd> を押すまで入力欄には何も入りません。定型文や選んだ文字の再変換も使えます。</p>
-              <p class="mode-for">IME を登録しなかった人、ARM64 の Windows に</p>
+              <p>「この 1 時間」「今日」「すべて」の単位で消せます。バックアップして別の PC に戻すこともできます。</p>
             </article>
           </div>
         </div>
@@ -438,11 +375,11 @@
         </div>
 
         <div class="os-panel" role="tabpanel" id="panel-mac" aria-labelledby="tab-mac" hidden>
-          <p class="panel-lead">Mac の正式な IME の仕組み (Input Method Kit) で動く「入力ソース」で、漢字変換には azooKey を使います。<code>Meltype.app</code> をダブルクリックしても何も起きません。</p>
+          <p class="panel-lead">macOS 標準の IME の仕組み (Input Method Kit) で動く入力ソースです。漢字変換には azooKey を使います。<code>Meltype.app</code> をダブルクリックしても何も起きません。</p>
           <ol class="steps">
             <li><b>ダウンロード</b><span><a href="https://github.com/yksr-melt/Meltype/releases/latest" data-asset-link="mac.zip"><code>Meltype-&lt;version&gt;-mac.zip</code></a> をダウンロードして、zip 全体を展開します</span></li>
             <li><b>インストーラーを開く</b><span>「Install Meltype.command」をダブルクリックします</span></li>
-            <li><b>準備完了</b><span>インストーラーが Meltype を登録・起動して、入力ソースを選びます</span></li>
+            <li><b>準備完了</b><span>インストーラーが Meltype を登録・起動し、入力ソースを切り替えます</span></li>
           </ol>
           <div class="callouts">
             <p class="callout is-warn"><svg class="ic"><use href="/assets/img/icons.svg#i-alert"/></svg><span>「開発元が未確認のため開けません」と出たら、右クリック (control + クリック) →「開く」。macOS 15 以降は、システム設定 → プライバシーとセキュリティ の「このまま開く」を押してください。</span></p>
@@ -456,7 +393,7 @@
           <ol class="steps">
             <li><b>ダウンロード</b><span><a href="https://github.com/yksr-melt/Meltype/releases/latest" data-asset-link="linux.zip"><code>Meltype-&lt;version&gt;-linux.zip</code></a> をダウンロードして展開します</span></li>
             <li><b>インストール</b><span>展開したフォルダーで端末を開き、下のコマンドを実行します。足りない部品は自動で入ります</span></li>
-            <li><b>入力ソースを追加</b><span>IBus はログインし直してから 設定 → キーボード → 入力ソース で Meltype を追加、fcitx5 は <code>fcitx5-configtool</code> で追加します</span></li>
+            <li><b>入力ソースを追加</b><span>IBus はログインし直してから「設定」→「キーボード」→「入力ソース」で Meltype を追加し、fcitx5 は <code>fcitx5-configtool</code> で追加します</span></li>
           </ol>
           <div class="codebox"><code>bash install.sh</code><button class="copy" type="button" data-copy="bash install.sh"><svg class="ic"><use href="/assets/img/icons.svg#i-copy"/></svg><span class="sr-only">コピー</span></button></div>
           <p class="more-link"><a href="https://github.com/yksr-melt/Meltype/blob/main/linux/README.md">Linux 版の詳しい説明<svg class="ic"><use href="/assets/img/icons.svg#i-external"/></svg></a></p>
@@ -469,16 +406,16 @@
         <h2 class="sec-title" id="start-title">使い始める</h2>
         <p class="lead">特別な操作は要りません。いつもどおりローマ字で打って、必要なときだけ下のキーを使います。</p>
         <div class="start-grid">
-          <div class="start-modes">
+          <div class="start-modes modes">
             <div class="mini-card">
-              <h3>Meltype IME</h3>
-              <p>文字は入力欄に直接入り、候補は入力位置の下に出ます。ほかの IME との切り替えは <kbd>Win</kbd>+<kbd>Space</kbd>。</p>
+              <h3>Meltype IME <span class="tag">既定</span></h3>
+              <p>Windows の IME として動き、文字は入力欄に直接入ります。ほかの IME との切り替えは <kbd>Win</kbd>+<kbd>Space</kbd>。</p>
             </div>
             <div class="mini-card">
               <h3>Meltype キーボード</h3>
-              <p>Meltype IME を入れなかったときは、カーソルの下に変換ボックスが出ます。</p>
+              <p>IME を登録しなかったときや ARM64 の Windows では、カーソルの下の変換ボックスで入力します。</p>
             </div>
-            <p class="small">よく使う言葉は、トレイのメニューの「ユーザー辞書...」から登録できます。</p>
+            <p class="small">2 つのモードはトレイのアイコンを右クリックして切り替えられます。よく使う言葉は「ユーザー辞書...」から登録できます。</p>
           </div>
           <dl class="keys">
             <div><dt><kbd>Enter</kbd></dt><dd>確定</dd></div>
@@ -523,7 +460,7 @@
           <details class="fold">
             <summary>英語のつもりがかなに、かなのつもりが英字になった</summary>
             <div class="fold-body">
-              <p><kbd>F10</kbd> (英字) か <kbd>F6</kbd> (ひらがな) で直して確定すれば、次からはその語を覚えています。</p>
+              <p><kbd>F10</kbd> (英字) か <kbd>F6</kbd> (ひらがな) で直して確定すれば、次からはその形で出ます。</p>
               <p>トレイのメニューの「自動判定の強さ」でも調整できます。</p>
             </div>
           </details>
@@ -535,27 +472,6 @@
             </div>
           </details>
         </div>
-      </div>
-    </section>
-
-    <section class="section is-tinted" id="privacy" aria-labelledby="privacy-title">
-      <div class="wrap">
-        <h2 class="sec-title" id="privacy-title">プライバシー</h2>
-        <div class="cards-3">
-          <article class="card">
-            <h3>打った文字は送らない</h3>
-            <p>判定も変換も PC の中で完結します。</p>
-          </article>
-          <article class="card">
-            <h3>通信は 2 つだけ</h3>
-            <p>自動更新の確認と、自分で開いた報告のフォームだけです。</p>
-          </article>
-          <article class="card">
-            <h3>保存も PC の中</h3>
-            <p>設定・学習データ・辞書は <code>%LOCALAPPDATA%</code> の中に。</p>
-          </article>
-        </div>
-        <p class="body-text">保存するのは <code>%LOCALAPPDATA%\Meltype</code> の設定・学習データ・ユーザー辞書 (と、ON にしたときのログ) だけです。セキュリティの方針と脆弱性の連絡先は <a href="https://github.com/yksr-melt/Meltype/blob/main/SECURITY.md">SECURITY.md</a> にあります。</p>
       </div>
     </section>
 
@@ -598,7 +514,7 @@
 
         <div class="thanks-block">
           <h3 class="sub-title">寄付してくださった方々</h3>
-          <p class="body-text">GitHub Sponsors で応援してくださった方々です。開発を続ける力になっています。本当にありがとうございます！</p>
+          <p class="body-text">GitHub Sponsors で応援してくださった方々です。本当にありがとうございます！</p>
           <ul class="avatars" data-sponsors>
             <li><a href="https://github.com/cpthgli" title="@cpthgli"><img src="https://github.com/cpthgli.png?size=120" alt="@cpthgli" width="60" height="60" loading="lazy"></a></li>
             <li><a href="https://github.com/MuNeNiCK" title="@MuNeNiCK"><img src="https://github.com/MuNeNiCK.png?size=120" alt="@MuNeNiCK" width="60" height="60" loading="lazy"></a></li>
@@ -610,7 +526,7 @@
             <li><a href="https://github.com/Kuraido1018" title="@Kuraido1018"><img src="https://github.com/Kuraido1018.png?size=120" alt="@Kuraido1018" width="60" height="60" loading="lazy"></a></li>
             <li><a href="https://github.com/overdozer1124" title="@overdozer1124"><img src="https://github.com/overdozer1124.png?size=120" alt="@overdozer1124" width="60" height="60" loading="lazy"></a></li>
           </ul>
-          <p class="small">名前を公開にして応援してくださった方を、README から自動で載せています。</p>
+          <p class="small">名前を公開して応援してくださった方を、README から自動で載せています。</p>
           <a class="btn btn-pink" href="https://github.com/sponsors/yksr-melt"><svg class="ic"><use href="/assets/img/icons.svg#i-heart"/></svg>GitHub Sponsors で応援する</a>
         </div>
 
@@ -633,13 +549,13 @@
             <h3>不具合の報告</h3>
             <p>このサイトのフォームから、アカウントなしで送れます。</p>
           </a>
-          <a class="card link-card" href="https://github.com/yksr-melt/Meltype/blob/main/CONTRIBUTING.md#辞書の追加">
-            <h3>辞書の追加</h3>
-            <p>出ない変換や、英字にしてほしい語を足せます。</p>
-          </a>
           <a class="card link-card" href="https://github.com/yksr-melt/Meltype/blob/main/CONTRIBUTING.md">
-            <h3>コードで協力</h3>
-            <p>送り方は CONTRIBUTING.md にあります。</p>
+            <h3>辞書・コードで協力</h3>
+            <p>出ない変換の追加や Pull Request の送り方は CONTRIBUTING.md に。</p>
+          </a>
+          <a class="card link-card" href="https://discord.gg/y44wBbBgHt">
+            <h3>Discord</h3>
+            <p>質問・雑談・新しい版のお知らせ</p>
           </a>
         </div>
         <ul class="link-list">
@@ -647,19 +563,6 @@
           <li><a href="https://github.com/yksr-melt/Meltype/blob/main/docs/MAC-CLI.md">Mac の CLI ビルド</a></li>
           <li><a href="https://github.com/yksr-melt/Meltype/blob/main/docs/WSL.md">WSL / Linux の CLI ビルド</a></li>
         </ul>
-
-        <h3 class="sub-title community-title">コミュニティ・応援</h3>
-        <p class="body-text">使い方の相談や雑談は Discord でどうぞ。Meltype を気に入ってもらえたら、GitHub Sponsors で応援していただけると開発の励みになります！</p>
-        <div class="cards-2">
-          <a class="card link-card" href="https://discord.gg/y44wBbBgHt">
-            <h3>Discord</h3>
-            <p>質問・雑談・新しい版のお知らせ</p>
-          </a>
-          <a class="card link-card" href="https://github.com/sponsors/yksr-melt">
-            <h3>GitHub Sponsors</h3>
-            <p>開発を応援する</p>
-          </a>
-        </div>
         <figure class="star-history">
           <a href="https://www.star-history.com/?repos=yksr-melt%2FMeltype&amp;type=date&amp;legend=top-left">
             <picture>
@@ -680,8 +583,7 @@
           <li>個人・会社 無料</li>
           <li>改造・再配布 OK</li>
         </ul>
-        <p class="body-text"><a href="https://github.com/yksr-melt/Meltype/blob/main/LICENSE">GNU GPL v3.0</a> で公開しています。個人でも会社でも無料で使えます。改造・再配布も自由ですが、改造版を配るときはそのソースも GPL v3 で公開してください。</p>
-        <p class="body-text">ソースを公開せずに製品へ組み込みたいなど、GPL v3 の条件では使えないときは <a href="mailto:ibutya0319@gmail.com">ibutya0319@gmail.com</a> までご相談ください。</p>
+        <p class="body-text"><a href="https://github.com/yksr-melt/Meltype/blob/main/LICENSE">GNU GPL v3.0</a> で公開しています。改造版を配るときはそのソースも GPL v3 で公開してください。GPL v3 の条件で使えないときは <a href="mailto:ibutya0319@gmail.com">ibutya0319@gmail.com</a> までご相談ください。</p>
         <details class="fold">
           <summary>著作権表示・同梱物</summary>
           <div class="fold-body">

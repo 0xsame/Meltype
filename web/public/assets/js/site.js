@@ -217,8 +217,8 @@ function initDemo() {
     const now = entries[entries.length - 1].isIntersecting;
     if (now === visible) return;
     visible = now;
-    if (!visible) stop();
-    else if (!paused) start(current);
+    // 見えないあいだは止めて、打ち終わった形にしておく (途中の文字のまま残さない)
+    if (!visible || !paused) start(current);
   });
   observer.observe(root);
   document.addEventListener("visibilitychange", () => {
@@ -291,6 +291,35 @@ function initSnow() {
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", resize);
   new IntersectionObserver((entries) => setRunning(entries[entries.length - 1].isIntersecting && !document.hidden)).observe(canvas);
   document.addEventListener("visibilitychange", () => setRunning(!document.hidden));
+}
+
+// スクロールして見えてきたところを、下からふわっと出す。
+// 並んだカードは少しずつずらして出す。動きを減らす設定のときは何もしない (最初から全部見える)。
+const REVEAL = ".sec-title, .lead, .cards-3 > *, .pills, .group-head, .feat, .os-tabs, .os-panel, .start-grid > *, .release, .faq > *, .thanks-block, .star-history, .badges, #license .body-text, #license .fold";
+
+function initReveal() {
+  if (prefersReducedMotion() || !("IntersectionObserver" in window)) return;
+  const targets = [...document.querySelectorAll(`main .section :is(${REVEAL})`)];
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add("is-in");
+      observer.unobserve(entry.target);
+    }
+  }, { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+  const watch = (element) => {
+    if (element.hasAttribute("data-reveal")) return;
+    const siblings = [...element.parentElement.children].filter((child) => child.matches(REVEAL));
+    const index = Math.max(0, siblings.indexOf(element));
+    element.dataset.reveal = "";
+    element.style.setProperty("--reveal-delay", `${Math.min(index % 3, 2) * 0.07}s`);
+    observer.observe(element);
+  };
+  targets.forEach(watch);
+  document.documentElement.classList.add("has-reveal");
+  // 後から差し込まれる更新情報も同じように出す
+  const releases = document.querySelector("[data-releases]");
+  if (releases) new MutationObserver(() => releases.querySelectorAll(".release").forEach(watch)).observe(releases, { childList: true });
 }
 
 function initTabs(os) {
@@ -510,11 +539,14 @@ function applyDownloads(data, os) {
     const code = link.querySelector("code");
     if (code) code.textContent = asset.name;
   });
-  const asset = OS_ASSET[os] ? assetFor(latest, OS_ASSET[os]) : null;
+  // OS が分からない PC では、いちばん使われている Windows のインストーラーを直接落とす。
+  // スマホでは落としても使えないので、リリースのページのままにする。
+  const target = OS_ASSET[os] ? os : os === "mobile" ? null : "windows";
+  const asset = target ? assetFor(latest, OS_ASSET[target]) : null;
   const main = document.querySelector("[data-download-main]");
   if (asset && main) {
     main.href = asset.url;
-    main.querySelector("[data-download-label]").textContent = OS_LABEL[os];
+    main.querySelector("[data-download-label]").textContent = OS_LABEL[target];
     main.querySelector("[data-download-meta]").textContent = `${latest.tag}・${asset.name.split("-").pop()}・${formatBytes(asset.size)}`;
     document.querySelectorAll("[data-download-link]:not([data-download-main])").forEach((link) => (link.href = asset.url));
   } else if (main && os !== "mobile") {
@@ -555,5 +587,6 @@ initDownloadLabel(os);
 initTabs(os);
 initScrollSpy();
 initSnow();
+initReveal();
 initDemo();
 loadGitHub(os);

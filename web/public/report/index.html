@@ -56,7 +56,7 @@
     <section class="page-hero" aria-labelledby="report-title">
       <div class="wrap">
         <h1 id="report-title">問題を報告する</h1>
-        <p>バグ・変換や判定の間違い・辞書に足してほしい語・改善の提案を送れます。届いた報告は開発者が読んで、直すときの手がかりにします。</p>
+        <p>不具合・変換や判定の間違い・辞書に足してほしい語・改善の提案を送れます。届いた報告は開発者が読んで、直すときの手がかりにします。</p>
         <ul class="points">
           <li><svg class="ic"><use href="/assets/img/icons.svg#i-check"/></svg>メールアドレス・GitHub などのアカウントは必要ありません</li>
           <li><svg class="ic"><use href="/assets/img/icons.svg#i-check"/></svg>スクリーンショット・録画・ログを添付できます</li>
@@ -66,8 +66,8 @@
 
     <div class="report wrap" data-report>
       <div class="side-notes">
-        <p class="callout is-danger"><svg class="ic"><use href="/assets/img/icons.svg#i-eye-off"/></svg><span>パスワードや個人的な文章は記載しないでください。ログには直前に打った文字の一部が入ることがあります。見られたくない部分は自分で削除してください。</span></p>
-        <p class="callout is-warn"><svg class="ic"><use href="/assets/img/icons.svg#i-shield"/></svg><span>悪用される可能性のあるセキュリティの問題は、ここではなく <a href="https://github.com/yksr-melt/Meltype/security/advisories/new">GitHub の非公開の報告</a> に送信してください。</span></p>
+        <p class="callout is-danger"><svg class="ic"><use href="/assets/img/icons.svg#i-eye-off"/></svg><span>パスワードや個人的な文章は書かないでください。ログには直前に打った文字の一部が入ることがあります。見られたくない部分は消してから送ってください。</span></p>
+        <p class="callout is-warn"><svg class="ic"><use href="/assets/img/icons.svg#i-shield"/></svg><span>悪用される可能性のあるセキュリティの問題は、ここではなく <a href="https://github.com/yksr-melt/Meltype/security/advisories/new">GitHub の非公開の報告</a> に送ってください。</span></p>
       </div>
 
       <form class="report-form" novalidate data-form>
@@ -90,7 +90,7 @@
             <section class="pane is-optional" aria-labelledby="pane-optional-title">
               <div class="pane-head">
                 <span class="pane-tag">任意</span>
-                <h3 id="pane-optional-title">あれば書いて・添付してください</h3>
+                <h3 id="pane-optional-title">分かれば書くか、添付してください</h3>
                 <p>分かるところだけで大丈夫ですが、添付していただけると助かります。</p>
               </div>
               <div class="fields" data-optional></div>
@@ -121,7 +121,7 @@
           <div class="cf-turnstile" data-sitekey="" data-action="report" data-turnstile></div>
 
           <div class="submit-bar">
-            <p>送信された内容と添付は、Meltype のメンテナーだけが見ます。添付は 30 日、報告は 180 日たつと消します。GitHub の Issue にするときは、連絡先・ログ・実行環境を外して載せます。スパム対策でレートリミットと Cloudflare Turnstile を使っています。返信を希望する場合は「連絡先」を書いてください。</p>
+            <p>送った内容と添付は、Meltype のメンテナーだけが見ます。添付は 30 日、報告は 180 日たつと消します。GitHub の Issue にするときは、連絡先・ログ・実行環境を外して載せます。スパム対策として、送れる回数の制限と Cloudflare Turnstile を使っています。返事がほしいときは「連絡先」を書いてください。</p>
             <button class="btn btn-pink btn-large" type="submit" data-submit>
               <svg class="ic"><use href="/assets/img/icons.svg#i-arrow"/></svg>送信する
             </button>
@@ -134,7 +134,7 @@
         <svg class="ic done-icon" aria-hidden="true"><use href="/assets/img/icons.svg#i-check"/></svg>
         <h2 id="done-title">受け付けました！</h2>
         <p class="receipt">受付番号 <b data-receipt></b></p>
-        <p>報告ありがとうございます。Discord や GitHub で続きの相談が必要なときは、この番号と紐づけてください。</p>
+        <p>報告ありがとうございます。Discord や GitHub で続きの相談が必要なときは、この番号を添えてください。</p>
         <p data-done-files></p>
         <div class="actions">
           <button class="btn" type="button" data-again>続けて報告する</button>
