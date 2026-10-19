@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Small live evaluation of the candidate pipeline against public historical Issues.
 // Run manually with a read-only GITHUB_TOKEN; not on every PR push.
-import { findRelatedIssues } from './issue-relation-candidates.mjs';
+import { findRelatedIssues, scoreCandidate } from './issue-relation-candidates.mjs';
 
 const repo = process.env.EVALUATION_REPOSITORY || 'yksr-melt/Meltype';
 const api = process.env.GITHUB_API_URL || 'https://api.github.com';
@@ -38,12 +38,17 @@ const results = [];
 for (const item of cases) {
   const source = await getIssue(item.source);
   if (!source) throw new Error('Could not fetch source Issue #' + item.source);
+  const expectedIssue = await getIssue(item.expected);
+  if (!expectedIssue) throw new Error('Could not fetch expected Issue #' + item.expected);
   const candidates = await findRelatedIssues(source, { repo, search: searchIssues, getIssue });
   const numbers = candidates.map(candidate => candidate.issue.number);
   const found = numbers.includes(item.expected);
+  const directScore = scoreCandidate(source, expectedIssue);
+  const classifiedRelated = directScore !== null;
   results.push({
     source: item.source, expected: item.expected, related: item.related,
-    pass: item.related ? found : !found, found,
+    pass: item.related ? found && classifiedRelated : !found && !classifiedRelated, found,
+    directClassification: classifiedRelated ? { score: directScore.score, reasons: directScore.reasons } : null,
     candidates: candidates.map(candidate => ({ number: candidate.issue.number, score: candidate.score, reasons: candidate.reasons })),
     note: item.note,
   });
@@ -53,7 +58,7 @@ const positives = results.filter(result => result.related);
 const negatives = results.filter(result => !result.related);
 console.log(JSON.stringify({
   mode: 'live GitHub Issue API + candidate search/scoring pipeline',
-  boundedRequests: '4 source Issues, 4 Issue searches, plus explicit-reference lookups only',
+  boundedRequests: '4 source Issues, 4 expected Issues, 4 Issue searches, plus explicit-reference lookups only',
   summary: {
     cases: results.length,
     passed: results.filter(result => result.pass).length,
