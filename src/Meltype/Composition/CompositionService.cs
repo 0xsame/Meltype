@@ -35,10 +35,16 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     private string _zenzaiKey = "";
     private ZenzaiConverter? CurrentZenzai(CompositionOptions options)
     {
-        if (!options.UseZenzai()) return null;
-        var server = options.ZenzaiServerPath().Trim();
-        var model = options.ZenzaiModelPath().Trim();
-        if (server.Length == 0 || model.Length == 0) return null;
+        var server = options.UseZenzai() ? options.ZenzaiServerPath().Trim() : "";
+        var model = options.UseZenzai() ? options.ZenzaiModelPath().Trim() : "";
+        if (server.Length == 0 || model.Length == 0)
+        {
+            // OFF にした・場所を空にしたら、llama-server を止める (メモリと CPU を使い続けないように)
+            _zenzai?.Dispose();
+            _zenzai = null;
+            _zenzaiKey = "";
+            return null;
+        }
         var key = server + "|" + model;
         if (key != _zenzaiKey)
         {

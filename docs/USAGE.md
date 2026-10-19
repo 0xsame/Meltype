@@ -269,7 +269,7 @@ ATOK や、ATOK 風の設定の Microsoft IME / Google 日本語入力に慣れ�
 
 [Zenzai](https://github.com/ensan-hcl/azooKey) (azooKey の zenz モデル) で、文脈を見てかな漢字変換します。設定の「Zenzai を使う (Windows・実験)」を ON にして、次の 2 つの場所を指定してください (既定は OFF。どちらも Meltype には同梱しません)。
 
-1. **llama-server**: zenz のモデルは前処理が特殊 (`gpt2-small-japanese-char`) で、本家の llama.cpp では読み込めません。azooKey の fork ([ensan-hcl/llama.cpp](https://github.com/ensan-hcl/llama.cpp) の `ku-nlp/gpt2-japanese-char` ブランチ) をビルドした `server` / `llama-server` (Windows では .exe) を使います。
+1. **llama-server**: 本家の [llama.cpp のリリース](https://github.com/ggml-org/llama.cpp/releases) の `llama-server` (Windows では .exe) を使えます (b11719 の CPU 版で確かめました)。zenz のモデルは前処理が特殊 (`gpt2-small-japanese-char`) で、そのままでは本家の llama.cpp で読み込めませんが、Meltype が起動するときに `--override-kv tokenizer.ggml.pre=str:gpt-2` を付けて読み込めるようにします。
 2. **モデル (GGUF)**: [Miwa-Keita/zenz-v3.1-small-gguf](https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf) の `ggml-model-Q5_K_M.gguf` など (ライセンスは CC-BY-SA 4.0)。
 
 Meltype が llama-server を自分で起動して (127.0.0.1 の空いているポートだけ)、読みと直前の確定済みの文字列を渡して変換します。使えないとき・0.4 秒で返らないときは、今までの変換エンジン (Mozc / Microsoft IME) で変換します。
