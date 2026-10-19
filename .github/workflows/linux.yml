@@ -25,7 +25,20 @@ concurrency:
 
 jobs:
   app:
-    runs-on: ubuntu-24.04
+    # x64 と arm64 を、それぞれの CPU のランナーでビルドする (Mozc の Bazel のビルドは、ビルドしているマシンの CPU 向けになる)。
+    # zip の名前の最後 (asset) は、x64 は以前からの linux のまま (web のダウンロードのリンクが linux.zip で探すため)
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            asset: linux
+            bazelisk: amd64
+            bazelisk-sha256: 5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992
+          - runner: ubuntu-24.04-arm
+            asset: linux-arm64
+            bazelisk: arm64
+            bazelisk-sha256: e20e8b0f4f240091b7a55bf17b9398bd4f40ee70ae0208dff95dd4c445fb4010
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     # タグ時の softprops/action-gh-release 用。permissions は式が使えないため常に write。
     permissions:
@@ -53,15 +66,15 @@ jobs:
           path: |
             ~/bazel-cache
             ~/mozc/src/third_party_cache
-          key: mozc-linux-${{ hashFiles('native/mozc/MOZC_COMMIT') }}-${{ hashFiles('native/mozc/*.cc', 'native/mozc/BUILD.fragment') }}
+          key: mozc-${{ matrix.asset }}-${{ hashFiles('native/mozc/MOZC_COMMIT') }}-${{ hashFiles('native/mozc/*.cc', 'native/mozc/BUILD.fragment') }}
           restore-keys: |
-            mozc-linux-${{ hashFiles('native/mozc/MOZC_COMMIT') }}-
+            mozc-${{ matrix.asset }}-${{ hashFiles('native/mozc/MOZC_COMMIT') }}-
       # Bazelisk は版を固定し、ダウンロードしたものが公開されているものと同じか (SHA-256) を確かめる。
       - name: Bazelisk
         run: |
           mkdir -p "$HOME/tools"
-          curl -fsSL -o "$HOME/tools/bazelisk" https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-amd64
-          echo "5a408715e932c0250d28bd84555f12edbf70117de42f9181691c736eacc4a992  $HOME/tools/bazelisk" | sha256sum -c -
+          curl -fsSL -o "$HOME/tools/bazelisk" https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-${{ matrix.bazelisk }}
+          echo "${{ matrix.bazelisk-sha256 }}  $HOME/tools/bazelisk" | sha256sum -c -
           chmod +x "$HOME/tools/bazelisk"
       - name: Build Mozc helper
         run: BAZEL="$HOME/tools/bazelisk" native/mozc/build-mozc-helper.sh "$HOME/mozc" "$HOME/bazel-cache"
@@ -83,8 +96,8 @@ jobs:
         run: timeout 120 xvfb-run -a dbus-run-session -- python3 linux/tests/test_daemon.py linux/build/Meltype-linux
       - name: Package
         run: |
-          # タグ (v1.0.0) なら Meltype-1.0.0-linux.zip、それ以外はテスト版の名前
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then name="Meltype-${GITHUB_REF_NAME#v}-linux.zip"; else name="Meltype-linux-test-$(date +%Y%m%d-%H%M).zip"; fi
+          # タグ (v1.0.0) なら Meltype-1.0.0-linux.zip (arm64 は Meltype-1.0.0-linux-arm64.zip)、それ以外はテスト版の名前
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then name="Meltype-${GITHUB_REF_NAME#v}-${{ matrix.asset }}.zip"; else name="Meltype-${{ matrix.asset }}-test-$(date +%Y%m%d-%H%M).zip"; fi
           (cd linux/build && zip -qr "$name" Meltype-linux)
       # apt で入れられる .deb (#863)。中身は install.sh が入れるものと同じ。タグなら版、それ以外は meltype.xml の版 + テスト版の印
       - name: Package (.deb)
@@ -109,7 +122,7 @@ jobs:
           test ! -e /usr/share/ibus/component/meltype.xml
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: meltype-linux
+          name: meltype-${{ matrix.asset }}
           path: |
             linux/build/Meltype-*.zip
             linux/build/meltype_*.deb

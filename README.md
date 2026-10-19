@@ -100,7 +100,7 @@ VS Code やターミナルでは英数が基本で、コメントと文字列の
 |---|---|
 | Windows (zip) | `Meltype-<version>-windows.zip` を展開して `Install.cmd` をダブルクリック |
 | Mac (プレビュー版) | `Meltype-<version>-mac.zip` ([mac/README.md](mac/README.md)) |
-| Linux (プレビュー版) | `Meltype-<version>-linux.zip` (IBus / fcitx5、[linux/README.md](linux/README.md)) |
+| Linux (プレビュー版) | `Meltype-<version>-linux.zip` (ARM64 は `Meltype-<version>-linux-arm64.zip`。IBus / fcitx5、[linux/README.md](linux/README.md)) |
 
 インストーラーでも zip でも、入る場所は同じ `%LOCALAPPDATA%\Programs\Meltype` です。
 Windows 版に必要なのは Windows 10 / 11 (64bit) と Microsoft IME だけで、.NET は同梱しています。
