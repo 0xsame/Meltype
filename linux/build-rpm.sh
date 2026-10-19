@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Yukishiro
+# Copyright (C) 2026 aster-void
 #
 # linux/build.sh で組み立てたもの (または Meltype-<版>-linux.zip を展開したフォルダー) から、
 # Fedora などの .rpm パッケージを作る。dnf で入れる・更新する・外すためのもの。中身は build-deb.sh と同じ。

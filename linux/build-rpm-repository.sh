@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 Yukishiro
+# Copyright (C) 2026 aster-void
 #
 # Build a signed, single-version dnf repository for GitHub Pages.
 # Signs the packages and repodata/repomd.xml with the same key as the apt repository.
