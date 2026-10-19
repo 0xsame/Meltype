@@ -254,6 +254,10 @@ General Public License for more details.
       <a href="https://github.com/MuNeNiCK"><img src="https://github.com/MuNeNiCK.png?size=200" width="100" alt="@MuNeNiCK"><br><b>@MuNeNiCK</b></a><br>
       <sub>Meltype IME の登録 (インストーラー)</sub>
     </td>
+    <td align="center">
+      <a href="https://github.com/konayukiw"><img src="https://github.com/konayukiw.png?size=200" width="100" alt="@konayukiw"><br><b>@konayukiw</b></a><br>
+      <sub>メインメンテナー</sub>
+    </td>
   </tr>
 </table>
 
