@@ -4,9 +4,22 @@
 // sample, not a claim of exhaustive precision/recall measurement.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreCandidate } from '../issue-relation-candidates.mjs';
+import { findRelatedIssues, scoreCandidate } from '../issue-relation-candidates.mjs';
 
 const historical = {
+
+  261: {
+    number: 261,
+    title: '[不具合] 入力が早いと日本語にならない',
+    body: 'Claude、ChatGPT、Comet などで入力が早いとローマ字が日本語にならない。入力が早ければほぼ毎回発生する。',
+    labels: [{ name: 'bug' }, { name: 'windows' }],
+  },
+  316: {
+    number: 316,
+    title: '[誤判定] 英単語 Claude の直後に空白なしで日本語を続けると「Cぁうっえ」になる',
+    body: 'Claude のチャット入力欄で英単語 Claude の後に空白を入れず日本語を続けると、残りがローマ字として読まれる。#261 と同じ環境で起きており、関連するかもしれない。\n\nRelates to #261',
+    labels: [{ name: 'windows' }, { name: 'bug' }],
+  },
   234: {
     number: 234,
     title: '[機能提案] Z + H / J / K / L キーでの矢印入力機能の追加',
@@ -58,4 +71,18 @@ test('historical false-positive control: #717 and #725 share an issue form and c
 test('historical related pair: #873 and #874 were later grouped in #878 as a common Brave IME issue', () => {
   assert.ok(scoreCandidate(historical[873], historical[874]), 'expected #874 to be considered for #873');
   assert.ok(scoreCandidate(historical[874], historical[873]), 'expected #873 to be considered for #874');
+});
+
+test('historical recall: explicit relation from #316 retrieves #261 even when keyword search returns no results', async () => {
+  const calls = [];
+  const found = await findRelatedIssues(historical[316], {
+    repo: 'yksr-melt/Meltype',
+    search: async query => {
+      calls.push(query);
+      return { items: [] };
+    },
+    getIssue: async number => number === 261 ? historical[261] : null,
+  });
+  assert.ok(calls.length === 1, 'the regular search path should still be exercised');
+  assert.ok(found.some(candidate => candidate.issue.number === 261), 'explicitly referenced #261 must not be missed');
 });
