@@ -47,7 +47,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     private Uri? _endpoint;
     private Task? _starting;
     private bool _ready;
-    private bool _disposed;
+    private volatile bool _disposed;
     private int _failures;
 
     // 応答が遅かった (CPU の負荷が高いなど) ときは、しばらく使わず今までの変換エンジンに任せる。
@@ -194,14 +194,16 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
-            foreach (var argument in new[] { "-m", _modelPath, "--host", "127.0.0.1", "--port", port.ToString(), "-c", "1024", "-ngl", "0", "--parallel", "1" })
+            foreach (var argument in new[] { "-m", _modelPath, "--host", "127.0.0.1", "--port", port.ToString(), "-c", "1024", "-ngl", "0", "--parallel", "1",
+                // zenz の前処理 (gpt2-small-japanese-char) は本家の llama.cpp に無く、読み込めない。gpt-2 に差し替えると本家でも動く (#849 で Serugu さんが確かめた)
+                "--override-kv", "tokenizer.ggml.pre=str:gpt-2" })
                 info.ArgumentList.Add(argument);
             KillStaleServer();
             var process = Process.Start(info);
             if (process is null) { Fail(); return; }
             // Meltype が強制終了されても、llama-server が残らないようにする (Windows: ジョブに入れる。入れておくと、親が消えたとき OS が一緒に終わらせる)
             BindToThisProcess(process);
-            WritePidFile(process.Id);
+            WritePidFile(process);
             // 出力を読み捨てる (読まないとパイプが詰まってサーバーが止まる)
             process.OutputDataReceived += static (_, _) => { };
             process.ErrorDataReceived += static (_, _) => { };
@@ -214,7 +216,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             }
             var endpoint = new Uri($"http://127.0.0.1:{port}/");
             var deadline = Environment.TickCount64 + StartTimeoutMs;
-            while (Environment.TickCount64 < deadline && !process.HasExited)
+            while (Environment.TickCount64 < deadline && !process.HasExited && !_disposed)
             {
                 if (Ping(endpoint))
                 {
@@ -225,7 +227,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             }
             Fail();
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or SocketException)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or SocketException or ObjectDisposedException)
         {
             Fail();
         }
@@ -240,7 +242,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             using var response = _http.Send(request, cts.Token);
             return response.IsSuccessStatusCode;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or ObjectDisposedException)
         {
             return false;
         }
@@ -264,13 +266,16 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
 
     private static string PidFile => Path.Combine(Path.GetTempPath(), "meltype-zenzai-server.pid");
 
-    private void WritePidFile(int pid)
+    private void WritePidFile(Process process)
     {
-        try { File.WriteAllText(PidFile, $"{pid}\n{Path.GetFileNameWithoutExtension(_serverPath)}"); }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        try { File.WriteAllText(PidFile, $"{process.Id}\n{Path.GetFileNameWithoutExtension(_serverPath)}\n{process.StartTime.ToUniversalTime().Ticks}"); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
 
-    /// <summary>前の Meltype が強制終了されて残った llama-server (同じ名前で、PID ファイルに書いてあるもの) を終わらせる。</summary>
+    /// <summary>
+    /// 前の Meltype が強制終了されて残った llama-server (PID ファイルに書いてあるもの) を終わらせる。
+    /// PID は使い回されるので、名前に加えて起動した時刻も同じときだけ (ユーザーが自分で動かしている別の llama-server を止めないように)。
+    /// </summary>
     private void KillStaleServer()
     {
         try
@@ -278,9 +283,9 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             if (!File.Exists(PidFile)) return;
             var lines = File.ReadAllLines(PidFile);
             File.Delete(PidFile);
-            if (lines.Length < 2 || !int.TryParse(lines[0], out var pid) || pid == Environment.ProcessId) return;
+            if (lines.Length < 3 || !int.TryParse(lines[0], out var pid) || pid == Environment.ProcessId || !long.TryParse(lines[2], out var startTicks)) return;
             using var stale = Process.GetProcessById(pid);
-            if (string.Equals(stale.ProcessName, lines[1], StringComparison.OrdinalIgnoreCase)) Kill(stale);
+            if (string.Equals(stale.ProcessName, lines[1], StringComparison.OrdinalIgnoreCase) && stale.StartTime.ToUniversalTime().Ticks == startTicks) Kill(stale);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
     }
@@ -373,7 +378,11 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             _process = null;
             _ready = false;
         }
-        if (process is not null) Kill(process);
+        if (process is not null)
+        {
+            Kill(process);
+            process.Dispose();
+        }
         _http.Dispose();
     }
 }

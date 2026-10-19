@@ -154,7 +154,7 @@ internal static class ZenzaiConverterTests
 
     /// <summary>
     /// 本物の llama-server と zenz のモデルがあるときだけ動かす (環境変数 MELTYPE_ZENZAI_SERVER と MELTYPE_ZENZAI_MODEL)。
-    /// zenz の前処理 (gpt2-small-japanese-char) は、azooKey の llama.cpp の fork (ensan-hcl/llama.cpp) でしか読めない。
+    /// zenz の前処理 (gpt2-small-japanese-char) は本家の llama.cpp に無いが、起動するときに gpt-2 に差し替えて読む (本家の b11719 と zenz-v3.1-small で確かめた)。
     /// </summary>
     [Test]
     public static void RealZenz_ConvertsWhenAvailable()
@@ -183,11 +183,11 @@ internal static class ZenzaiConverterTests
     [Test]
     public static void StaleServerFromAKilledMeltype_IsEndedOnNextStart()
     {
-        // Meltype が強制終了されて llama-server が残ったときは、次に起動するときに終わらせる (PID ファイルの PID と名前が合うときだけ)
+        // Meltype が強制終了されて llama-server が残ったときは、次に起動するときに終わらせる (PID ファイルの PID と名前と起動した時刻が合うときだけ)
         if (OperatingSystem.IsWindows() || !File.Exists("/bin/sleep")) return;
         using var stale = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/bin/sleep", "120") { UseShellExecute = false })!;
         var pidFile = Path.Combine(Path.GetTempPath(), "meltype-zenzai-server.pid");
-        File.WriteAllText(pidFile, $"{stale.Id}\nsleep");
+        File.WriteAllText(pidFile, $"{stale.Id}\nsleep\n{stale.StartTime.ToUniversalTime().Ticks}");
         var model = Path.GetTempFileName();
         try
         {
@@ -199,6 +199,29 @@ internal static class ZenzaiConverterTests
         {
             File.Delete(model);
             if (!stale.HasExited) stale.Kill();
+            File.Delete(pidFile);
+        }
+    }
+
+    [Test]
+    public static void ProcessWithReusedPid_IsNotEnded()
+    {
+        // PID が使い回されて、同じ名前の別のプロセス (ユーザーが自分で動かしている llama-server など) になっていたら終わらせない
+        if (OperatingSystem.IsWindows() || !File.Exists("/bin/sleep")) return;
+        using var other = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/bin/sleep", "120") { UseShellExecute = false })!;
+        var pidFile = Path.Combine(Path.GetTempPath(), "meltype-zenzai-server.pid");
+        File.WriteAllText(pidFile, $"{other.Id}\nsleep\n{other.StartTime.ToUniversalTime().AddMinutes(-5).Ticks}");
+        var model = Path.GetTempFileName();
+        try
+        {
+            using var zenzai = new ZenzaiConverter("/bin/sleep", model);
+            zenzai.WarmUp();
+            Assert.True(!other.WaitForExit(2000), "起動した時刻が違うプロセスは終わらせない");
+        }
+        finally
+        {
+            File.Delete(model);
+            if (!other.HasExited) other.Kill();
             File.Delete(pidFile);
         }
     }
