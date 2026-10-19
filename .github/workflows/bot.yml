@@ -102,6 +102,7 @@ jobs:
         run: node .github/bot/meltype-bot.mjs parse
         env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SEARCH_RELATED_ISSUES_ON_EDIT: 'false'
 
   # main 上での repro / explain / ca / jht
   run:
