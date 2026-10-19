@@ -75,7 +75,7 @@ node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-windows.zip dist/Meltype-
   - Mac の zip だけからも作れます: `node tools/make-manifests.mjs 1.2.0 dist/Meltype-1.2.0-mac.zip`。タグのときは mac.yml が作って、実行結果 (Artifacts) の `homebrew-cask` に置くので、それを tap の `Casks/meltype.rb` にコミットします
   - cask は Meltype.app を `~/Library/Input Methods` に入れ、`mac/install.sh` と同じく、隔離属性を外す・入力ソースに登録する・GUI のセッションで起動するところまでします。`brew upgrade` で更新、`brew uninstall --cask meltype` で外せます (`--zap` で設定と学習データも)
   - 署名と公証 (mac.yml の秘密) が無い版は、自分用の署名 (ad hoc) です。cask は隔離属性を外しますが、Homebrew の本家 (homebrew/cask) には出せません (自分の tap なら使えます)
-- **apt (.deb)**: linux.yml が `meltype_<版>_amd64.deb` と `meltype_<版>_arm64.deb` を作り、リリースに付けます。使う人は、ダウンロードして `sudo apt install ./meltype_<版>_amd64.deb` (外すのは `sudo apt remove meltype`)
+- **apt (.deb)**: linux.yml が `meltype_<版>_amd64.deb` と `meltype_<版>_arm64.deb` を作り、リリースに付けます。使う人は CPU に合う .deb をダウンロードしてインストールします (x86_64: `sudo apt install ./meltype_<版>_amd64.deb`、ARM64: `sudo apt install ./meltype_<版>_arm64.deb`。外すのは `sudo apt remove meltype`)
   - 中身は `linux/install.sh` が入れるものと同じ (`/opt/meltype`、IBus のコンポーネント、fcitx5 のアドオン)。手元では `linux/build.sh` のあと `linux/build-deb.sh` で作れます
   - `apt update` / `apt upgrade` で更新できるようにするには、apt のリポジトリが要ります (まだありません)。作るときは: 署名用の GPG 鍵を作って秘密に登録する → `reprepro` や `aptly` などでリポジトリ (`dists/`・`pool/`) を作り、`Release` に署名する → GitHub Pages などで公開し、公開鍵と `/etc/apt/sources.list.d/meltype.sources` の書き方を README に載せる → リリースのたびに .deb を足す (linux.yml に足す)。Ubuntu の PPA (Launchpad) を使う方法もありますが、ソースからビルドし直すので、Mozc や .NET の取り込みに手間がかかります
 
