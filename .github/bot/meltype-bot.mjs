@@ -13,7 +13,7 @@ const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
 const token = process.env.GITHUB_TOKEN;
 const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-const Marker = '<!-- meltype-bot -->';
+const COMMENT_MARKER = '<!-- meltype-bot -->';
 const Maintainers = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 const MaxKeys = 300;
 
@@ -66,7 +66,7 @@ function lastKey(text) {
 const isKeys = text => text.length > 0 && /^[\x20-\x7e]+$/.test(text);
 
 async function findBotComment(issue, kind) {
-  const marker = `${Marker}<!-- ${kind} -->`;
+  const marker = `${COMMENT_MARKER}<!-- ${kind} -->`;
   for (let page = 1; ; page++) {
     const comments = await gh('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
     const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
@@ -76,7 +76,7 @@ async function findBotComment(issue, kind) {
 
 async function upsertComment(issue, kind, text) {
   const mine = await findBotComment(issue, kind);
-  const marker = `${Marker}<!-- ${kind} -->`;
+  const marker = `${COMMENT_MARKER}<!-- ${kind} -->`;
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
