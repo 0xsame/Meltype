@@ -399,12 +399,13 @@ STDMETHODIMP TextService::OnSetFocus(ITfDocumentMgr* focus, ITfDocumentMgr*) {
     ForgetSecretField();
     if (candidates_) candidates_->Hide();
     AdviseTextEditSink(focus);
-    if (!disabled_) Hello();
     return S_OK;
 }
 
 STDMETHODIMP TextService::OnSetFocus(BOOL foreground) {
     if (!foreground && candidates_) candidates_->Hide();
+    // 別アプリの設定画面から戻ったとき、キー入力の前に最新設定を読み直す。
+    if (foreground && !disabled_) Hello();
     // キーを受け取らなくなった (スレッドが前面でなくなった・ほかの IME に移った): 受け取ったキーを離したことは届かないかもしれないので忘れる
     // (このスレッドで次に押したキーの、離したことまで受け取らないように)
     if (!foreground) {
@@ -726,14 +727,6 @@ bool TextService::WouldEat(ITfContext* context, UINT vk, LPARAM lParam, wchar_t&
                              (ch >= L'0' && ch <= L'9') || ch == L'@' || ch == L'_';
         if (continuesWord) return pass(L"英語の単語の続き");
         directEnglishWord_ = false;
-    }
-    // 設定画面で変更した直後でも最初の Space に反映できるよう、通常 Space の判定前に設定を更新する。
-    if (vk == VK_SPACE && open_ && !KeyDown(VK_SHIFT)) {
-        JsonValue settings;
-        if (Request("{\"op\":\"hello\",\"process\":" + JsonString(ProcessName()) + "}", settings, 100, true)) {
-            serverActive_ = settings[L"active"].Bool();
-            fullWidthSpaceByDefault_ = serverActive_ && settings[L"fullWidthSpaceByDefault"].Bool();
-        }
     }
     // Shift+Space は幅設定を確認する。通常 Space は全角 Space 設定が ON のときだけ Meltype.exe に渡す。
     bool starts = (ch >= L'a' && ch <= L'z') || (ch >= L'A' && ch <= L'Z') || (ch >= L'!' && ch <= L'~') ||
