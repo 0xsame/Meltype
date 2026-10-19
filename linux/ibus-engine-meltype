@@ -182,6 +182,10 @@ class MeltypeEngine(IBus.Engine):
         self._session = _lib.meltype_create()
         self._direct = False
         self._preedit_visible = False
+        # 表示中の preedit の文字列 (フォーカスが外れたとき、この分は IBus が確定する)
+        self._preedit_text = ""
+        # 入力欄が周りの文字 (surrounding text) に対応しているか (本体の既定は「消せる」)
+        self._can_delete = True
         # 確定し直しが実際に効いたかを次の入力で確かめるための期待値 (効かなければ以降やめる)
         self._replace_expect = None
         self._lookup = IBus.LookupTable.new(9, 0, True, True)
@@ -232,7 +236,20 @@ class MeltypeEngine(IBus.Engine):
         if not self._session:
             return
         edit = _result(_lib.meltype_commit(self._session))
-        if edit is not None and not self._preedit_visible and (edit.get("commits") or []):
+        commits = (edit or {}).get("commits") or []
+        if not commits:
+            return
+        if self._preedit_visible:
+            # 表示中の preedit は IBus がそのまま確定する。エンジンがここで送る文字は
+            # フォーカスが外れたあとで届かない (実 IBus で確認) うえ、届いても順序が壊れる
+            # (I love sushi gasuki で がすき のあとに すし が入る)。直前の確定文字列への置換は
+            # あきらめ、本体の状態だけを「今の preedit を確定した」に進めて文書と合わせる
+            # (置換を混ぜたまま進めると、本体だけが直った前提になり、文書とずれる)。
+            _lib.meltype_set_can_delete(self._session, 0)
+            _result(_lib.meltype_commit(self._session))
+            _lib.meltype_set_can_delete(self._session, 1 if self._can_delete else 0)
+            return
+        if commits:
             self._apply(edit)
 
     def _switch_mode(self, keyval):
@@ -249,8 +266,9 @@ class MeltypeEngine(IBus.Engine):
     def do_set_capabilities(self, caps):
         # 周りの文字 (surrounding text) に対応していない入力欄では、確定済みの文字を消せない。
         # 消せないのに確定し直すと、元の文字が残ったまま書き足される (api → apiあぴ) ので、本体に確定し直しをやめさせる。
+        self._can_delete = bool(caps & IBus.Capabilite.SURROUNDING_TEXT)
         if self._session:
-            _lib.meltype_set_can_delete(self._session, 1 if caps & IBus.Capabilite.SURROUNDING_TEXT else 0)
+            _lib.meltype_set_can_delete(self._session, 1 if self._can_delete else 0)
 
     def do_set_content_type(self, purpose, hints):
         # 入力欄がターミナル (Ghostty などは input-purpose: terminal を設定する) なら、コード入力を既定にする。
@@ -362,6 +380,7 @@ class MeltypeEngine(IBus.Engine):
         # フォーカスが外れたら、変換中の文字をそのまま確定する (COMMIT)。
         self.update_preedit_text_with_mode(preedit, len(text), bool(text), IBus.PreeditFocusMode.COMMIT)
         self._preedit_visible = bool(text)
+        self._preedit_text = text
         # 案内 (Space で変換 など) は補助テキストに出す
         hint = view.get("hint") or ""
         # もしかして (書き間違い) は案内の先頭に出す (Tab で直せる)
@@ -376,6 +395,7 @@ class MeltypeEngine(IBus.Engine):
         if self._preedit_visible:
             self.update_preedit_text_with_mode(IBus.Text.new_from_string(""), 0, False, IBus.PreeditFocusMode.CLEAR)
             self._preedit_visible = False
+            self._preedit_text = ""
         self.hide_auxiliary_text()
 
     def _show_candidates(self, view):

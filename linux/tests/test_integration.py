@@ -332,6 +332,42 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(any(e[0] == "delete_surrounding" for e in self.engine.events),
                         "削除を送っている")
 
+    def test_focus_out_cannot_apply_the_previous_replacement(self):
+        # フォーカスが外れたとき、IBus は表示中の preedit をそのまま確定する。エンジンがここで
+        # 送る文字はフォーカスが外れたあとで届かず (実 IBus で確認)、届いても順序が壊れる
+        # (がすき のあとに すし が入る)。直前の確定文字列への置換は適用できないので、
+        # 本体の状態を「今の preedit を確定した」ことに合わせ、文書とずれないようにする。
+        self.type_text("I")
+        self.special(IBus.KEY_space)
+        self.type_text("love")
+        self.special(IBus.KEY_space)
+        self.type_text("sushi")
+        self.special(IBus.KEY_space)
+        self.type_text("gasuki")
+        self.assertEqual("がすき", self.engine.marked)
+        self.engine.do_focus_out()
+        self.assertEqual("I love sushi がすき", self.engine.document)
+        self.assertFalse(any(e[0] == "delete_surrounding" for e in self.engine.events),
+                         "適用できない置換のために前の文字を消さない")
+        self.assertNotIn("すしがすき", self.engine.commits, "置換を混ぜて確定しない")
+        self.assertEqual("", self.engine.marked)
+        # 続けて入力できる
+        self.type_text("ka")
+        self.assertTrue(self.special(IBus.KEY_Return))
+        self.assertEqual("I love sushi がすきか", self.engine.document)
+
+    def test_enter_still_applies_the_previous_replacement(self):
+        # Return で確定したときは、これまでどおり置換が入る (focus-out と違って順序が守られる)。
+        self.type_text("I")
+        self.special(IBus.KEY_space)
+        self.type_text("love")
+        self.special(IBus.KEY_space)
+        self.type_text("sushi")
+        self.special(IBus.KEY_space)
+        self.type_text("gasuki")
+        self.assertTrue(self.special(IBus.KEY_Return))
+        self.assertEqual("I love すしがすき", self.engine.document)
+
     def test_reconversion_replaces_matching_previous_text(self):
         self.engine.document = "previous"
         self.engine._apply({"commits": [{"deleteBefore": 8, "expect": "previous", "text": "replacement"}], "view": None})
