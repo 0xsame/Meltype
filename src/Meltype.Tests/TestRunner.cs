@@ -128,6 +128,7 @@ internal static class TestRunner
         if (args.FirstOrDefault() == "--gen-emoji") { EmojiGenerator.Run(args[1], args[2], args[3]); return 0; }
         if (args.FirstOrDefault() == "--eval") { Quality.Print(Quality.Run()); return 0; }
         if (args.FirstOrDefault() == "--tip-server") return TipHarness.Server(int.TryParse(args.ElementAtOrDefault(1), out var seconds) ? seconds : 600);
+        if (args.FirstOrDefault() == "--focus-e2e") return FocusEndToEnd.Run();
         if (args.FirstOrDefault() == "--tip-e2e")
         {
             TipEndToEnd.ShotDirectory = args.ElementAtOrDefault(1);

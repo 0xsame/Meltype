@@ -25,6 +25,9 @@ internal sealed class CorrectionReportDialog : Form
     public CorrectionReportDialog(CorrectionLog log, Config.Settings settings)
     {
         Text = "Meltype 直した誤判定を報告";
+        // 期待した結果などを日本語で打てるようにする。打ったものの欄はキーをそのまま書くので英数のまま。
+        // 最後に押したキーは選ぶだけの欄だが、入力欄と判定して「あ」の表示を出し、開いた一覧が閉じていた
+        Input.ForegroundTracker.AllowTyping(this, _typed, _key);
         StartPosition = FormStartPosition.CenterScreen;
         Font = new Font("Yu Gothic UI", 9.5F);
         Size = new Size(640, 520);

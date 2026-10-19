@@ -278,10 +278,17 @@ class MeltypeEngine(IBus.Engine):
         if not result:
             return
         for edit in result.get("commits", []):
+            delete_before = edit.get("deleteBefore", 0)
+            # 確定し直し: 消す文字が今もキャレットの前にあると確認できたときだけ消し、今打った文字を入れる。
+            # 確認できない (入力欄が周りの文字に対応していない・確定したときと変わった) ときは、前の文字は
+            # 消さずに今打った文字だけを入れる (本体は text が入った前提で状態を進めるので、text を捨てない)。
+            length = self._expected_before_caret(edit.get("expect")) if delete_before > 0 else 0
+            if delete_before > 0 and not length:
+                print("Meltype: 確定し直す文字を確認できないため、前の文字を消しません", file=sys.stderr)
             self._hide_preedit()
-            if edit.get("deleteBefore", 0) > 0:
-                # 確定し直し: キャレットの前の文字を消してから入れる (入力欄が対応していれば)。
-                self.delete_surrounding_text(-edit["deleteBefore"], edit["deleteBefore"])
+            if length:
+                # キャレットの前の文字を消してから入れる (入力欄が対応していれば)。
+                self.delete_surrounding_text(-length, length)
             if edit.get("text"):
                 self.commit_text(IBus.Text.new_from_string(edit["text"]))
         view = result.get("view")
@@ -291,6 +298,23 @@ class MeltypeEngine(IBus.Engine):
         else:
             self._hide_preedit()
             self._hide_candidates()
+
+    def _expected_before_caret(self, expected):
+        """キャレットの前が expected と一致すると確認できたら、消す文字数 (コードポイント) を返す。確認できないときは 0。"""
+        if not isinstance(expected, str) or not expected:
+            return 0
+        try:
+            text, cursor, _anchor = self.get_surrounding_text()
+            value = text.get_text() if text else ""
+        except Exception as error:
+            print(f"Meltype: 確定し直す文字を確認できませんでした: {error}", file=sys.stderr)
+            return 0
+        # IBus は文字 (コードポイント) 単位。本体の deleteBefore (UTF-16) ではなく、確認できた文字列から数える
+        # (絵文字など、2 単位の文字でもそろえる)。
+        length = len(expected)
+        if not (0 <= cursor <= len(value) and cursor >= length) or value[cursor - length:cursor] != expected:
+            return 0
+        return length
 
     def _show_preedit(self, view):
         text = view.get("text", "")
