@@ -29,9 +29,9 @@
   "vars": {
     "GITHUB_REPO": "yksr-melt/Meltype",
     "SITE_ORIGIN": "https://meltype.moe",
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": "",
-    "TURNSTILE_SITE_KEY": "",
+    "ACCESS_TEAM_DOMAIN": "ibutya.cloudflareaccess.com",
+    "ACCESS_AUD": "716cd096cf0cb7613e380828caa833792db38e1c6ab29be24e1904d110a5561c",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFbE1tRx2mNEqCl5",
     "TURNSTILE_HOSTNAMES": "meltype.moe",
     "FILE_RETENTION_DAYS": "30",
     "REPORT_RETENTION_DAYS": "180"
