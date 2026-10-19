@@ -28,7 +28,7 @@ public readonly record struct CollectPermission(bool Allowed, string Reason)
 internal sealed class ForegroundTracker
 {
     private static readonly uint OwnProcessId = (uint)Environment.ProcessId;
-    private static readonly bool SelfElevated = QueryElevation(Process.GetCurrentProcess().Handle) ?? false;
+    internal static readonly bool SelfElevated = QueryElevation(Process.GetCurrentProcess().Handle) ?? false;
     private readonly object _gate = new();
     private AppInfo _current = AppInfo.None;
     private long _checkedAt;
