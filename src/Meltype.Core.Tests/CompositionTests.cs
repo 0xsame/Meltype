@@ -4487,4 +4487,25 @@ internal static class CompositionTests
             Assert.Equal(expected, k.Host.Document, typed);
         }
     }
+
+    [Test]
+    public static void Issue885_SuitYoku()
+    {
+        // Issue #885: suit は英単語だが、t + yo を ちょ と読むと すいちょく (垂直) になるので、全体を日本語にする。
+        // 英単語の後ろの助詞 (githubya → githubや) と、日本語の読みにならない英単語 + yo (editよ) は今までどおり英字を残す。
+        foreach (var (typed, expected) in new[]
+        {
+            ("suityoku", "すいちょく"),
+            ("githubya", "githubや"),
+            ("edityo", "editよ"),
+        })
+        {
+            var k = new Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+        var text = new CompositionText(Detector);
+        foreach (var c in "suityoku") text.Append(c);
+        Assert.Equal("JA:suityoku", string.Join(" | ", text.Segments(final: true).Select(s => (s.IsEnglish ? "EN:" : "JA:") + s.Raw)));
+    }
 }

@@ -491,6 +491,15 @@ public sealed partial class CompositionDetector
 
     internal bool IsJapaneseWordOrPrefix(string kana) => _kana?.IsJapaneseWordOrPrefix(kana) == true;
 
+    /// <summary>kana が、よく使う語の読み (readings.txt、3 文字以上) かその頭か (すいちょ = すいちょく の頭)。</summary>
+    internal static bool IsJapaneseReadingOrPrefix(string kana)
+    {
+        var readings = SortedReadings.Value;
+        var index = Array.BinarySearch(readings, kana, StringComparer.Ordinal);
+        if (index >= 0) return true;
+        return ~index < readings.Length && readings[~index].StartsWith(kana, StringComparison.Ordinal);
+    }
+
     /// <summary>スペルチェッカーが正しいと言う英単語か、よくある打ち間違い (teh、recieve) か。</summary>
     internal bool IsSpellWord(string lower) => SpellChecker is { } checker && (checker.IsWord(lower) || checker.AutoCorrection(lower) is not null);
 
@@ -583,6 +592,9 @@ public sealed partial class CompositionDetector
             .Select(line => line.Split('\t')[0].Trim())
             .Where(reading => reading.Length >= 3 && !reading.StartsWith('#'))
             .ToHashSet(StringComparer.Ordinal));
+
+    /// <summary>よく使う語の読み (readings.txt、3 文字以上) を並べたもの。読みの頭かどうかを二分探索で調べる。</summary>
+    private static readonly Lazy<string[]> SortedReadings = new(() => Readings.Value.Order(StringComparer.Ordinal).ToArray());
 
     /// <summary>
     /// かなの大部分 (3/4 以上) を占める、3 文字以上のよく使う語があるか。語は後ろのかな (kanaAfter) にはみ出してもよい
