@@ -65,14 +65,18 @@ function lastKey(text) {
 
 const isKeys = text => text.length > 0 && /^[\x20-\x7e]+$/.test(text);
 
-async function upsertComment(issue, kind, text) {
+async function findBotComment(issue, kind) {
   const marker = `${Marker}<!-- ${kind} -->`;
-  let mine;
   for (let page = 1; ; page++) {
     const comments = await gh('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
-    mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
-    if (mine || comments.length < 100) break;
+    const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
+    if (mine || comments.length < 100) return mine ?? null;
   }
+}
+
+async function upsertComment(issue, kind, text) {
+  const mine = await findBotComment(issue, kind);
+  const marker = `${Marker}<!-- ${kind} -->`;
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
@@ -93,9 +97,12 @@ async function updateRelatedIssues(issue) {
       search: searchIssues,
       getIssue: async number => gh('GET', '/issues/' + number),
     });
-    // Avoid adding a comment when there is no evidence-backed candidate.
+    // Successful zero-result searches remove stale candidate comments; failures preserve them.
+    const existing = await findBotComment(issue.number, 'related-issues');
     if (candidates.length > 0) {
       await upsertComment(issue.number, 'related-issues', formatRelatedIssueComment(issue, candidates, repo));
+    } else if (existing) {
+      await gh('DELETE', `/issues/comments/${existing.id}`);
     }
   } catch (error) {
     // Keep the last successful comment when GitHub search is rate-limited or unavailable.
@@ -214,7 +221,8 @@ async function parse() {
   const issue = event.issue.number;
   if (!event.comment) {
     if (event.action !== 'opened' && event.action !== 'edited') return output({ action: 'none' });
-    await updateRelatedIssues(event.issue);
+    const rerunOnEdit = process.env.SEARCH_RELATED_ISSUES_ON_EDIT === 'true';
+    if (event.action === 'opened' || rerunOnEdit) await updateRelatedIssues(event.issue);
     const form = parseForm(event.issue.body);
     const labels = new Set(event.issue.labels.map(l => l.name));
     const add = new Set(osLabels(field(form, 'OS')));
