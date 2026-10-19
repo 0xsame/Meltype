@@ -64,7 +64,7 @@ jobs:
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
-          echo "$MAC_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          echo "$MAC_CERT_P12_BASE64" | base64 -D > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
@@ -106,11 +106,18 @@ jobs:
         run: |
           node tools/make-manifests.mjs "${GITHUB_REF_NAME#v}" "dist/Meltype-${GITHUB_REF_NAME#v}-mac.zip"
           cat dist/manifests/homebrew/Casks/meltype.rb
+            # GitHub App のトークンなら、作成した PR の CI も起動する (bot.yml / sponsors.yml と同じ)。
+      - id: app-token
+        if: startsWith(github.ref, 'refs/tags/v') && vars.BOT_APP_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.BOT_APP_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
       # main は PR 必須のため、リリースごとに更新 PR を作る。
       - name: Create Homebrew cask update PR
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           cask='dist/manifests/homebrew/Casks/meltype.rb'
           version="${GITHUB_REF_NAME#v}"
