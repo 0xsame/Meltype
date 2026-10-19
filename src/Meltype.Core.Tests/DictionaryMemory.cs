@@ -63,6 +63,7 @@ internal static class DictionaryMemory
         }
         CompositionDetector? detector = null;
         Row("判定の本体 (CompositionDetector.CreateDefault)", () => detector = CompositionDetector.CreateDefault());
+        // 共有される読みの集合は、先に初期化するかな入力の行で数える
         Row("readings (かな入力の判定)", () => ContainsJapaneseReading("あいう", ""));
         Row("readings (RomajiTypoCorrector)", () => RomajiTypoCorrector.Load(detector!.Romaji));
         Row("英訳の候補 (TranslationDictionary)", TranslationDictionary.Load);
