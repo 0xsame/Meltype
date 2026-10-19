@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Akatuki1121
 // Small live evaluation of the candidate pipeline against public historical Issues.
 // Run manually with a read-only GITHUB_TOKEN; not on every PR push.
 import { findRelatedIssues, scoreCandidate } from './issue-relation-candidates.mjs';
