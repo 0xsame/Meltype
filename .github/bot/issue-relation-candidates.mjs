@@ -45,6 +45,7 @@ function searchableBody(body = '') {
   }
   return text;
 }
+
 function extractIdentifiers(text) {
   return [...new Set([
     ...(text.match(/\b0x[0-9a-f]{4,}\b/gi) ?? []),
@@ -52,6 +53,7 @@ function extractIdentifiers(text) {
     ...(text.match(/\b(?:E_FAIL|HRESULT|Win32Error|HTTP\s*[45]\d\d)\b/gi) ?? []),
   ].map(value => value.toLowerCase()))];
 }
+
 function extractTerms(title, body) {
   const terms = new Map();
   const add = (value, weight = 1, fromTitle = false) => {
@@ -73,6 +75,7 @@ function extractTerms(title, body) {
   collect(body, false);
   return [...terms].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
 }
+
 export function extractIssueSignals(issue) {
   const title = String(issue?.title ?? '').replace(/^\[[^\]]+\]\s*/, '');
   const body = searchableBody(issue?.body ?? '');
@@ -87,6 +90,7 @@ export function extractIssueSignals(issue) {
   );
   return { title, text: text.toLowerCase(), references, identifiers, terms, labels };
 }
+
 function selectSearchTerms(terms) {
   const unique = new Map();
   for (const entry of terms) {
@@ -132,6 +136,7 @@ export function buildSearchQueries(repo, issue) {
   const fallback = buildSearchQuery(repo, signals.terms);
   return [...new Set([primary, fallback].filter(Boolean))].slice(0, MAX_SEARCH_QUERIES);
 }
+
 export function scoreCandidate(currentIssue, candidate, current = extractIssueSignals(currentIssue)) {
   if (!candidate || candidate.pull_request || candidate.number === currentIssue.number) return null;
   const other = extractIssueSignals(candidate);
@@ -214,6 +219,7 @@ export function scoreCandidate(currentIssue, candidate, current = extractIssueSi
   }
   return { issue: candidate, score: score.value, reasons: score.reasons };
 }
+
 function rankCandidates(issue, candidates, maxCandidates, currentSignals) {
   return [...candidates.values()]
     .map(candidate => scoreCandidate(issue, candidate, currentSignals))
@@ -251,6 +257,7 @@ export async function findRelatedIssues(
   }
   return rankCandidates(issue, candidates, maxCandidates, current);
 }
+
 function safeTitle(title) {
   return String(title ?? '').replace(/[\r\n]+/g, ' ').replace(/[<>]/g, '')
     .replace(/([\\\x60*_{}\[\]()#+.!|])/g, '\\$1').slice(0, 180);
