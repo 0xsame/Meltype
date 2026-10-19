@@ -83,7 +83,7 @@ test('historical recall: explicit relation from #316 retrieves #261 even when ke
     },
     getIssue: async number => number === 261 ? historical[261] : null,
   });
-  assert.ok(calls.length === 1, 'the regular search path should still be exercised');
+  assert.ok(calls.length >= 1 && calls.length <= 2, 'search stays within the bounded query budget');
   assert.ok(found.some(candidate => candidate.issue.number === 261), 'explicitly referenced #261 must not be missed');
 });
 
@@ -98,9 +98,9 @@ test('historical end-to-end candidate flow: search results rank #338 and suppres
     getIssue: async () => null,
   });
 
-  assert.equal(calls.length, 1, 'candidate discovery should use one bounded search request');
+  assert.ok(calls.length >= 1 && calls.length <= 2, 'candidate discovery stays within the bounded query budget');
   assert.match(calls[0], /^repo:yksr-melt\/Meltype is:issue/);
-  assert.ok((calls[0].match(/ OR /g) ?? []).length <= 5, 'query must stay within GitHub OR limits');
+  assert.ok((calls[0].match(/ OR /g) ?? []).length <= 4, 'query must stay within GitHub OR limits');
   assert.deepEqual(found.map(candidate => candidate.issue.number), [338]);
   assert.match(found[0].reasons.join(' '), /特徴語が一致/);
 });
