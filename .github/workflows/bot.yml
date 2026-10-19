@@ -36,7 +36,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Test related-issue candidate logic
-        run: node --test .github/bot/tests/issue-relation-candidates.test.mjs
+        run: node --test .github/bot/tests/*.test.mjs
 
   # PR 作成時: pr ラベルを付ける (pull_request_target なので fork からも動く。コードは触らない)
   pr-label:
