@@ -16,7 +16,7 @@ test('extracts identifiers and excludes log/environment sections', () => {
   assert.ok(!signals.text.includes('privatepath'));
 });
 
-test('builds repository-scoped queries with at most five OR operators', () => {
+test('builds repository-scoped queries with at most four OR operators', () => {
   const terms = [
     ['ordinarylongterm', 1],
     ['0x80004005', 1],
@@ -32,7 +32,7 @@ test('builds repository-scoped queries with at most five OR operators', () => {
   assert.ok(query.includes('repo:yksr-melt/Meltype is:issue'));
   assert.match(query, /"0x80004005"/);
   assert.match(query, /"win32error"/);
-  assert.ok((query.match(/ OR /g) ?? []).length <= 5, 'query must stay within GitHub OR limits');
+  assert.ok((query.match(/ OR /g) ?? []).length <= 4, 'five terms permit at most four OR operators');
   assert.equal((query.match(/"ordinarylongterm"/g) ?? []).length, 1);
   assert.equal(buildSearchQuery('yksr-melt/Meltype', [['0x80004005', 4], ['IME自動切替', 4]]).split(' OR ').length - 1, 1);
   assert.equal(buildSearchQuery('yksr-melt/Meltype', []), null);
@@ -142,8 +142,20 @@ test('builds at most two searches and prioritizes an existing classification lab
   const queries = buildSearchQueries('yksr-melt/Meltype', issue);
   assert.ok(queries.length <= 2);
   assert.match(queries[0], /label:"bug"/);
-  assert.ok(queries.every(query => (query.match(/ OR /g) ?? []).length <= 5));
+  assert.ok(queries.every(query => (query.match(/ OR /g) ?? []).length <= 4));
   assert.ok(queries.every(query => query.includes('repo:yksr-melt/Meltype is:issue')));
+});
+
+test('does not use priority labels as the classification filter', () => {
+  const issue = {
+    number: 46,
+    title: 'A specific startup failure',
+    body: '### Details\\nWin32Error 0x80004005',
+    labels: [{ name: '優先: 高' }],
+  };
+  const queries = buildSearchQueries('yksr-melt/Meltype', issue);
+  assert.ok(queries.length <= 1);
+  assert.ok(!queries.some(query => /label:/.test(query)));
 });
 
 test('uses a label-filtered query and a bounded keyword fallback', async () => {
