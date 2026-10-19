@@ -38,7 +38,8 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
         session = NativeCore.shared.createSession()
         NativeCore.shared.setDirect(session, directInput)
         NativeCore.shared.setCodeInput(session, codeInput)
-        dictionaryObserver = DistributedNotificationCenter.default().addObserver(
+        // 送るのは同じプロセスの importUserDictionary だけなので、ほかのプロセスから届く分散通知では受けない
+        dictionaryObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("MeltypeUserDictionaryChanged"), object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
@@ -51,7 +52,7 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
     }
 
     deinit {
-        if let dictionaryObserver { DistributedNotificationCenter.default().removeObserver(dictionaryObserver) }
+        if let dictionaryObserver { NotificationCenter.default.removeObserver(dictionaryObserver) }
         NativeCore.shared.destroySession(session)
     }
 
@@ -249,8 +250,7 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
         do {
             let count = try MacUserDictionary.importFile(source, directory: directory)
             alert.messageText = "ユーザー辞書に\(count)語を追加しました"
-            DistributedNotificationCenter.default().postNotificationName(
-                Notification.Name("MeltypeUserDictionaryChanged"), object: nil, userInfo: nil, deliverImmediately: true)
+            NotificationCenter.default.post(name: Notification.Name("MeltypeUserDictionaryChanged"), object: nil)
         } catch {
             alert.messageText = "ユーザー辞書を取り込めませんでした"
             alert.informativeText = error.localizedDescription
