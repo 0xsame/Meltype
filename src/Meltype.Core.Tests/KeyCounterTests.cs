@@ -70,4 +70,25 @@ internal static class KeyCounterTests
         }
         finally { File.Delete(path); }
     }
+
+    [Test]
+    public static void Analyze_SummarizesDaysHoursAndHands()
+    {
+        var counter = new KeyCounter(null);
+        var today = new DateTime(2026, 10, 19);
+        void Press(int vk, DateTime at) { counter.Count(Down(vk), at); counter.Count(Up(vk), at); }
+        Press(0x41, today.AddHours(9)); // A (左手)
+        Press(0x41, today.AddHours(9));
+        Press(0x4A, today.AddHours(21)); // J (右手)
+        Press(VirtualKeys.Back, today.AddDays(-1).AddHours(9));
+        Press(0x41, today.AddDays(-3).AddHours(9));
+        var a = counter.Analyze(today);
+        Assert.Equal(3, a.ActiveDays);
+        Assert.Equal(2, a.Streak);
+        Assert.Equal("2026-10-19", a.BestDay);
+        Assert.Equal(9, a.PeakHour);
+        Assert.Equal(5L, a.Last7Days);
+        Assert.Equal(0.75, a.LeftHandShare);
+        Assert.Equal(0.2, a.CorrectionShare);
+    }
 }

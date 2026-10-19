@@ -20,6 +20,8 @@ internal sealed partial class KeyCounter
         public long Total { get; set; }
         /// <summary>日 (yyyy-MM-dd) ごとの打鍵数。</summary>
         public Dictionary<string, long> Days { get; set; } = [];
+        /// <summary>時刻 (0〜23 時) ごとの打鍵数。</summary>
+        public long[] Hours { get; set; } = new long[24];
         /// <summary>キーの名前 (A・Space・Enter など) ごとの打鍵数。</summary>
         public Dictionary<string, long> Keys { get; set; } = [];
     }
@@ -38,6 +40,7 @@ internal sealed partial class KeyCounter
             var data = JsonSerializer.Deserialize(json, KeyCountJsonContext.Default.Data) ?? new Data();
             data.Days ??= [];
             data.Keys ??= [];
+            if (data.Hours is not { Length: 24 }) data.Hours = new long[24];
             _data = data;
         });
     }
@@ -56,6 +59,7 @@ internal sealed partial class KeyCounter
             }
             if (!_held.Add(e.Vk)) return;
             Add(KeyName(e.Vk), DayKey(now), 1);
+            _data.Hours[now.Hour]++;
         }
     }
 
@@ -81,6 +85,43 @@ internal sealed partial class KeyCounter
     public List<KeyValuePair<string, long>> RecentDays()
     {
         lock (_lock) return [.. _data.Days.OrderByDescending(p => p.Key, StringComparer.Ordinal)];
+    }
+
+    public sealed record Analysis(
+        int ActiveDays, long DailyAverage, string? BestDay, long BestDayCount, int Streak,
+        long Last7Days, long Previous7Days, int PeakHour, long[] Hours,
+        double LeftHandShare, double CorrectionShare, double SpaceShare, double ModifierShare);
+
+    // 英字・数字をタッチタイピングで打つ手 (左手)
+    private static readonly HashSet<string> LeftHandKeys = [.. "QWERTASDFGZXCVB12345".Select(c => c.ToString())];
+    private static readonly HashSet<string> RightHandKeys = [.. "YUIOPHJKLNM67890".Select(c => c.ToString()), "-", "^", "\\", "@", "[", ";", ":", "]", ",", ".", "/"];
+
+    /// <summary>打鍵の傾向 (1 日の平均・いちばん打った日・続けて打った日数・先週との比較・よく打つ時間帯・左右の手・打ち直しの割合)。</summary>
+    public Analysis Analyze(DateTime today)
+    {
+        lock (_lock)
+        {
+            var active = _data.Days.Where(p => p.Value > 0).ToList();
+            var best = active.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).FirstOrDefault();
+            var streak = 0;
+            // 今日まだ打っていなければ昨日から数える
+            var day = _data.Days.GetValueOrDefault(DayKey(today)) > 0 ? today : today.AddDays(-1);
+            while (_data.Days.GetValueOrDefault(DayKey(day)) > 0) { streak++; day = day.AddDays(-1); }
+            long Range(int from, int to) => Enumerable.Range(from, to - from).Sum(i => _data.Days.GetValueOrDefault(DayKey(today.AddDays(-i))));
+            var keyTotal = (double)Math.Max(1, _data.Keys.Values.Sum());
+            double Share(params string[] keys) => keys.Sum(k => _data.Keys.GetValueOrDefault(k)) / keyTotal;
+            var left = _data.Keys.Where(p => LeftHandKeys.Contains(p.Key)).Sum(p => p.Value);
+            var right = _data.Keys.Where(p => RightHandKeys.Contains(p.Key)).Sum(p => p.Value);
+            var hours = (long[])_data.Hours.Clone();
+            var peak = hours.Max() > 0 ? Array.IndexOf(hours, hours.Max()) : -1;
+            return new Analysis(
+                active.Count,
+                active.Count == 0 ? 0 : active.Sum(p => p.Value) / active.Count,
+                best.Key, best.Value, streak,
+                Range(0, 7), Range(7, 14), peak, hours,
+                left + right == 0 ? 0 : (double)left / (left + right),
+                Share("BackSpace", "Delete"), Share("Space"), Share("Shift", "Ctrl", "Alt", "Win"));
+        }
     }
 
     public void Reset()

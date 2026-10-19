@@ -15,6 +15,7 @@ internal sealed class KeyCountForm : Form
     private readonly Label _summary = new() { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8), Font = new Font("Yu Gothic UI", 12F) };
     private readonly DataGridView _keyGrid = FormControls.ReadOnlyGrid();
     private readonly DataGridView _dayGrid = FormControls.ReadOnlyGrid();
+    private readonly TextBox _analysis = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("BIZ UDGothic", 10F), BorderStyle = BorderStyle.None };
     private readonly System.Windows.Forms.Timer _refresh = new() { Interval = 1000 };
 
     public KeyCountForm(KeyCounter counter)
@@ -37,6 +38,9 @@ internal sealed class KeyCountForm : Form
         keyPage.Controls.Add(_keyGrid);
         var dayPage = new TabPage("日ごと");
         dayPage.Controls.Add(_dayGrid);
+        var analysisPage = new TabPage("分析");
+        analysisPage.Controls.Add(_analysis);
+        tabs.TabPages.Add(analysisPage);
         tabs.TabPages.Add(keyPage);
         tabs.TabPages.Add(dayPage);
 
@@ -73,7 +77,35 @@ internal sealed class KeyCountForm : Form
         _dayGrid.Rows.Clear();
         foreach (var (day, count) in _counter.RecentDays())
             _dayGrid.Rows.Add(day, count.ToString("N0"));
+        _analysis.Text = AnalysisText(_counter.Analyze(DateTime.Today));
     }
+
+    private static string AnalysisText(KeyCounter.Analysis a)
+    {
+        var lines = new List<string>
+        {
+            $"打った日数        {a.ActiveDays:N0} 日",
+            $"1 日の平均        {a.DailyAverage:N0} 打",
+            $"いちばん打った日  {(a.BestDay is null ? "-" : $"{a.BestDay} ({a.BestDayCount:N0} 打)")}",
+            $"続けて打った日数  {a.Streak:N0} 日",
+            $"この 7 日間       {a.Last7Days:N0} 打 (その前の 7 日間 {a.Previous7Days:N0} 打{Change(a.Last7Days, a.Previous7Days)})",
+            $"よく打つ時間帯    {(a.PeakHour < 0 ? "-" : $"{a.PeakHour} 時台")}",
+            "",
+            $"左手 / 右手       {a.LeftHandShare:P0} / {(a.LeftHandShare == 0 ? 0 : 1 - a.LeftHandShare):P0} (英字・数字・記号)",
+            $"打ち直し          {a.CorrectionShare:P1} (BackSpace・Delete)",
+            $"スペース          {a.SpaceShare:P1}",
+            $"修飾キー          {a.ModifierShare:P1} (Shift・Ctrl・Alt・Win)",
+            "",
+            "時間帯ごと",
+        };
+        var max = Math.Max(1, a.Hours.Max());
+        for (var h = 0; h < 24; h++)
+            lines.Add($"{h,2} 時 {new string('█', (int)(30 * a.Hours[h] / max)),-30} {a.Hours[h]:N0}");
+        return string.Join("\r\n", lines);
+    }
+
+    private static string Change(long now, long before) =>
+        before == 0 ? "" : $", {(now - before) * 100.0 / before:+0;-0;±0}%";
 
     private void Import()
     {
