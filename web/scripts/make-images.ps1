@@ -24,27 +24,6 @@ function Color([string]$hex, [int]$alpha = 255) {
     return [System.Drawing.Color]::FromArgb($alpha, $c.R, $c.G, $c.B)
 }
 
-$flakeLines = @(
-    @(30, 42, 30, 22), @(30, 31, 35.4, 25.6), @(30, 31, 24.6, 25.6),
-    @(30, 42, 12.7, 32), @(20.5, 36.5, 18.5, 29.2), @(20.5, 36.5, 13.1, 38.5),
-    @(30, 42, 12.7, 52), @(20.5, 47.5, 13.1, 45.5), @(20.5, 47.5, 18.5, 54.8),
-    @(30, 42, 30, 62), @(30, 53, 24.6, 58.4), @(30, 53, 35.4, 58.4),
-    @(30, 42, 47.3, 52), @(39.5, 47.5, 41.5, 54.8), @(39.5, 47.5, 46.9, 45.5),
-    @(30, 42, 47.3, 32), @(39.5, 36.5, 46.9, 38.5), @(39.5, 36.5, 41.5, 29.2)
-)
-
-function Draw-Flake($graphics, [float]$cx, [float]$cy, [float]$scale, [int]$alpha) {
-    foreach ($pass in @(@("#7391ee", 9), @("#ffffff", 6), @("#3aaee8", 3))) {
-        $pen = New-Object System.Drawing.Pen (Color $pass[0] $alpha), ([float]$pass[1] * $scale)
-        $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
-        $pen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
-        foreach ($l in $flakeLines) {
-            $graphics.DrawLine($pen, $cx + ($l[0] - 30) * $scale, $cy + ($l[1] - 42) * $scale, $cx + ($l[2] - 30) * $scale, $cy + ($l[3] - 42) * $scale)
-        }
-        $pen.Dispose()
-    }
-}
-
 function Save-Png($bitmap, [string]$path) {
     $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
     Write-Output "wrote $path"
@@ -57,12 +36,6 @@ $small[1].Dispose(); $small[0].Dispose()
 
 # リンクを貼ったときの画像 (public/og.png) は、丸ゴシックの文字で描くために scripts/make-images.mjs で作る
 
-$touch = New-Canvas 180 180
-$tg = $touch[1]
-$tg.Clear((Color "#ffffff"))
-$tg.FillEllipse((New-Object System.Drawing.SolidBrush (Color "#e6f5fd")), 14, 14, 152, 152)
-Draw-Flake $tg 90 90 3.1 255
-Save-Png $touch[0] (Join-Path $public "apple-touch-icon.png")
-$tg.Dispose(); $touch[0].Dispose()
+# apple-touch-icon.png とアプリのアイコンは、public/favicon.svg から scripts/make-icons.mjs で作る
 
 $logo.Dispose()

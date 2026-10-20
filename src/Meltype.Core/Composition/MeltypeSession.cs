@@ -48,6 +48,10 @@ public sealed record SessionResult(bool Consumed, IReadOnlyList<TextEdit> Commit
         }
         builder.Append("{\"text\":");
         AppendString(builder, view.Text);
+        // この表示を確定したときに入る文字列 (IBus がフォーカスを外したときに確定するのは表示中の文字)。
+        builder.Append(",\"committed\":");
+        if (view.Committed is { } committed) AppendString(builder, committed);
+        else builder.Append("null");
         builder.Append(",\"converting\":").Append(view.Converting ? "true" : "false");
         builder.Append(",\"selectedIndex\":").Append(view.SelectedIndex);
         builder.Append(",\"selectedClause\":").Append(view.SelectedClause);
@@ -413,7 +417,13 @@ public sealed class MeltypeSession
             return Track(_host.Result(consumed: false), vk, ch, modifier);
         }
         // 先頭か空白の直後の /command・$skill・@ファイル名 は、変換せずにそのままアプリへ渡す (#193)。
-        if (!modifier && !_controller.IsComposing && ch is { } c && _settings().SigilWordsDirect && _sigil.PassesThrough(c, before))
+        // 文章の入力欄の / は、変換ボックスに ・ として入れる。Space で / にすると、続く名前はそのまま渡す。
+        if (!modifier && !_controller.IsComposing && ch is '/' && !PassesSlash(before) && !_sigil.IsActive && _settings().SigilWordsDirect &&
+            _sigil.PassesThrough('/', before))
+        {
+            _controller.MarkSlashAtStart();
+        }
+        else if (!modifier && !_controller.IsComposing && ch is { } c && _settings().SigilWordsDirect && _sigil.PassesThrough(c, before))
         {
             if (CodeInput) TrackCodeKey(vk, ch, modifier);
             return Track(_host.Result(consumed: false), vk, ch, modifier);
@@ -460,6 +470,14 @@ public sealed class MeltypeSession
         if (!_settings().SeparateKeyRoles || !_controller.IsComposing || Direct) return null;
         return HandleKey(vk, null, false, false, false, false);
     }
+
+    /// <summary>
+    /// 打ち始めの / を、・ にせずそのままアプリへ渡すか。コードの入力欄で、キャレットがコードの中か、
+    /// ターミナルの AI の入力行 (Claude Code・Codex の /command を打つ所) にあるとき (行が分からなければコードとみなす)。
+    /// コメント・文字列の中は ・ にする (Meltype キーボードと同じ)。
+    /// </summary>
+    private bool PassesSlash(string? before) =>
+        CodeInput && !_codeJapanese && (before is null || LineContext.ClassifyText(before) is LineKind.Code or LineKind.Prompt);
 
     private void TrackCodeKey(int vk, char? ch, bool modifier)
     {
