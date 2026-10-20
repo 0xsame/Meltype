@@ -49,13 +49,18 @@ if [[ -n "$ut_dictionary" || -n "$(git -C "$mozc" status --porcelain -- "$target
 fi
 
 mkdir -p "$out"
-# この印があれば、このフォルダーのヘルパーは Mozc-UT の辞書入り (標準のビルドでは消す)。
-rm -f "$out/MOZC-UT.json"
 
+# 統合した内容 (辞書と Mozc のハッシュ) は、ビルドが通ってから印 (MOZC-UT.json) にする。
+# 途中で失敗したときに印だけ消すと、前のビルドのヘルパー (Mozc-UT 入りのことがある) が
+# 標準のヘルパーに見えてしまうため、ビルドが終わるまでは書かない。
+report=""
 if [[ -n "$ut_dictionary" ]]; then
-    # 統合した内容 (辞書と Mozc のハッシュ) を残す。再現性のため、あとから何を入れたか分かるようにする。
-    "$python" "$here/merge-ut-dictionary.py" --mozc-src "$src" \
-        --dictionary "$ut_dictionary" --report "$out/MOZC-UT.json"
+    report="$(mktemp)"
+    if ! "$python" "$here/merge-ut-dictionary.py" --mozc-src "$src" \
+        --dictionary "$ut_dictionary" --report "$report"; then
+        rm -f "$report"
+        exit 1
+    fi
 fi
 
 # ヘルパーのソースと BUILD の定義を Mozc の converter パッケージに入れる (エンジンを使えるのがこのパッケージのため)。
@@ -68,11 +73,14 @@ cd "$src"
 options=(build //converter:meltype_mozc_helper --config oss_linux --config release_build)
 [[ -n "$cache" ]] && options+=("--disk_cache=$cache")
 if ! "${BAZEL:-bazel}" "${options[@]}"; then
-    # ビルドできなかったのに Mozc-UT 入りの印が残ると、次に勘違いするので消す。
-    rm -f "$out/MOZC-UT.json"
+    # ビルドできなかったので、前のヘルパーとその印はそのまま残す。
+    [[ -n "$report" ]] && rm -f "$report"
     exit 1
 fi
 
+# ビルドが通ったので、このフォルダーのヘルパーに合わせて印を入れ替える。
+rm -f "$out/MOZC-UT.json"
+[[ -n "$report" ]] && mv -f "$report" "$out/MOZC-UT.json"
 cp -f bazel-bin/converter/meltype_mozc_helper "$out/"
 # Bazel の出力は読み取り専用なので、上書きできるようにする。
 chmod u+w,a+x "$out/meltype_mozc_helper"

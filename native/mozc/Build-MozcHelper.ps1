@@ -120,12 +120,14 @@ if ($UtDictionary -or $dirty) {
 if ($dirty) { Write-Host '前回統合した Mozc-UT の辞書を取り消しました。' }
 
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-# この印があれば、このフォルダーのヘルパーは Mozc-UT の辞書入り (標準のビルドでは消す)。
 $utReport = Join-Path $bin 'MOZC-UT.json'
-if (Test-Path -LiteralPath $utReport) { Remove-Item -LiteralPath $utReport -Force }
+# 統合した内容 (辞書と Mozc のハッシュ) は、ビルドが通ってから印 (MOZC-UT.json) にする。
+# 途中で失敗したときに印だけ消すと、前のビルドのヘルパー (Mozc-UT 入りのことがある) が
+# 標準のヘルパーに見えてしまうため、ビルドが終わるまでは書かない。
+$utPending = Join-Path $bin 'MOZC-UT.json.tmp'
+if (Test-Path -LiteralPath $utPending) { Remove-Item -LiteralPath $utPending -Force }
 if ($UtDictionary) {
-    # 統合した内容 (辞書と Mozc のハッシュ) を残す。再現性のため、あとから何を入れたか分かるようにする。
-    Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--dictionary', $UtDictionary, '--report', $utReport) 'Mozc-UT の辞書を統合できませんでした。'
+    Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--dictionary', $UtDictionary, '--report', $utPending) 'Mozc-UT の辞書を統合できませんでした。'
 }
 
 # ヘルパーのソースと BUILD の定義を Mozc の converter パッケージに入れる (エンジンを使えるのがこのパッケージのため)。
@@ -144,8 +146,8 @@ try {
     Invoke-Native $Bazelisk (@('--nowindows_enable_symlinks') + $options) 'ビルドに失敗しました。'
 }
 catch {
-    # ビルドできなかったのに Mozc-UT 入りの印が残ると、次に勘違いするので消す。
-    if (Test-Path -LiteralPath $utReport) { Remove-Item -LiteralPath $utReport -Force }
+    # ビルドできなかったので、前のヘルパーとその印はそのまま残す。
+    if (Test-Path -LiteralPath $utPending) { Remove-Item -LiteralPath $utPending -Force }
     throw
 }
 finally {
@@ -153,6 +155,9 @@ finally {
 }
 
 Copy-Item -LiteralPath (Join-Path $src 'bazel-bin\converter\meltype_mozc_helper.exe') -Destination $bin -Force
+# ビルドが通ったので、このフォルダーのヘルパーに合わせて印を入れ替える。
+if (Test-Path -LiteralPath $utReport) { Remove-Item -LiteralPath $utReport -Force }
+if (Test-Path -LiteralPath $utPending) { Move-Item -LiteralPath $utPending -Destination $utReport -Force }
 # Bazel の出力は読み取り専用なので、上書きやアンインストールで困らないように外す。
 (Get-Item -LiteralPath (Join-Path $bin 'meltype_mozc_helper.exe')).IsReadOnly = $false
 # Mozc と辞書 (IPAdic など)・ライブラリのライセンス
