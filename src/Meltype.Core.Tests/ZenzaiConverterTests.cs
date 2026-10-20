@@ -20,6 +20,9 @@ internal static class ZenzaiConverterTests
         public int Status { get; set; } = 200;
         public Func<string, string> Answer { get; set; } = _ => "";
 
+        /// <summary>指定すると、Answer の代わりに、これを本文としてそのまま返す (壊れた答えの試し)。</summary>
+        public string? RawBody { get; set; }
+
         /// <summary>答えの 1 文字ごとの確率 (本物のサーバーは completion_probabilities で返す)。</summary>
         public double Probability { get; set; } = 0.9;
         public Uri Endpoint { get; }
@@ -51,7 +54,7 @@ internal static class ZenzaiConverterTests
                     context.Response.StatusCode = Status;
                     var answer = Answer(prompt);
                     var probabilities = answer.Select(ch => new { content = ch.ToString(), probs = new[] { new { tok_str = ch.ToString(), prob = Probability } } }).ToArray();
-                    var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { content = answer, completion_probabilities = probabilities }));
+                    var bytes = Encoding.UTF8.GetBytes(RawBody ?? JsonSerializer.Serialize(new { content = answer, completion_probabilities = probabilities }));
                     context.Response.OutputStream.Write(bytes);
                     context.Response.Close();
                 }
@@ -233,6 +236,22 @@ internal static class ZenzaiConverterTests
         var k = new CompositionTests.Keyboard(converter: hybrid);
         k.Type("tanniwotoru ");
         Assert.Equal("単位を取る", k.Showing ?? "", "打っても入力が止まらない");
+    }
+
+    [Test]
+    public static void Hybrid_ZenzaiThatThrowsWhileConverting_IsNotAskedAgain()
+    {
+        // 答えの content が文字列でない: ZenzaiConverter が拾わない例外 (InvalidOperationException) になる
+        using var server = new FakeServer { RawBody = "{\"content\":1}" };
+        using var zenzai = new ZenzaiConverter(server.Endpoint, timeoutMs: 5000);
+        var hybrid = new HybridConverter(() => ConversionEngine.Mozc, null, new CompositionTests.FakeConverter(), null, () => zenzai);
+        Assert.True(hybrid.ConvertClauses("たんいをとる") is [{ Text: "単位を" }, { Text: "取る" }], "例外になっても、ほかの変換エンジンで変換する");
+        int asked;
+        lock (server.Prompts) asked = server.Prompts.Count;
+        Assert.Equal(1, asked, "1 回目は Zenzai に頼んだ");
+        Assert.True(hybrid.ConvertClauses("たんいをとる") is [{ Text: "単位を" }, { Text: "取る" }], "2 回目も、ほかの変換エンジンで変換する");
+        lock (server.Prompts) asked = server.Prompts.Count;
+        Assert.Equal(1, asked, "例外になった Zenzai には、もう頼まない (打つたびに例外にしない)");
     }
 
     /// <summary>zenz に渡した文 (U+EE00 + カタカナの読み + …) の読みを、ひらがなにして返す。</summary>

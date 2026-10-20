@@ -20,7 +20,8 @@ public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter
     /// 設定で Zenzai が使えるとき、その変換結果 (読み全体で 1 つの文節)。使えない・変換できなければ null。
     /// Zenzai を作れない・変換で例外になったときも null (Mozc などで変換する)。Zenzai の失敗で入力全体を止めないように
     /// (#973: 同梱の .NET に System.Net.Http が無く、Zenzai を作るたびに例外になって、日本語を打てなくなった)。
-    /// 例外になった Zenzai は、それからは使わない (打つたびに例外にしない)。設定が変わって作り直されたら、また使う。
+    /// 変換で例外になった Zenzai は、それからは使わず、止める (打つたびに例外にしない。llama-server も残さない)。
+    /// 設定が変わって作り直されたら、また使う。
     /// </summary>
     private IReadOnlyList<ConversionClause>? Zenzai(string hiragana, string? context)
     {
@@ -28,20 +29,21 @@ public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter
         try
         {
             z = zenzai?.Invoke();
-            if (z is not { IsAvailable: true } || ReferenceEquals(z, _failedZenzai)) return null;
+            if (z is null || ReferenceEquals(z, _failedZenzai) || !z.IsAvailable) return null;
             return z.ConvertClauses(hiragana, WideContext ?? context);
         }
         catch (Exception ex)
         {
-            // 作るところで例外になったとき (z が null) も、ログは 1 回だけ
             var failed = (object?)z ?? CouldNotCreate;
             if (!ReferenceEquals(failed, _failedZenzai)) Diagnostics.Log.Error($"Zenzai で変換できないので、今までの変換エンジンで変換します: {ex}");
             _failedZenzai = failed;
+            z?.Dispose();
             return null;
         }
     }
 
-    // 例外になった Zenzai (作るところで例外になったときは CouldNotCreate)
+    // 例外になった Zenzai。作るところで例外になったときは CouldNotCreate (このときはログを 1 回にするだけで、作るのは毎回試す。
+    // Windows 版では CompositionService が作れなかったことを覚えるので、ここまで例外は来ない)
     private object? _failedZenzai;
     private static readonly object CouldNotCreate = new();
 
