@@ -136,6 +136,7 @@ Copy-Item -LiteralPath (Join-Path $dotnetRoot 'ThirdPartyNotices.txt') -Destinat
 #      ネイティブの DLL は、デバッグ用 (mscordaccore, mscordbi, DiaSymReader, createdump) と WPF の描画用を削る。
 #   2. 実際に読み込まれたかで削る: 1 の状態で自己診断を走らせ、読み込まれなかった大きなアセンブリ (512KB 超) を削る
 #      (XML・ネットワーク・暗号などは WinForms から参照されているが、Meltype の使い方では読み込まれない)。
+#      ただし、設定で ON にしたときだけ使う部品 (Zenzai の HTTP など) は、自己診断では読み込まれなくても残す ($keepUnloaded)。
 #   どちらの後も自己診断を走らせ、削りすぎていないことを確かめる。
 # フレームワークの .deps.json は、一覧にあるファイルが無いと起動できないので、残したファイルだけの一覧に書き直す
 # (.deps.json 自体を消すと、そのフレームワークが無いものとして扱われる)。
@@ -183,11 +184,17 @@ Update-DepsJson
 $loaded = Invoke-SelfTest '参照をたどって削った後' (Join-Path $app 'Meltype.exe')
 
 # 2. 読み込まれなかった大きなアセンブリを削る
+# 自己診断では読み込まれないが、使うことがあるので削らないもの:
+#   System.Reflection.Metadata.dll は ClipBoard.SetText() で使われる。
+#   HTTP の 4 つは、Zenzai (llama-server と HttpClient で話す) と GitHub の Issue の題名の候補が使う。どちらも既定は OFF で
+#   自己診断では読み込まれないので、削ると ON にしたとたん、打つたびに例外になって日本語を打てなくなった (#973)。
+#   この 4 つは、1.3.1-pre.1 の app に足して Zenzai で変換できることを確かめて決めた (3 つでは System.Security.Cryptography が無くて止まった)。
+#   GitHub の題名の取得 (HTTPS) は試していないので、ほかの部品も要るかもしれない。
+$keepUnloaded = @('System.Reflection.Metadata.dll', 'System.Net.Http.dll', 'System.Net.Sockets.dll', 'System.Net.Security.dll', 'System.Security.Cryptography.dll')
 foreach ($file in Get-ChildItem (Join-Path $runtime 'shared') -Recurse -Filter '*.dll') {
     if ($file.Length -le 512KB -or -not (Test-Managed $file.FullName)) { continue }
     if ($loaded -notcontains $file.BaseName) {
-        # System.Reflection.Metadata.dll は ClipBoard.SetText() で使われるため continue する
-        if ($file.Name -eq 'System.Reflection.Metadata.dll') { continue }
+        if ($keepUnloaded -contains $file.Name) { continue }
         Write-Host "使わないので削除: $($file.Name) ($([math]::Round($file.Length / 1MB, 1)) MB)"
         Remove-Item -LiteralPath $file.FullName
     }

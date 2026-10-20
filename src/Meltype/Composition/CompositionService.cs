@@ -49,9 +49,21 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         if (key != _zenzaiKey)
         {
             _zenzai?.Dispose();
-            _zenzai = new ZenzaiConverter(server, model);
+            _zenzai = null;
             _zenzaiKey = key;
-            if (_zenzai.IsInstalled) _zenzai.WarmUp();
+            try
+            {
+                _zenzai = new ZenzaiConverter(server, model);
+                if (_zenzai.IsInstalled) _zenzai.WarmUp();
+            }
+            catch (Exception ex)
+            {
+                // 作れないとき (#973: 同梱の .NET に System.Net.Http が無い) は、場所の設定が変わるまで作り直さない (打つたびに例外にしない)。
+                // 変換は Mozc などで続ける (HybridConverter は Zenzai が無ければ今までどおり変換する)
+                _zenzai?.Dispose();
+                _zenzai = null;
+                Diagnostics.Log.Error($"Zenzai を使えないので、今までの変換エンジンで変換します: {ex}");
+            }
         }
         return _zenzai;
     }

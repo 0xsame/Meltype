@@ -222,6 +222,19 @@ internal static class ZenzaiConverterTests
         Assert.Equal("荷物を2階に運ぶ", cargo.Showing ?? "", "助詞の文節を数字にしない (1 つの文節のまま)");
     }
 
+    [Test]
+    public static void Hybrid_ZenzaiThatCannotBeCreated_FallsBackToOtherEngine()
+    {
+        // #973: 同梱の .NET に System.Net.Http が無く、Zenzai を作るたびに例外になった。例外が入力まで届き、日本語を打てなくなった
+        var hybrid = new HybridConverter(() => ConversionEngine.Mozc, null, new CompositionTests.FakeConverter(), null,
+            () => throw new FileNotFoundException("Could not load file or assembly 'System.Net.Http'"));
+        Assert.True(hybrid.ConvertClauses("たんいをとる") is [{ Text: "単位を" }, { Text: "取る" }], "文節に分けた変換は、ほかの変換エンジンで");
+        Assert.Equal("今日", hybrid.Convert("きょう") ?? "", "1 回の変換も、ほかの変換エンジンで");
+        var k = new CompositionTests.Keyboard(converter: hybrid);
+        k.Type("tanniwotoru ");
+        Assert.Equal("単位を取る", k.Showing ?? "", "打っても入力が止まらない");
+    }
+
     /// <summary>zenz に渡した文 (U+EE00 + カタカナの読み + …) の読みを、ひらがなにして返す。</summary>
     private static string ReadingIn(string prompt)
     {
