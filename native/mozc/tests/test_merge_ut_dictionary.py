@@ -55,13 +55,23 @@ def make_id_def(general_id=ID_GENERAL, proper_id=ID_PROPER, count=1900) -> str:
     return "\n".join(lines) + "\n"
 
 
-def git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", str(root),
-         "-c", "user.name=test", "-c", "user.email=test@example.com",
-         *args],
-        capture_output=True, text=True, check=False,
+# テストは、その人の git の設定 (commit.gpgsign など) に左右されないようにする。
+GIT_CONFIG = (
+    "-c", "user.name=test",
+    "-c", "user.email=test@example.com",
+    "-c", "commit.gpgsign=false",
+    "-c", "init.defaultBranch=main",
+)
+
+
+def git(root: Path, *args: str, check: bool = False) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["git", "-C", str(root), *GIT_CONFIG, *args],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
+    if check and result.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)} が失敗しました: {result.stderr}")
+    return result
 
 
 def run_script(mozc_src, *args):
@@ -95,9 +105,9 @@ class FakeMozc:
         self.target.write_text(text, encoding="utf-8")
 
     def commit(self) -> None:
-        git(self.root, "init", "-q")
-        git(self.root, "add", "-A")
-        git(self.root, "commit", "-q", "-m", "mozc")
+        git(self.root, "init", "-q", check=True)
+        git(self.root, "add", "-A", check=True)
+        git(self.root, "commit", "-q", "-m", "mozc", check=True)
 
     def target_lines(self) -> list[str]:
         return self.target.read_text(encoding="utf-8").splitlines()
@@ -236,6 +246,33 @@ class MergeTest(MergeTestBase):
                           "neologd", "edict2", "skk_jisyo", "alt_cannadic"})
 
 
+    def test_staged_merge_is_restored_from_head(self):
+        # 統合した辞書を git の index に載せてから、もう一度統合する。
+        # index から戻すと統合済みの中身が戻って重複するので、HEAD から戻すことを確かめる。
+        self.assertEqual(self.merge(SAMPLE).returncode, 0)
+        git(self.mozc.root, "add", "src/data/dictionary_oss/dictionary00.txt", check=True)
+        result = self.merge(SAMPLE)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        lines = self.mozc.target_lines()
+        self.assertEqual(len(lines), 1 + 4)
+        self.assertEqual(len(set(lines)), len(lines))
+
+    def test_non_utf8_console_does_not_crash(self):
+        # Windows のコンソール (cp1252 など) でも、日本語を出そうとして止まらないこと。
+        environment = dict(os.environ, PYTHONIOENCODING="cp1252", PYTHONUTF8="0")
+        original = self.mozc.target_sha()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--mozc-src", str(self.mozc.src),
+             "--dictionary", str(SAMPLE), "--check"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=environment, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # cp1252 で表せない文字は \uXXXX の形になる
+        self.assertIn("\\u", result.stdout)
+        self.assertEqual(self.mozc.target_sha(), original)
+
+
 class PosIdTest(MergeTestBase):
     def test_pos_id_of_another_mozc_version_is_remapped(self):
         # 辞書を作った Mozc では ID 1849 が「名詞,一般」だった (ビルドする Mozc では固有名詞)
@@ -276,8 +313,8 @@ class PosIdTest(MergeTestBase):
         result = self.merge(dictionary)
         self.assertEqual(result.returncode, 0, result.stderr)
         target = self.mozc.target.read_text(encoding="utf-8")
-        self.assertIn(f"\t{ID_PROPER}\t{ID_PROPER}\t", target)
-        self.assertIn(f"\t{ID_GENERAL}\t{ID_GENERAL}\t", target)
+        self.assertIn(f"あるふぁべっと\t{ID_PROPER}\t{ID_PROPER}\t7600\tアルファベット研究", target)
+        self.assertIn(f"べーたせいり\t{ID_GENERAL}\t{ID_GENERAL}\t7800\tベータ整理", target)
 
     def test_keep_pos_ids_rejects_unknown_id(self):
         dictionary = self.write(

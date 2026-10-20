@@ -1,5 +1,7 @@
 # Mozc-UT の辞書を使う
 
+[English version: MOZC-UT.en.md](MOZC-UT.en.md)
+
 Meltype の変換エンジン「Mozc」に、[Mozc-UT](https://github.com/utuhiro78/merge-ut-dictionaries) の辞書 (`mozcdic-ut.txt`) を足せます。
 人名・地名・ウィキペディアの語などが変換の候補に出るようになります。ソースからビルドするときの任意の機能です。
 
@@ -65,6 +67,7 @@ ls -lh mozcdic-ut.txt
 ## Linux でビルドする
 
 必要なものは、これまでのビルドと同じです (`native/mozc/README.md`)。環境変数を付けるだけです。
+Mozc-UT の辞書を扱うときは Python 3.10 以降を使います (`PYTHON` で場所を指定できます)。
 
 ```bash
 MELTYPE_UT_DICTIONARY=~/mozcdic-ut.txt native/mozc/build-mozc-helper.sh
@@ -169,6 +172,7 @@ Mozc-UT のツール (`merge-ut-dictionaries`) のコードは使っていませ
 | `git リポジトリが見つかりません` / `git の管理下にありません` | 統合先を元に戻せないため中止します。ビルドスクリプトで取得した Mozc を使ってください |
 
 辞書を変えずに、統合できるかだけ確かめることもできます (Mozc の辞書は書き換えません)。
+このときも UT 辞書 (100 万行を超えることがあります) と Mozc の辞書を読み込むので、1 GB 前後のメモリを使います。
 
 ```bash
 python3 native/mozc/merge-ut-dictionary.py --mozc-src ~/mozc/src \

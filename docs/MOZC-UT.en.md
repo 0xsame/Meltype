@@ -1,5 +1,7 @@
 # Using the Mozc-UT dictionary
 
+[日本語版: MOZC-UT.md](MOZC-UT.md)
+
 Meltype's Mozc engine can include the [Mozc-UT](https://github.com/utuhiro78/merge-ut-dictionaries) dictionary (`mozcdic-ut.txt`),
 which adds personal names, place names and Wikipedia-derived words to the conversion candidates. This is an optional feature for builds from source.
 
@@ -65,6 +67,7 @@ The combination used for the verification (kept here for reproducibility):
 ## Build on Linux
 
 The requirements are the same as for a normal build (see `native/mozc/README.md`). Just add the environment variable.
+Handling a UT dictionary needs Python 3.10 or later (`PYTHON` selects the interpreter).
 
 ```bash
 MELTYPE_UT_DICTIONARY=~/mozcdic-ut.txt native/mozc/build-mozc-helper.sh
@@ -165,7 +168,8 @@ No code from `merge-ut-dictionaries` is used; the merge is implemented for Melty
 | `Mozc の git リポジトリが見つかりません` | Point at a Mozc checkout created by the build script (`~/mozc` etc.) |
 | `git リポジトリが見つかりません` / `git の管理下にありません` | Cannot restore the target safely, so it stops. Use the Mozc checkout made by the build script |
 
-You can also validate a dictionary without touching Mozc:
+You can also validate a dictionary without touching Mozc (this still reads the whole UT dictionary and
+Mozc's dictionary, so expect roughly 1 GB of memory for a dictionary with over a million entries):
 
 ```bash
 python3 native/mozc/merge-ut-dictionary.py --mozc-src ~/mozc/src \
