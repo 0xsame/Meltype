@@ -211,7 +211,7 @@ jobs:
           test ! -e /usr/share/ibus/component/meltype.xml
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: meltype-rpm-${{ matrix.asset }}
+          name: meltype-${{ matrix.asset }}-rpm
           path: linux/build/meltype-*.rpm
           retention-days: 14
       - if: startsWith(github.ref, 'refs/tags/v')
@@ -246,7 +246,7 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: meltype-*
+          pattern: meltype-linux*
           path: ${{ runner.temp }}/meltype-artifacts
           merge-multiple: true
       - name: Install repository tools
