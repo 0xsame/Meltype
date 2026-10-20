@@ -5,7 +5,7 @@ using Meltype.Config;
 
 namespace Meltype.Input;
 
-public enum ShortcutValidationError { None, Invalid, Duplicate, Conversion, FunctionKey, ConvertKeys, UnmodifiedKey }
+public enum ShortcutValidationError { None, Invalid, Duplicate, Conversion, FunctionKey, ConvertKeys, UnmodifiedKey, ControlKeyBinding }
 
 /// <summary>設定画面と設定の読み込みで共通に使う割り当て判定。</summary>
 public static class ToggleShortcutValidator
@@ -17,6 +17,11 @@ public static class ToggleShortcutValidator
 
         // 他の登録ショートカットとの重複
         if (others.Any(other => other.Overlaps(b))) return ShortcutValidationError.Duplicate;
+
+        // 入力中に Control + 英字へ割り当てた操作は、Shift の有無によらず優先する。
+        if ((b.Modifiers & (ShortcutModifiers.Control | ShortcutModifiers.Alt | ShortcutModifiers.Win)) == ShortcutModifiers.Control
+            && ControlKeyBindingParser.Parse(settings.ControlKeyBindings).ContainsKey(b.Key))
+            return ShortcutValidationError.ControlKeyBinding;
 
         // Ctrl + H / U / I / O / P (ひらがな・カタカナ・英字変換や BackSpace 操作に使うキー)
         // 0x48: H, 0x55: U, 0x49: I, 0x4F: O, 0x50: P

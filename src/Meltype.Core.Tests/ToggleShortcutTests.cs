@@ -10,6 +10,61 @@ namespace Meltype.Tests;
 /// <summary>入力モード切り替えショートカットの取り込み (Recorder)、キー判定 (Detector)、設定移行とバリデーション。</summary>
 internal static class ToggleShortcutTests
 {
+    /// <summary>Control の割り当てを入力処理と同じ書式で解釈し、有効な英字の Ctrl および Ctrl+Shift だけを競合とすること。</summary>
+    [Test]
+    public static void Shortcut_ControlKeyBindingsUseSharedParsingRules()
+    {
+        var parsed = ControlKeyBindingParser.Parse(" t = f6; T=F7, y=left\nz=Tab; T=unknown; AA=F8; 1=F9; Q=unknown; broken");
+        Assert.Equal(3, parsed.Count);
+        Assert.Equal(VirtualKeys.F7, parsed['T'], "最後の有効な割り当てを優先");
+        Assert.Equal(VirtualKeys.Left, parsed['Y']);
+        Assert.Equal(VirtualKeys.Tab, parsed['Z']);
+        var settings = new Settings { ControlKeyBindings = "t=F7; Q=unknown" };
+        foreach (var mods in new[] { ShortcutModifiers.Control, ShortcutModifiers.Control | ShortcutModifiers.Shift })
+            Assert.Equal(ShortcutValidationError.ControlKeyBinding, ToggleShortcutValidator.Validate(new() { Key = 'T', Modifiers = mods }, settings, []));
+        foreach (var mods in new[] { ShortcutModifiers.Alt, ShortcutModifiers.Control | ShortcutModifiers.Alt, ShortcutModifiers.Control | ShortcutModifiers.Win })
+            Assert.Equal(ShortcutValidationError.None, ToggleShortcutValidator.Validate(new() { Key = 'T', Modifiers = mods }, settings, []));
+        Assert.Equal(ShortcutValidationError.None, ToggleShortcutValidator.Validate(new() { Key = 'Q', Modifiers = ShortcutModifiers.Control }, settings, []), "不正な割り当ては競合にしない");
+        settings.ControlKeyBindings = "";
+        Assert.Equal(ShortcutValidationError.None, ToggleShortcutValidator.Validate(new() { Key = 'T', Modifiers = ShortcutModifiers.Control }, settings, []), "割り当てを消すと登録できる");
+    }
+
+    /// <summary>設定読み込み・プロファイル切り替え・インポートで Control の競合を除外して理由を報告し、編集中は報告しないこと。</summary>
+    [Test]
+    public static void Shortcut_ControlKeyBindingsConflictsAcrossSettingsAndProfiles()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "Meltype-control-bindings-" + Guid.NewGuid() + ".json");
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        try
+        {
+            File.WriteAllText(path, """
+                {"SettingsVersion":6,"ControlKeyBindings":"T=F7","ToggleShortcuts":[],"ToggleKeyboardShortcuts":"Ctrl+T; Ctrl+Space"}
+                """);
+            var settings = Settings.Load(path);
+            Assert.Equal(1, settings.EffectiveToggleShortcuts.Count);
+            Assert.Equal(ShortcutValidationError.ControlKeyBinding, Meltype.Diagnostics.ShortcutExclusions.Drain().Single().Reason);
+            Assert.True(Meltype.Diagnostics.Log.Snapshot().Any(e => e.Message.Contains("Control キーの割り当て") && e.Message.Contains("ControlKeyBinding")), "ログに競合元を示す");
+            Settings.Load(path);
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "移行保存後は再通知しない");
+            var values = JsonNode.Parse("""{"ControlKeyBindings":"T=F7","ToggleShortcuts":[{"Key":84,"Modifiers":2},{"Key":32,"Modifiers":2}]}""")!.AsObject();
+            settings.Profiles.Add(new SettingsProfile { Name = "競合", Values = values });
+            Assert.Equal(1, settings.SwitchProfile("競合").EffectiveToggleShortcuts.Count);
+            Assert.Equal("競合", Meltype.Diagnostics.ShortcutExclusions.Drain().Single().Profile);
+            var imported = settings.ImportProfile(new JsonObject { ["format"] = "meltype-profile", ["name"] = "取り込み", ["values"] = values.DeepClone() }.ToJsonString());
+            Assert.True(imported is not null, "取り込み成功");
+            Assert.Equal(1, imported!.EffectiveToggleShortcuts.Count);
+            Assert.Equal(ShortcutValidationError.ControlKeyBinding, Meltype.Diagnostics.ShortcutExclusions.Drain().Single().Reason);
+            var edited = new Settings { ControlKeyBindings = "T=F7", ToggleShortcuts = [new() { Key = 'T', Modifiers = ShortcutModifiers.Control }] };
+            Assert.Equal(0, edited.Normalize(reportShortcutExclusions: false).EffectiveToggleShortcuts.Count);
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "編集中は通知しない");
+        }
+        finally
+        {
+            File.Delete(path);
+            Meltype.Diagnostics.ShortcutExclusions.Drain();
+        }
+    }
+
     /// <summary>旧設定から移行した競合キーは保存前に除外し、再読み込みで同じ除外を通知しないこと。</summary>
     [Test]
     public static void Shortcut_MigrationSavesNormalizedKeysBeforeReload()

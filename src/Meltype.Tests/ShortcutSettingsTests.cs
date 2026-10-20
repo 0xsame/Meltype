@@ -11,6 +11,21 @@ namespace Meltype.Tests;
 /// <summary>設定画面 UI でのショートカットバリデーションと、TipServer (IPC) プロトコルでの設定同期テスト。</summary>
 internal static class ShortcutSettingsTests
 {
+    /// <summary>Control の割り当てと競合するキーは登録・保存時の共通検証で設定名を示して拒否し、割り当てを外すと許可すること。</summary>
+    [Test]
+    public static void Shortcut_EditorExplainsControlKeyBindingConflicts()
+    {
+        var settings = new Settings { ControlKeyBindings = "T=F7" };
+        var shortcut = new ToggleShortcut { Key = 'T', Modifiers = ShortcutModifiers.Control };
+        var error = ShortcutEditor.ValidationError(shortcut, settings, []);
+        Assert.True(error is not null && error.Contains("Control キーの割り当て"), "競合元を画面で説明する");
+        settings.ControlKeyBindings = "";
+        Assert.True(ShortcutEditor.ValidationError(shortcut, settings, []) is null, "競合解消後は登録できる");
+        settings.ToggleShortcuts = [shortcut];
+        settings.ControlKeyBindings = "T=F6";
+        Assert.True(settings.EffectiveToggleShortcuts.All(b => ShortcutEditor.ValidationError(b, settings, []) is not null), "登録後に割り当てを変えても保存前検証で拒否する");
+    }
+
     /// <summary>トレイから競合を含むプロファイルへ切り替えたときは、通常の切替通知を省略して除外警告を優先すること。</summary>
     [Test]
     public static void Shortcut_ProfileSwitchPrioritizesExclusionWarning()
