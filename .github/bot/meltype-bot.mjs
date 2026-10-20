@@ -70,12 +70,13 @@ async function findBotComment(issue, kind) {
   for (let page = 1; ; page++) {
     const comments = await gh('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
     const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
-    if (mine || comments.length < 100) return { comment: mine ?? null, marker };
+    if (mine || comments.length < 100) return mine ?? null;
   }
 }
 
 async function upsertComment(issue, kind, text) {
-  const { comment: mine, marker } = await findBotComment(issue, kind);
+  const mine = await findBotComment(issue, kind);
+  const marker = `${COMMENT_MARKER}<!-- ${kind} -->`;
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
