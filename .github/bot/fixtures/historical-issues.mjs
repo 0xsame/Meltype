@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Akatuki1121
 // Static snapshots of public Meltype Issues for deterministic offline regression checks.
 // These examples are a small regression set, not a statistically representative precision/recall estimate.
-const historical = {
+export const historical = {
 
   261: {
     number: 261,
