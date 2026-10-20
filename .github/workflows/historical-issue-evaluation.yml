@@ -1,14 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Historical issue candidate evaluation
 
+# Live evaluation uses current public Issues, so it is manual-only. PR CI runs the offline fixtures in bot.yml.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - '.github/bot/issue-relation-candidates.mjs'
-      - '.github/bot/evaluate-historical-issues.mjs'
-      - '.github/bot/tests/**'
-      - '.github/workflows/historical-issue-evaluation.yml'
   workflow_dispatch:
 
 permissions:
