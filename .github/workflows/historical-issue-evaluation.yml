@@ -2,6 +2,13 @@
 name: Historical issue candidate evaluation
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/bot/issue-relation-candidates.mjs'
+      - '.github/bot/evaluate-historical-issues.mjs'
+      - '.github/bot/tests/**'
+      - '.github/workflows/historical-issue-evaluation.yml'
   workflow_dispatch:
 
 permissions:
