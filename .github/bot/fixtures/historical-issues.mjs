@@ -3,6 +3,36 @@
 // Static snapshots of public Meltype Issues for deterministic offline regression checks.
 // These examples are a small regression set, not a statistically representative precision/recall estimate.
 export const historical = {
+  6: {
+    number: 6,
+    title: '[不具合]',
+    body: 'LINEのデスクトップアプリで文字を入力しようとしたが、Meltypeの変換バーが現れず、通常のIMEで入力された。',
+    labels: [{ name: 'bug' }, { name: 'windows' }, { name: 'アプリ: チャット' }],
+  },
+  95: {
+    number: 95,
+    title: '[不具合] 一部アプリにて、最初に入力した文字が連続してしまう',
+    body: '関連issue: #6 #44 #48 #89。複数アプリで最初の文字が繰り返される問題をまとめて管理する。LINEで再現を確認。OBS、Telegram Desktopは未確認。',
+    labels: [{ name: 'bug' }, { name: 'windows' }],
+  },
+  111: {
+    number: 111,
+    title: '[不具合] unityで日本語が打てない',
+    body: 'UnityのTextMeshProで日本語を入力しようとしても、あいうえおではなくaiueoと表示される。Windows 11、Meltype 0.2.1。',
+    labels: [{ name: 'bug' }, { name: 'windows' }],
+  },
+  117: {
+    number: 117,
+    title: '[不具合]',
+    body: 'CLIP STUDIO PAINTのテキストレイヤーやパネルに入力しようとしても、入力ボックスではないと判定されMeltypeが動作しない。Windows 11、Meltype 1.0.2。',
+    labels: [{ name: 'bug' }, { name: 'windows' }],
+  },
+  878: {
+    number: 878,
+    title: '[調査] Brave で Meltype IME の日本語入力ができない (#873, #874)',
+    body: '#873 と #874 は同じ問題とみられるので調査をまとめる。Braveの一部入力欄でMeltype IMEを使っても英字がそのまま入り、日本語に切り替わらない。Microsoft IMEなら同じ欄で日本語を打てる。',
+    labels: [{ name: 'bug' }, { name: 'windows' }, { name: 'アプリ: ブラウザー' }],
+  },
 
   261: {
     number: 261,
@@ -59,7 +89,12 @@ export const cases = [
   { source: 338, expected: 234, related: true, note: 'reciprocal arrow-input feature' },
   { source: 873, expected: 874, related: true, note: 'Brave/PWA IME input failure' },
   { source: 874, expected: 873, related: true, note: 'reciprocal Brave/PWA IME input failure' },
+  { source: 878, expected: 873, related: true, note: 'explicitly consolidated Brave issue' },
+  { source: 878, expected: 874, related: true, note: 'explicitly consolidated PWA issue' },
   { source: 316, expected: 261, related: true, note: 'explicit reference; keyword search may miss' },
+  { source: 95, expected: 6, related: true, note: 'explicitly consolidated duplicate/related app-input report' },
   { source: 717, expected: 725, related: false, note: 'same form/category but different defect' },
   { source: 725, expected: 717, related: false, note: 'reciprocal unrelated-defect control' },
+  { source: 111, expected: 117, related: false, note: 'same broad bug label, different app and failure mode' },
+  { source: 117, expected: 111, related: false, note: 'reciprocal unrelated app/failure-mode control' },
 ];
