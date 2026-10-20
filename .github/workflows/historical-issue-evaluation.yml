@@ -18,7 +18,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Evaluate a bounded set of live historical Issues
-        run: node .github/bot/evaluate-historical-issues.mjs
+        run: node .github/bot/evaluate-live-historical-issues.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_API_URL: ${{ github.api_url }}
