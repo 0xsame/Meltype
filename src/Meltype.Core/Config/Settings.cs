@@ -308,9 +308,10 @@ public sealed class Settings
      Description("ひらがなを打っている間も、Space を押す前から変換候補を (5 件まで) 変換ボックスに出します。候補をクリックすると、その候補で変換を始めます。")]
     public bool ShowCandidatesWhileTyping { get; set; }
 
-    [Category("1. 全般"), DisplayName("日本語 / 英数を切り替えるキーを追加"),
-     Description("Meltype キーボードの 日本語 / 英数 (直接入力) の切り替えに使うキーの組み合わせを、半角/全角 のほかに追加します。「Ctrl+Space; Alt+Backquote」のように ; で区切って書きます。修飾キーは Ctrl・Alt・Shift・Win、キー名は A〜Z・0〜9・F1〜F12・Space・Tab・Enter・Esc・Backquote・Muhenkan・Henkan・Kanji。")]
-    public string ToggleKeyboardShortcuts { get; set; } = "";
+    /// <summary>旧形式の追加キーを読み込むためだけの項目。正規化時に一覧へ移し、保存時には出力しない。</summary>
+    [Browsable(false), JsonInclude, JsonPropertyName("ToggleKeyboardShortcuts")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    internal string? LegacyToggleKeyboardShortcuts { get; set; }
 
     [Category("1. 全般"), DisplayName("#番号で GitHub の Issue・PR のタイトルを候補に出す"),
      Description("#123 のように打って Space で変換すると、下の「GitHub のリポジトリ」の Issue・Pull Request のタイトルを候補に出します (開発者向け)。打った番号を GitHub (api.github.com) に問い合わせるので、既定は OFF です。非公開のリポジトリは、環境変数 MELTYPE_GITHUB_TOKEN にトークンを入れると読めます。調べた結果はこのセッションの間だけ覚えます。")]
@@ -574,7 +575,7 @@ public sealed class Settings
         current.Profiles.First(p => p.Name == current.ActiveProfile).Values = current.ProfileValues();
         // 共通の項目は今の値のまま、プロファイルの項目だけを切り替え先の値にする
         var merged = JsonSerializer.SerializeToNode(current, JsonType)!.AsObject();
-        InitializeToggleShortcuts(target.Values ??= new JsonObject());
+        InitializeToggleShortcuts(target.Values ??= new JsonObject(), name);
         // 前の版で保存したプロファイルには、今は共通にした項目 (動作モードなど) が入っていることがあるので飛ばす
         foreach (var (key, value) in target.Values ?? [])
         {
@@ -582,7 +583,10 @@ public sealed class Settings
         }
         var next = merged.Deserialize(JsonType) ?? current;
         next.ActiveProfile = name;
-        return next.Normalize();
+        next.Normalize();
+        // 除外したキーを保存用の値にも反映し、再読み込み時に同じ登録を復活させない。
+        next.Profiles.First(p => p.Name == next.ActiveProfile).Values = next.ProfileValues();
+        return next;
     }
 
     /// <summary>今の値をそのまま写した新しいプロファイルを足して、それに切り替えた設定を返す。名前が空・使われているなら null。</summary>
@@ -649,8 +653,8 @@ public sealed class Settings
         {
             if (JsonNode.Parse(json, documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) is not JsonObject file ||
                 file["format"]?.GetValue<string>() != ProfileFileFormat || file["values"] is not JsonObject raw) return null;
-            InitializeToggleShortcuts(raw);
             name = (file["name"]?.GetValue<string>() ?? "").Trim();
+            InitializeToggleShortcuts(raw, name.Length == 0 ? "読み込んだプロファイル" : name);
             // 既定の設定に、知っている項目だけを重ねてから読み直す (型の違う値はここで例外になる)
             var merged = JsonSerializer.SerializeToNode(new Settings().Normalize(), JsonType)!.AsObject();
             foreach (var (key, value) in raw)
@@ -728,8 +732,8 @@ public sealed class Settings
     private JsonObject? ValuesOf(string name) =>
         name == ActiveProfile ? ProfileValues() : Profiles.FirstOrDefault(p => p.Name == name) is { } profile ? profile.Values ?? [] : null;
 
-    /// <summary>旧プロファイルでも、未設定と明示的な空の一覧を区別する。</summary>
-    private static void InitializeToggleShortcuts(JsonObject? values)
+    /// <summary>旧プロファイルの追加キーを移行する。未設定と明示的な空の一覧は区別する。</summary>
+    private static void InitializeToggleShortcuts(JsonObject? values, string profile = DefaultProfileName, bool report = true)
     {
         if (values is null) return;
         if (values[nameof(ToggleShortcuts)] is null)
@@ -737,9 +741,47 @@ public sealed class Settings
                 values["HankakuTogglesKeyboard"] is JsonValue legacy && legacy.TryGetValue<bool>(out var enabled) && !enabled
                     ? new List<ToggleShortcut>() : ToggleShortcut.Defaults(), SettingsJsonContext.Default.ListToggleShortcut);
         values.Remove("HankakuTogglesKeyboard");
+        if (values["ToggleKeyboardShortcuts"] is JsonValue old && old.TryGetValue<string>(out var text))
+        {
+            var shortcuts = values[nameof(ToggleShortcuts)]!.Deserialize(SettingsJsonContext.Default.ListToggleShortcut)!;
+            AppendLegacyToggleShortcuts(shortcuts, text, profile, report);
+            values[nameof(ToggleShortcuts)] = JsonSerializer.SerializeToNode(shortcuts, SettingsJsonContext.Default.ListToggleShortcut);
+        }
+        values.Remove("ToggleKeyboardShortcuts");
     }
 
-    public const int CurrentVersion = 6;
+    /// <summary>旧文字列を共通のキー一覧へ追加し、既存の登録と重なるものは一つにまとめる。</summary>
+    private static void AppendLegacyToggleShortcuts(List<ToggleShortcut> shortcuts, string? text, string profile, bool report)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        foreach (var part in text.Split([';', ',', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!KeyShortcut.TryParse(part, out var parsed))
+            {
+                if (report) Diagnostics.Log.Warn($"旧入力モード切り替えキーを移行できませんでした: {part}; 理由: キーの書式を解釈できません; プロファイル: {profile}");
+                continue;
+            }
+            var shortcut = new ToggleShortcut
+            {
+                Key = ToggleShortcut.NormalizeHankakuKey(parsed.Vk),
+                Modifiers = (parsed.Ctrl ? ShortcutModifiers.Control : 0) | (parsed.Alt ? ShortcutModifiers.Alt : 0)
+                    | (parsed.Shift ? ShortcutModifiers.Shift : 0) | (parsed.Win ? ShortcutModifiers.Win : 0),
+            };
+            if (!shortcuts.Any(existing => existing is not null && existing.Overlaps(shortcut))) shortcuts.Add(shortcut);
+        }
+    }
+
+    /// <summary>旧追加キーを移行して読み込み専用項目を空にし、繰り返し正規化しても再追加しない。</summary>
+    private void MigrateLegacyToggleShortcuts(bool report)
+    {
+        ToggleShortcuts ??= LegacyHankaku == false ? [] : ToggleShortcut.Defaults();
+        AppendLegacyToggleShortcuts(ToggleShortcuts, LegacyToggleKeyboardShortcuts, ActiveProfile, report);
+        LegacyToggleKeyboardShortcuts = null;
+        foreach (var profile in Profiles ?? [])
+            if (profile is not null) InitializeToggleShortcuts(profile.Values, profile.Name, report);
+    }
+
+    public const int CurrentVersion = 7;
 
     [Category("5. 学習"), DisplayName("ユーザー学習を使う"),
      Description("OFF にすると、選び直した変換・英字 / かなに直した語・予測変換の語句・選んだ英訳を新しく覚えません (今まで覚えた分は使います)。今まで覚えた分を消すときは、トレイの「学習データを消す」を使います。")]
@@ -889,7 +931,7 @@ public sealed class Settings
     /// <summary>設定値を安全な範囲に収める。編集中の設定収集では reportShortcutExclusions を false にし、キー除外のログ・通知を抑制する。</summary>
     public Settings Normalize(bool reportShortcutExclusions = true)
     {
-        ToggleShortcuts ??= ToggleShortcut.Defaults();
+        MigrateLegacyToggleShortcuts(reportShortcutExclusions);
         if (ToggleShortcuts is { } shortcuts)
         {
             var valid = new List<ToggleShortcut>();
@@ -954,8 +996,10 @@ public sealed class Settings
             ToggleShortcuts ??= LegacyHankaku == false ? [] : ToggleShortcut.Defaults();
             LegacyHankaku = null;
             foreach (var profile in Profiles ?? [])
-                if (profile is not null) InitializeToggleShortcuts(profile.Values ??= new JsonObject());
+                if (profile is not null) InitializeToggleShortcuts(profile.Values ??= new JsonObject(), profile.Name);
         }
+        // v7: 追加キーの文字列を共通の一覧へ移し、旧項目を保存しない。
+        MigrateLegacyToggleShortcuts(report: true);
         SettingsVersion = CurrentVersion;
         return true;
     }
@@ -973,13 +1017,15 @@ public sealed class Settings
             var autoSwitch = TopLevelStringIs(json, nameof(Mode), "AutoSwitch");
             if (autoSwitch) settings.TsfIntroduced = false;
             var migrated = settings.Migrate();
+            // 移行したキーの競合も保存前に除外し、次回起動時の再通知を防ぐ。
+            settings.Normalize();
             if (migrated || autoSwitch)
             {
                 // 保存できなくても、読み込んだ設定は使う (既定値に戻すと、次の保存でユーザーの設定が消える)。
                 try { settings.Save(path); }
                 catch (Exception ex) { Diagnostics.Log.Warn($"移行した config.json を保存できませんでした: {ex.Message}"); }
             }
-            return settings.Normalize();
+            return settings;
         }
         catch (Exception ex)
         {

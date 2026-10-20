@@ -10,6 +10,120 @@ namespace Meltype.Tests;
 /// <summary>入力モード切り替えショートカットの取り込み (Recorder)、キー判定 (Detector)、設定移行とバリデーション。</summary>
 internal static class ToggleShortcutTests
 {
+    /// <summary>旧設定から移行した競合キーは保存前に除外し、再読み込みで同じ除外を通知しないこと。</summary>
+    [Test]
+    public static void Shortcut_MigrationSavesNormalizedKeysBeforeReload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "Meltype-migration-conflicts-" + Guid.NewGuid() + ".json");
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        try
+        {
+            File.WriteAllText(path, """
+                {"SettingsVersion":6,"ConvertKeysSwitchKeyboard":true,"ToggleShortcuts":[],
+                 "ToggleKeyboardShortcuts":"Ctrl+Space; Ctrl+U; Space; Henkan"}
+                """);
+            var settings = Settings.Load(path);
+            Assert.Equal(1, settings.EffectiveToggleShortcuts.Count, "有効な Ctrl+Space だけ残す");
+            var exclusions = Meltype.Diagnostics.ShortcutExclusions.Drain();
+            Assert.Equal(3, exclusions.Length, "初回だけ競合を通知する");
+            Assert.True(exclusions.Any(e => e.Reason == ShortcutValidationError.Conversion)
+                && exclusions.Any(e => e.Reason == ShortcutValidationError.UnmodifiedKey)
+                && exclusions.Any(e => e.Reason == ShortcutValidationError.ConvertKeys), "各除外理由を保持する");
+            var saved = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(Settings.CurrentVersion, saved["SettingsVersion"]!.GetValue<int>());
+            Assert.Equal(1, saved["ToggleShortcuts"]!.AsArray().Count, "ファイルにも除外済みの一覧を保存する");
+            Assert.True(!saved.ContainsKey("ToggleKeyboardShortcuts"), "旧項目を保存しない");
+            Assert.Equal(1, Settings.Load(path).EffectiveToggleShortcuts.Count);
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "再読み込みで再通知しない");
+        }
+        finally
+        {
+            File.Delete(path);
+            Meltype.Diagnostics.ShortcutExclusions.Drain();
+        }
+    }
+
+    /// <summary>切り替え先プロファイルの保存用一覧も正規化結果に同期し、保存後の再読み込みと切り替えで再通知しないこと。</summary>
+    [Test]
+    public static void Shortcut_ProfileSwitchSavesNormalizedProfileValues()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "Meltype-profile-conflicts-" + Guid.NewGuid() + ".json");
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        try
+        {
+            var settings = new Settings { ActiveProfile = "元", ToggleShortcuts = [] }.Normalize();
+            settings.Profiles.Add(new SettingsProfile
+            {
+                Name = "移行先",
+                Values = JsonNode.Parse("""{"ToggleShortcuts":[],"ToggleKeyboardShortcuts":"Ctrl+Space; Ctrl+U"}""")!.AsObject(),
+            });
+            var next = settings.SwitchProfile("移行先");
+            Assert.Equal(1, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "切り替え時に除外を通知する");
+            var values = next.Profiles.Single(p => p.Name == "移行先").Values!;
+            Assert.True(JsonNode.DeepEquals(next.ProfileValues(), values), "保存用のプロファイル全体を現在値と同期する");
+            Assert.Equal(1, values["ToggleShortcuts"]!.AsArray().Count, "保存用一覧にも競合キーを残さない");
+            next.Save(path);
+            var loaded = Settings.Load(path);
+            Assert.Equal(1, loaded.EffectiveToggleShortcuts.Count);
+            var switched = loaded.SwitchProfile("元").SwitchProfile("移行先");
+            Assert.Equal(1, switched.EffectiveToggleShortcuts.Count);
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "保存後の読み込みと切り替えで再通知しない");
+        }
+        finally
+        {
+            File.Delete(path);
+            Meltype.Diagnostics.ShortcutExclusions.Drain();
+        }
+    }
+
+    /// <summary>旧追加キーを既存一覧へ重複なく移行し、旧項目を保存せず、再読み込みでも登録を増やさないこと。</summary>
+    [Test]
+    public static void Shortcut_LegacyAdditionalKeysMigrateOnLoad()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "Meltype-legacy-" + Guid.NewGuid() + ".json");
+        try
+        {
+            File.WriteAllText(path, """
+                {"SettingsVersion":6,"ToggleShortcuts":[{"Key":32,"Modifiers":2}],
+                 "ToggleKeyboardShortcuts":"Ctrl+Space; Alt+Backquote; Ctrl+Shift+Win+K"}
+                """);
+            var settings = Settings.Load(path);
+            Assert.Equal(3, settings.EffectiveToggleShortcuts.Count);
+            Assert.True(settings.EffectiveToggleShortcuts.Any(s => s.Key == 'K' && s.Modifiers == (ShortcutModifiers.Control | ShortcutModifiers.Shift | ShortcutModifiers.Win)), "全修飾キーを移行");
+            Assert.True(!File.ReadAllText(path).Contains("ToggleKeyboardShortcuts"), "移行時の保存先も新一覧のみ");
+            Assert.Equal(3, Settings.Load(path).EffectiveToggleShortcuts.Count, "再読み込みは冪等");
+            File.WriteAllText(path, """{"SettingsVersion":7,"ToggleShortcuts":[],"ToggleKeyboardShortcuts":"Ctrl+Space"}""");
+            settings = Settings.Load(path);
+            Assert.Equal(1, settings.EffectiveToggleShortcuts.Count, "現行バージョンでも旧項目を読み込む");
+            Assert.True(!settings.ToJson().Contains("ToggleKeyboardShortcuts"), "旧項目は出力しない");
+            Assert.Equal(0, new Settings { ToggleShortcuts = [], LegacyToggleKeyboardShortcuts = "" }.Normalize().EffectiveToggleShortcuts.Count, "明示的な空一覧を維持");
+            Assert.Equal(3, new Settings { LegacyToggleKeyboardShortcuts = "Ctrl+Space" }.Normalize().EffectiveToggleShortcuts.Count, "未設定では既定キーに追加");
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>保存済みプロファイルとインポートでも旧追加キーを移行し、不正な書式・競合の理由を記録すること。</summary>
+    [Test]
+    public static void Shortcut_LegacyAdditionalKeysMigrateProfilesAndReportInvalid()
+    {
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        try
+        {
+            var settings = new Settings { ToggleShortcuts = [] }.Normalize();
+            settings.Profiles.Add(new SettingsProfile { Name = "旧設定", Values = JsonNode.Parse("""{"ToggleShortcuts":[],"ToggleKeyboardShortcuts":"Ctrl+Space; Ctrl+U; UnknownKey"}""")!.AsObject() });
+            settings = settings.SwitchProfile("旧設定");
+            Assert.Equal(1, settings.EffectiveToggleShortcuts.Count, "有効なキーだけを移行");
+            Assert.True(!settings.ToJson().Contains("ToggleKeyboardShortcuts"), "保存済みプロファイルからも旧項目を削除");
+            Assert.True(Meltype.Diagnostics.Log.Snapshot().Any(e => e.Message.Contains("UnknownKey") && e.Message.Contains("書式") && e.Message.Contains("旧設定")), "解析できないキーの理由と出所を記録");
+            Assert.True(Meltype.Diagnostics.ShortcutExclusions.Drain().Any(e => e.Reason == ShortcutValidationError.Conversion), "解析できた競合は通常の除外通知に統合");
+            var imported = settings.ImportProfile("""{"format":"meltype-profile","name":"取り込み","values":{"ToggleShortcuts":[],"ToggleKeyboardShortcuts":"Ctrl+Space; Ctrl+Space"}}""");
+            Assert.True(imported is not null, "旧形式を取り込める");
+            Assert.Equal(1, imported!.EffectiveToggleShortcuts.Count, "取り込み時も重複を統合");
+            Assert.True(!imported.ToJson().Contains("ToggleKeyboardShortcuts"), "エクスポートにも旧項目を残さない");
+        }
+        finally { Meltype.Diagnostics.ShortcutExclusions.Drain(); }
+    }
+
     /// <summary>編集中も既存どおりキーや数値を正規化するが除外は報告せず、通常の読み込みでは報告すること。</summary>
     [Test]
     public static void Shortcut_EditNormalizationSuppressesOnlyExclusionReports()

@@ -355,24 +355,6 @@ internal sealed class MeltypeEngine : IDisposable
                 return true;
             }
         }
-        // 設定「日本語 / 英数を切り替えるキーを追加」: 半角/全角 と同じく Meltype キーボードの ON/OFF (issue #530)
-        if (settings.Enabled && settings.Mode == InputMode.Keyboard && settings.ToggleKeyboardShortcuts.Length > 0 && !e.Injected && !composition.Gate.IsCaptured)
-        {
-            var ctrl = IsDown(VirtualKeys.Control);
-            var alt = IsDown(VirtualKeys.Menu);
-            var shift = IsDown(VirtualKeys.Shift);
-            var win = IsDown(VirtualKeys.LWin) || IsDown(VirtualKeys.RWin);
-            if (ToggleShortcuts(settings.ToggleKeyboardShortcuts).Any(shortcut => shortcut.Matches(e.Vk, ctrl, alt, shift, win)))
-            {
-                if (e.IsDown)
-                {
-                    lock (_swallowedToggleUps) _swallowedToggleUps.Add(e.Vk);
-                    MaskAltRelease();
-                    KeyboardDirect = !_keyboardDirect;
-                }
-                return true;
-            }
-        }
         // 変換キーは Microsoft IME に渡さない。渡すと IME が ON になって選択した文字の再変換を始め、
         // Meltype キーボードが IME を OFF に戻すときに、再変換中の文字 (選択していた文字) が消える (#19)。
         if (settings.Enabled && e.Vk == VirtualKeys.Convert && !e.Injected && !composition.Gate.IsCaptured)
@@ -431,20 +413,6 @@ internal sealed class MeltypeEngine : IDisposable
         if (wasDirect) KeyboardDirect = false;
         else if (IsCodeApp(settings)) ShowCodeMode();
         else composition.ShowMode(true);
-    }
-
-    // 設定の文字列を、打鍵のたびに読み直さない (変わったときだけ読み直す)
-    private string _toggleShortcutsText = "";
-    private IReadOnlyList<Meltype.Input.KeyShortcut> _toggleShortcuts = [];
-
-    private IReadOnlyList<Meltype.Input.KeyShortcut> ToggleShortcuts(string text)
-    {
-        if (text != _toggleShortcutsText)
-        {
-            _toggleShortcuts = Meltype.Input.KeyShortcut.ParseList(text).ToList();
-            _toggleShortcutsText = text;
-        }
-        return _toggleShortcuts;
     }
 
     /// <summary>
