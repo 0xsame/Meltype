@@ -54,6 +54,14 @@ function extractIdentifiers(text) {
   ].map(value => value.toLowerCase()))];
 }
 
+// Normalize the same Z+H/J/K/L arrow-key family when it is written as a chord
+// or as zh/zj/zk/zl, so equivalent feature reports share one distinctive signal.
+function normalizeArrowChordFamily(text) {
+  return text
+    .replace(/\bz\s*\+\s*h\s*\/\s*j\s*\/\s*k\s*\/\s*l\b/gi, ' zhjkl ')
+    .replace(/\bzh\b[\s、,/]+\bzj\b[\s、,/]+\bzk\b[\s、,/]+\bzl\b/gi, ' zhjkl ');
+}
+
 function extractTerms(title, body) {
   const terms = new Map();
   const add = (value, weight = 1, fromTitle = false) => {
@@ -77,8 +85,8 @@ function extractTerms(title, body) {
 }
 
 export function extractIssueSignals(issue) {
-  const title = String(issue?.title ?? '').replace(/^\[[^\]]+\]\s*/, '');
-  const body = searchableBody(issue?.body ?? '');
+  const title = normalizeArrowChordFamily(String(issue?.title ?? '').replace(/^\[[^\]]+\]\s*/, ''));
+  const body = normalizeArrowChordFamily(searchableBody(issue?.body ?? ''));
   const text = title + '\n' + body;
   const references = [...new Set([...text.matchAll(/(?:^|[^\w])#(\d+)\b/g)].map(match => Number(match[1])))];
   const identifiers = extractIdentifiers(text);
