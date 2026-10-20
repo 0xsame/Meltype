@@ -58,8 +58,8 @@ function extractIdentifiers(text) {
 // or as zh/zj/zk/zl, so equivalent feature reports share one distinctive signal.
 function normalizeArrowChordFamily(text) {
   return text
-    .replace(/\bz\s*\+\s*h\s*\/\s*j\s*\/\s*k\s*\/\s*l\b/gi, ' zhjkl ')
-    .replace(/\bzh\b[\s、,/]+\bzj\b[\s、,/]+\bzk\b[\s、,/]+\bzl\b/gi, ' zhjkl ');
+    .replace(/\bz\s*\+\s*h\s*\/\s*j\s*\/\s*k\s*\/\s*l\b/gi, ' zhjkl zhkey zjkey zkkey zlkey ')
+    .replace(/\bzh\b[\s、,/]+\bzj\b[\s、,/]+\bzk\b[\s、,/]+\bzl\b/gi, ' zhjkl zhkey zjkey zkkey zlkey ');
 }
 
 function extractTerms(title, body) {
