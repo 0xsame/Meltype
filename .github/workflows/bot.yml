@@ -41,6 +41,8 @@ jobs:
           persist-credentials: false
       - name: Test related-issue candidate logic
         run: node --test .github/bot/tests/*.test.mjs
+      - name: Evaluate historical related-issue fixtures offline
+        run: node .github/bot/evaluate-historical-issues.mjs
 
   # PR 作成時: pr ラベルを付ける (pull_request_target なので fork からも動く。コードは触らない)
   pr-label:
