@@ -12,6 +12,7 @@ python3 native/mozc/tests/test_merge_ut_dictionary.py
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -63,6 +64,16 @@ def git(root: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def run_script(mozc_src, *args):
+    """統合スクリプトを動かす。コンソールの文字コードに関係なく日本語を読めるよう、子は UTF-8 にする。"""
+    environment = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--mozc-src", str(mozc_src), *args],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=environment, check=False,
+    )
+
+
 class FakeMozc:
     """テスト用の Mozc。src/data/dictionary_oss に id.def と辞書だけを置く。"""
 
@@ -108,10 +119,7 @@ class MergeTestBase(unittest.TestCase):
         return path
 
     def run_script(self, *args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            [sys.executable, str(SCRIPT), "--mozc-src", str(self.mozc.src), *args],
-            capture_output=True, text=True, check=False,
-        )
+        return run_script(self.mozc.src, *args)
 
     def merge(self, dictionary: Path, *args: str) -> subprocess.CompletedProcess:
         return self.run_script("--dictionary", str(dictionary), *args)
@@ -388,20 +396,12 @@ class EnvironmentTest(MergeTestBase):
         directory.mkdir(parents=True)
         (directory / "id.def").write_text(make_id_def(), encoding="utf-8")
         (directory / "dictionary00.txt").write_text(BASE_LINE, encoding="utf-8")
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--mozc-src", str(plain / "src"),
-             "--dictionary", str(SAMPLE)],
-            capture_output=True, text=True, check=False,
-        )
+        result = run_script(plain / "src", "--dictionary", str(SAMPLE))
         self.assertEqual(result.returncode, 1)
         self.assertIn("git リポジトリ", result.stderr)
 
     def test_mozc_src_must_point_at_src(self):
-        result = subprocess.run(
-            [sys.executable, str(SCRIPT), "--mozc-src", str(self.temp),
-             "--dictionary", str(SAMPLE)],
-            capture_output=True, text=True, check=False,
-        )
+        result = run_script(self.temp, "--dictionary", str(SAMPLE))
         self.assertEqual(result.returncode, 1)
         self.assertIn("dictionary_oss", result.stderr)
 

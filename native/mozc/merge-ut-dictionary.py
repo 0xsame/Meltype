@@ -123,6 +123,8 @@ def run_git(root: Path, *args: str) -> subprocess.CompletedProcess:
             ["git", "-C", str(root), *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=False,
         )
     except FileNotFoundError as error:  # pragma: no cover - git が無い環境
@@ -632,7 +634,22 @@ def main(argv: list[str]) -> int:
     return EXIT_OK
 
 
+def configure_streams() -> None:
+    """コンソールの文字コードで表せない文字があっても落ちないようにする。
+
+    Windows のコンソールが UTF-8 でない (cp932・cp1252 など) とき、そのままだと print が
+    UnicodeEncodeError で止まる。表せない文字だけを \\uXXXX の形にして、処理は続ける
+    (日本語の Windows なら cp932 でそのまま出る)。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def entry_point() -> int:
+    configure_streams()
     try:
         return main(sys.argv[1:])
     except MergeError as error:
