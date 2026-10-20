@@ -6,12 +6,21 @@
 #   native/mozc/build-mozc-helper.sh [Mozc を置く場所 (既定: ~/mozc)] [Bazel のディスクキャッシュ]
 # 必要なもの: git、Bazelisk (bazel、環境変数 BAZEL で場所を指定できる)、clang、Mozc の Linux のビルドに要るライブラリ (README.md)。
 # できたものは native/mozc/bin/linux/ に置く。
+#
+# Mozc-UT の辞書 (https://github.com/utuhiro78/merge-ut-dictionaries などで作る mozcdic-ut.txt) を
+# 変換の候補に足す場合は、環境変数 MELTYPE_UT_DICTIONARY にそのファイルを指定する。
+#   MELTYPE_UT_DICTIONARY=~/mozcdic-ut.txt native/mozc/build-mozc-helper.sh
+# 指定しなければ、これまでどおり Mozc だけのヘルパーを作る (前回の統合は自動で取り消す)。
+# 辞書は Mozc の辞書に足すだけで、同梱も再配布もしない (ライセンスは README.md)。
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mozc="${1:-$HOME/mozc}"
 cache="${2:-}"
 commit="$(tr -d '[:space:]' < "$here/MOZC_COMMIT")"
 out="$here/bin/linux"
+ut_dictionary="${MELTYPE_UT_DICTIONARY:-}"
+# 統合する辞書のファイル (Mozc の git の管理下。統合の前に元に戻すのに使う)
+target_relative="src/data/dictionary_oss/dictionary00.txt"
 
 # src の有無ではなく .git で見る (GitHub Actions のキャッシュが src/third_party_cache だけを先に戻すため)。
 if [[ ! -d "$mozc/.git" ]]; then
@@ -24,6 +33,31 @@ if [[ ! -d "$mozc/.git" ]]; then
 fi
 src="$mozc/src"
 
+# 前に MELTYPE_UT_DICTIONARY を指定してビルドしていれば、Mozc の辞書に Mozc-UT の語が残っている。
+# 指定なしのビルドに混ざらないよう、先に元に戻す (辞書のファイルは Mozc の git から戻すので壊れない)。
+restored=""
+if [[ -n "$ut_dictionary" || -n "$(git -C "$mozc" status --porcelain -- "$target_relative" 2>/dev/null)" ]]; then
+    python="${PYTHON:-python3}"
+    if ! command -v "$python" >/dev/null 2>&1; then
+        echo "エラー: Python 3 が見つかりません ($python)。Mozc-UT の辞書の統合に使います。" >&2
+        exit 1
+    fi
+    restored="$("$python" "$here/merge-ut-dictionary.py" --mozc-src "$src" --restore)"
+    if [[ "$restored" == *"取り消しました"* ]]; then
+        echo "前回統合した Mozc-UT の辞書を取り消しました。"
+    fi
+fi
+
+mkdir -p "$out"
+# この印があれば、このフォルダーのヘルパーは Mozc-UT の辞書入り (標準のビルドでは消す)。
+rm -f "$out/MOZC-UT.json"
+
+if [[ -n "$ut_dictionary" ]]; then
+    # 統合した内容 (辞書と Mozc のハッシュ) を残す。再現性のため、あとから何を入れたか分かるようにする。
+    "$python" "$here/merge-ut-dictionary.py" --mozc-src "$src" \
+        --dictionary "$ut_dictionary" --report "$out/MOZC-UT.json"
+fi
+
 # ヘルパーのソースと BUILD の定義を Mozc の converter パッケージに入れる (エンジンを使えるのがこのパッケージのため)。
 cp "$here/meltype_mozc_helper.cc" "$src/converter/"
 if ! grep -q 'name = "meltype_mozc_helper"' "$src/converter/BUILD.bazel"; then
@@ -33,12 +67,21 @@ fi
 cd "$src"
 options=(build //converter:meltype_mozc_helper --config oss_linux --config release_build)
 [[ -n "$cache" ]] && options+=("--disk_cache=$cache")
-"${BAZEL:-bazel}" "${options[@]}"
+if ! "${BAZEL:-bazel}" "${options[@]}"; then
+    # ビルドできなかったのに Mozc-UT 入りの印が残ると、次に勘違いするので消す。
+    rm -f "$out/MOZC-UT.json"
+    exit 1
+fi
 
-mkdir -p "$out"
 cp -f bazel-bin/converter/meltype_mozc_helper "$out/"
 # Bazel の出力は読み取り専用なので、上書きできるようにする。
 chmod u+w,a+x "$out/meltype_mozc_helper"
 cp -f data/installer/credits_en.html "$out/MOZC-CREDITS.html"
 cp -f "$mozc/LICENSE" "$out/MOZC-LICENSE.txt"
 echo "作成しました: $out/meltype_mozc_helper"
+if [[ -n "$ut_dictionary" ]]; then
+    echo "このヘルパーには Mozc-UT の辞書が入っています ($out/MOZC-UT.json)。"
+    echo "再配布するときは、辞書ごとのライセンスに従ってください (native/mozc/README.md)。"
+else
+    echo "Mozc-UT の辞書は入っていません (MELTYPE_UT_DICTIONARY を指定すると入ります)。"
+fi

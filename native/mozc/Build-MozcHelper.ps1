@@ -17,7 +17,11 @@ param(
     # Visual Studio の VC フォルダー。省略すると vswhere で探す (Mozc の自動検出は一部の構成で失敗するため)。
     [string]$VcPath = '',
     # Bazel の結果を保存しておく場所 (GitHub Actions でビルドを速くするため)。省略すると使わない。
-    [string]$DiskCache = ''
+    [string]$DiskCache = '',
+    # Mozc-UT の辞書 (mozcdic-ut.txt) を足す場合に指定する。省略すると環境変数 MELTYPE_UT_DICTIONARY。
+    # 指定しなければ、これまでどおり Mozc だけのヘルパーを作る (前回の統合は自動で取り消す)。
+    # 辞書は Mozc の辞書に足すだけで、同梱も再配布もしない (ライセンスは README.md)。
+    [string]$UtDictionary = $env:MELTYPE_UT_DICTIONARY
 )
 $ErrorActionPreference = 'Stop'
 
@@ -28,6 +32,26 @@ function Invoke-Native([string]$FilePath, [string[]]$Arguments, [string]$Failure
     $ErrorActionPreference = 'Continue'
     try { & $FilePath @Arguments 2>&1 | ForEach-Object { Write-Host $_ } }
     finally { $ErrorActionPreference = $previous }
+    if ($LASTEXITCODE -ne 0) { throw $Failure }
+}
+
+# Python の出す日本語 (UTF-8) を、コンソールの文字コードに関係なく読めるようにしてから実行する。
+function Invoke-PythonUtf8([string[]]$Arguments, [string]$Failure) {
+    $previousPreference = $ErrorActionPreference
+    $previousIo = $env:PYTHONIOENCODING
+    $previousEncoding = $null
+    try { $previousEncoding = [Console]::OutputEncoding } catch { }
+    $ErrorActionPreference = 'Continue'
+    try {
+        try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+        $env:PYTHONIOENCODING = 'utf-8'
+        & $Python @Arguments 2>&1 | ForEach-Object { Write-Host $_ }
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+        $env:PYTHONIOENCODING = $previousIo
+        if ($null -ne $previousEncoding) { try { [Console]::OutputEncoding = $previousEncoding } catch { } }
+    }
     if ($LASTEXITCODE -ne 0) { throw $Failure }
 }
 $here = $PSScriptRoot
@@ -79,6 +103,30 @@ if ($head -ne $commit) {
     Invoke-Native git @('-C', $MozcSource, 'submodule', 'update', '-q', '--init', '--recursive', '--depth', '1') 'Mozc のサブモジュールを取得できませんでした。'
 }
 $src = Join-Path $MozcSource 'src'
+$merge = Join-Path $here 'merge-ut-dictionary.py'
+if ($UtDictionary) {
+    if (-not (Test-Path -LiteralPath $UtDictionary -PathType Leaf)) {
+        throw "Mozc-UT の辞書が見つかりません: $UtDictionary"
+    }
+    $UtDictionary = (Resolve-Path -LiteralPath $UtDictionary).Path
+}
+# 前に Mozc-UT を統合してビルドしていれば、Mozc の辞書に Mozc-UT の語が残っている。
+# 指定なしのビルドに混ざらないよう、先に元に戻す (辞書は Mozc の git から戻すので壊れない)。
+$target = 'src/data/dictionary_oss/dictionary00.txt'
+$dirty = & git -C $MozcSource status --porcelain -- $target 2>$null
+if ($UtDictionary -or $dirty) {
+    Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--restore') 'Mozc-UT の辞書を元に戻せませんでした。'
+}
+if ($dirty) { Write-Host '前回統合した Mozc-UT の辞書を取り消しました。' }
+
+New-Item -ItemType Directory -Force -Path $bin | Out-Null
+# この印があれば、このフォルダーのヘルパーは Mozc-UT の辞書入り (標準のビルドでは消す)。
+$utReport = Join-Path $bin 'MOZC-UT.json'
+if (Test-Path -LiteralPath $utReport) { Remove-Item -LiteralPath $utReport -Force }
+if ($UtDictionary) {
+    # 統合した内容 (辞書と Mozc のハッシュ) を残す。再現性のため、あとから何を入れたか分かるようにする。
+    Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--dictionary', $UtDictionary, '--report', $utReport) 'Mozc-UT の辞書を統合できませんでした。'
+}
 
 # ヘルパーのソースと BUILD の定義を Mozc の converter パッケージに入れる (エンジンを使えるのがこのパッケージのため)。
 Copy-Item -LiteralPath (Join-Path $here 'meltype_mozc_helper.cc') -Destination (Join-Path $src 'converter') -Force
@@ -95,11 +143,15 @@ try {
     # シンボリックリンクは Windows の開発者モードか管理者権限が要るので使わない。
     Invoke-Native $Bazelisk (@('--nowindows_enable_symlinks') + $options) 'ビルドに失敗しました。'
 }
+catch {
+    # ビルドできなかったのに Mozc-UT 入りの印が残ると、次に勘違いするので消す。
+    if (Test-Path -LiteralPath $utReport) { Remove-Item -LiteralPath $utReport -Force }
+    throw
+}
 finally {
     Pop-Location
 }
 
-New-Item -ItemType Directory -Force -Path $bin | Out-Null
 Copy-Item -LiteralPath (Join-Path $src 'bazel-bin\converter\meltype_mozc_helper.exe') -Destination $bin -Force
 # Bazel の出力は読み取り専用なので、上書きやアンインストールで困らないように外す。
 (Get-Item -LiteralPath (Join-Path $bin 'meltype_mozc_helper.exe')).IsReadOnly = $false
@@ -137,3 +189,10 @@ if ($placed.Count -eq 0) { throw 'ヘルパーが Visual C++ のランタイム�
 Set-Content -LiteralPath (Join-Path $bin 'VC-RUNTIME.txt') -Value $placed -Encoding ASCII
 Write-Host "Visual C++ のランタイムを置きました ($($crt.FullName)): $($placed -join ', ')"
 Write-Host "作成しました: $bin"
+if ($UtDictionary) {
+    Write-Host "このヘルパーには Mozc-UT の辞書が入っています ($utReport)。"
+    Write-Host '再配布するときは、辞書ごとのライセンスに従ってください (native\mozc\README.md)。'
+}
+else {
+    Write-Host 'Mozc-UT の辞書は入っていません (MELTYPE_UT_DICTIONARY を指定すると入ります)。'
+}
