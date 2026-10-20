@@ -59,6 +59,8 @@ LICENSES = {
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_INVALID = 2
+# 辞書の誤りのうち、画面に出す件数 (残りは件数だけ出す)。巨大な壊れた辞書でもメモリを使わないため。
+MAX_ERRORS = 20
 
 # 辞書の 1 行が長すぎる場合 (読みと表記を合わせて) は、読み込み違いの可能性が高い。
 MAX_LINE_CHARS = 512
@@ -70,6 +72,25 @@ class MergeError(Exception):
 
 class DictionaryError(Exception):
     """辞書の中身が不正 (終了コード 2)。"""
+
+
+class Errors:
+    """辞書の誤り。件数は全部数え、覚えておくのは MAX_ERRORS 件まで。"""
+
+    def __init__(self) -> None:
+        self.items: list[str] = []
+        self.total = 0
+
+    def add(self, message: str) -> None:
+        self.total += 1
+        if len(self.items) < MAX_ERRORS:
+            self.items.append(message)
+
+    def __bool__(self) -> bool:
+        return self.total > 0
+
+    def __len__(self) -> int:
+        return self.total
 
 
 @dataclass
@@ -103,7 +124,6 @@ class Entry:
 class ParseResult:
     entries: list[Entry] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    blank_lines: int = 0
     pos_ids_before: dict[int, int] = field(default_factory=dict)
     pos_remap: dict[int, int] = field(default_factory=dict)
     pos_drift: bool = False
@@ -185,16 +205,14 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
         raise DictionaryError(f"辞書ファイルに NUL バイトがあります: {path}")
 
     result = ParseResult()
-    errors: list[str] = []
+    errors = Errors()
     pos_counts: dict[int, int] = {}
 
     for index, raw in enumerate(text.splitlines(), start=1):
         if not raw.strip():
-            if raw:
-                result.blank_lines += 1
             continue
         if len(raw) > MAX_LINE_CHARS:
-            errors.append(
+            errors.add(
                 f"{index} 行目: 行が長すぎます ({len(raw)} 文字)。読みと表記を確かめてください"
             )
             continue
@@ -203,7 +221,7 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
         # Mozc の辞書は 5 列 (読み・lid・rid・コスト・表記)。
         # 6 列目以降は Mozc の特別な印 (SPELLING_CORRECTION など) なので、受け取らない。
         if len(columns) != 5:
-            errors.append(
+            errors.add(
                 f"{index} 行目: 列が {len(columns)} 個あります (5 列ではありません): "
                 f"{raw[:80]!r}"
             )
@@ -217,7 +235,7 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
         ]
         if empty:
             # 空の列があると、Mozc の読み込みが列をずらして壊れる。
-            errors.append(f"{index} 行目: 空の列があります: {', '.join(empty)}")
+            errors.add(f"{index} 行目: 空の列があります: {', '.join(empty)}")
             continue
 
         lid = _parse_int(lid_text, "lid", index, errors)
@@ -226,10 +244,10 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
         if lid is None or rid is None or cost is None:
             continue
         if not 0 <= lid <= 0xFFFF or not 0 <= rid <= 0xFFFF:
-            errors.append(f"{index} 行目: 品詞 ID が範囲外です (0〜65535): {lid} {rid}")
+            errors.add(f"{index} 行目: 品詞 ID が範囲外です (0〜65535): {lid} {rid}")
             continue
         if not 0 <= cost <= 0xFFFF:
-            errors.append(f"{index} 行目: コストが範囲外です (0〜65535): {cost}")
+            errors.add(f"{index} 行目: コストが範囲外です (0〜65535): {cost}")
             continue
 
         if not HIRAGANA.match(reading):
@@ -238,7 +256,7 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
                 " (Mozc の辞書の読みはひらがなです)"
             )
             if strict_readings:
-                errors.append(message)
+                errors.add(message)
                 continue
             result.warnings.append(message)
 
@@ -253,10 +271,10 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
         pos_counts[lid] = pos_counts.get(lid, 0) + 1
 
     if errors:
-        shown = errors[:20]
-        more = "" if len(errors) <= len(shown) else f"\n  ...ほか {len(errors) - len(shown)} 件"
+        more = "" if errors.total <= len(errors.items) else \
+            f"\n  ...ほか {errors.total - len(errors.items)} 件"
         raise DictionaryError(
-            f"辞書ファイルの中身が不正です: {path}\n  " + "\n  ".join(shown) + more
+            f"辞書ファイルの中身が不正です: {path}\n  " + "\n  ".join(errors.items) + more
         )
     if not result.entries:
         raise DictionaryError(f"辞書ファイルに使える行がありません: {path}")
@@ -266,11 +284,11 @@ def parse_dictionary(path: Path, id_def: IdDefinition, pos: str,
     return result
 
 
-def _parse_int(text: str, name: str, line_number: int, errors: list[str]) -> int | None:
+def _parse_int(text: str, name: str, line_number: int, errors: Errors) -> int | None:
     try:
         return int(text)
     except ValueError:
-        errors.append(f"{line_number} 行目: {name} が整数ではありません: {text!r}")
+        errors.add(f"{line_number} 行目: {name} が整数ではありません: {text!r}")
         return None
 
 
@@ -406,10 +424,18 @@ def restore_dictionary(mozc_src: Path, target: Path) -> bool:
         return False
     if target.stat().st_size == 0:
         raise MergeError(f"{target} が空です。Mozc を取得し直してください。")
-    checkout = run_git(root, "checkout", "--", relative)
+    # `git checkout -- <path>` は index から戻すので、統合したあとに add されていると
+    # 統合済みの中身が戻ってしまう。必ず HEAD (最後のコミット) から戻す。
+    checkout = run_git(root, "checkout", "HEAD", "--", relative)
     if checkout.returncode != 0:
         raise MergeError(
             f"{relative} を元に戻せませんでした: {checkout.stderr.strip()}"
+        )
+    verify = run_git(root, "diff", "--quiet", "HEAD", "--", relative)
+    if verify.returncode != 0:
+        raise MergeError(
+            f"{relative} を Mozc の git の記録 (HEAD) と同じにできませんでした。\n"
+            "Mozc のフォルダーを消して、ビルドスクリプトで取得し直してください。"
         )
     return True
 
@@ -494,11 +520,12 @@ def main(argv: list[str]) -> int:
         "--dictionary", type=Path,
         help="統合する Mozc-UT の辞書 (mozcdic-ut.txt)。--restore のときは要りません",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--restore", action="store_true",
         help="統合をとりやめて、Mozc の辞書を取得したときの状態に戻す",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--check", action="store_true",
         help="辞書を確かめるだけで、Mozc の辞書は書き換えない",
     )
@@ -650,6 +677,10 @@ def configure_streams() -> None:
 
 def entry_point() -> int:
     configure_streams()
+    if sys.version_info < (3, 10):
+        print("エラー: Python 3.10 以降が必要です (今の版: "
+              + sys.version.split()[0] + ")。", file=sys.stderr)
+        return EXIT_ERROR
     try:
         return main(sys.argv[1:])
     except MergeError as error:

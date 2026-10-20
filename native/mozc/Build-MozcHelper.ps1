@@ -110,15 +110,6 @@ if ($UtDictionary) {
     }
     $UtDictionary = (Resolve-Path -LiteralPath $UtDictionary).Path
 }
-# 前に Mozc-UT を統合してビルドしていれば、Mozc の辞書に Mozc-UT の語が残っている。
-# 指定なしのビルドに混ざらないよう、先に元に戻す (辞書は Mozc の git から戻すので壊れない)。
-$target = 'src/data/dictionary_oss/dictionary00.txt'
-$dirty = & git -C $MozcSource status --porcelain -- $target 2>$null
-if ($UtDictionary -or $dirty) {
-    Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--restore') 'Mozc-UT の辞書を元に戻せませんでした。'
-}
-if ($dirty) { Write-Host '前回統合した Mozc-UT の辞書を取り消しました。' }
-
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
 $utReport = Join-Path $bin 'MOZC-UT.json'
 # 統合した内容 (辞書と Mozc のハッシュ) は、ビルドが通ってから印 (MOZC-UT.json) にする。
@@ -126,6 +117,23 @@ $utReport = Join-Path $bin 'MOZC-UT.json'
 # 標準のヘルパーに見えてしまうため、ビルドが終わるまでは書かない。
 $utPending = Join-Path $bin 'MOZC-UT.json.tmp'
 if (Test-Path -LiteralPath $utPending) { Remove-Item -LiteralPath $utPending -Force }
+
+# 前に Mozc-UT を統合してビルドしていれば、Mozc の辞書に Mozc-UT の語が残っている。
+# 指定なしのビルドに混ざらないよう、先に元に戻す (辞書は Mozc の git から戻すので壊れない)。
+# git status が失敗したときに黙って続けると、Mozc-UT 入りのまま標準のヘルパーを作ってしまうので止める。
+$target = 'src/data/dictionary_oss/dictionary00.txt'
+$previous = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try { $dirty = & git -C $MozcSource status --porcelain -- $target 2>$null }
+finally { $ErrorActionPreference = $previous }
+if ($LASTEXITCODE -ne 0) {
+    throw "Mozc の辞書の状態を調べられませんでした (git status: exit code $LASTEXITCODE)。Mozc のフォルダーを取り直してください。"
+}
+if ($UtDictionary -or $dirty -or (Test-Path -LiteralPath $utReport)) {
+    Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--restore') 'Mozc-UT の辞書を元に戻せませんでした。'
+}
+if ($dirty) { Write-Host '前回統合した Mozc-UT の辞書を取り消しました。' }
+
 if ($UtDictionary) {
     Invoke-PythonUtf8 @($merge, '--mozc-src', $src, '--dictionary', $UtDictionary, '--report', $utPending) 'Mozc-UT の辞書を統合できませんでした。'
 }
