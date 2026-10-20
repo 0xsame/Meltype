@@ -719,6 +719,8 @@ void TextService::StopHelloUpdates() {
     // worker は this や TSF に触れない。DLL を解放する前に通信終了を待つ。
     if (helloResult_.valid()) { helloResult_.wait(); helloResult_.get(); }
     helloPipe_.reset();
+    // クラスはプロセス内で共有する。他スレッドのウィンドウが残る間の解除失敗は許容し、
+    // 最後のインスタンスがウィンドウを破棄したときに解除する。
     UnregisterClassW(L"Meltype.Tip.Hello", g_module);
 }
 
