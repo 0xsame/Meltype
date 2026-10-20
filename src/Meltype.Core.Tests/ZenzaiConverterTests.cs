@@ -152,6 +152,86 @@ internal static class ZenzaiConverterTests
         Assert.Equal("単位", off.Convert("たんい") ?? "", "OFF は今までどおり");
     }
 
+    [Test]
+    public static void Align_BuildsTextFromEachClauseCandidates()
+    {
+        IReadOnlyList<(ConversionClause, IReadOnlyList<string>)> clauses =
+            [(new("きしゃが", "記者が"), ["記者が", "汽車が", "帰社が"]), (new("きた", "来た"), ["来た", "着た", "北"])];
+        var aligned = HybridConverter.Align(clauses, "汽車が着た");
+        Assert.True(aligned is [{ Reading: "きしゃが", Text: "汽車が" }, { Reading: "きた", Text: "着た" }], "文節ごとの候補でできる: " + Joined(aligned));
+        Assert.True(HybridConverter.Align(clauses, "記者が北") is [{ Text: "記者が" }, { Text: "北" }], "1 番目の候補もそのまま使う");
+        Assert.True(HybridConverter.Align(clauses, "汽車が着たよ") is null, "候補をつないでも作れない (余る)");
+        Assert.True(HybridConverter.Align(clauses, "喫茶が来た") is null, "候補に無い字がある");
+        // Mozc が候補を返さなかった文節は、読みのままの文字列になる (MozcConverter.ConvertWithCandidates)。それも候補として使う
+        IReadOnlyList<(ConversionClause, IReadOnlyList<string>)> noCandidates = [(new("きしゃが", "記者が"), ["記者が"]), (new("きた", "きた"), [])];
+        Assert.True(HybridConverter.Align(noCandidates, "記者がきた") is [{ Text: "記者が" }, { Text: "きた" }], "候補が無い文節は読みのまま: " + Joined(HybridConverter.Align(noCandidates, "記者がきた")));
+        Assert.True(HybridConverter.Align(noCandidates, "記者が来た") is null, "候補が無い文節は、読みのまま以外にはしない");
+        // 半角の数字を打った読みは、Mozc が全角の候補 (１５日に) を返す。半角にそろえて比べ、半角で返す (CompositionController.NormalizeHalfWidth と同じ)
+        IReadOnlyList<(ConversionClause, IReadOnlyList<string>)> digits = [(new("15にちに", "１５日に"), ["１５日に", "十五日に"]), (new("きた", "来た"), ["来た", "着た"])];
+        var halfWidth = HybridConverter.Align(digits, "15日に着た");
+        Assert.True(halfWidth is [{ Text: "15日に" }, { Text: "着た" }], "半角の数字: " + Joined(halfWidth));
+        Assert.True(HybridConverter.Align(digits, "１５日に着た") is [{ Text: "15日に" }, { Text: "着た" }], "全角で返ってきても半角にそろえる");
+        // 前の文節で長い候補を先に選ぶと後ろが作れないときは、短い候補に戻って試す
+        // (候補は仮のもの。本物の Mozc で、同じ文節の候補の一方が他方の頭と同じになることはまれ)
+        IReadOnlyList<(ConversionClause, IReadOnlyList<string>)> overlap = [(new("あ", "AB"), ["AB", "A"]), (new("い", "BC"), ["BC"])];
+        var shorter = HybridConverter.Align(overlap, "ABC");
+        Assert.True(shorter is [{ Text: "A" }, { Text: "BC" }], "戻って試す: " + Joined(shorter));
+    }
+
+    [Test]
+    public static void Hybrid_AlignsZenzaiToMozcClauses_AndLearningStillApplies()
+    {
+        // 偽の Mozc のヘルパーは、きしゃがきた を 記者が|来た の 2 文節で、文節ごとの候補も付けて返す
+        var profile = Path.Combine(Path.GetTempPath(), MozcConverterTests.FakeHelperProfile);
+        using var mozc = new MozcConverter(Environment.ProcessPath!, profile);
+        // ほかの読み (文節ごとの候補を作るときの きしゃが・きた など) は読みのまま返す。空を返すと失敗と数えられ、3 回で Zenzai を使わなくなる
+        using var server = new FakeServer
+        {
+            Answer = p => p.Contains("キシャガキタ") ? (p.Contains("外") ? "帰社が北よ" : "汽車が着た") : p.Contains("ニモツヲニカイニハコブ") ? "荷物を2階に運ぶ" : ReadingIn(p),
+        };
+        // 遅い PC でも時間切れ (5 秒 Zenzai を使わない) にならないよう、待つ時間を長くする
+        using var zenzai = new ZenzaiConverter(server.Endpoint, timeoutMs: 5000);
+        var hybrid = new HybridConverter(() => ConversionEngine.Mozc, mozc, new CompositionTests.FakeConverter(), null, () => zenzai);
+        mozc.WarmUp();
+        for (var i = 0; i < 200 && mozc.ConvertClauses("きしゃがきた") is null; i++) Thread.Sleep(50);
+        Assert.True(mozc.ConvertClauses("きしゃがきた") is [_, _], "偽の Mozc のヘルパーが 10 秒で起動しなかった");
+
+        // Zenzai の結果 (汽車が着た) は Mozc の 1 番目 (記者が来た) と違うが、文節ごとの候補でできるので、Mozc の文節で返す
+        var aligned = hybrid.ConvertClauses("きしゃがきた", "前の文");
+        Assert.True(aligned is [{ Reading: "きしゃが", Text: "汽車が" }, { Reading: "きた", Text: "着た" }], "Mozc の文節で返す: " + Joined(aligned));
+        // 候補でできなければ、今までどおり読み全体で 1 つの文節
+        var whole = hybrid.ConvertClauses("きしゃがきた", "外の文");
+        Assert.True(whole is [{ Reading: "きしゃがきた", Text: "帰社が北よ" }], "できなければ 1 文節: " + Joined(whole));
+
+        // 文節が残るので、選び直して覚えた文節 (きしゃが → 帰社が) は Zenzai の結果の上から効く。1 文節だと効かなかった
+        var history = new ConversionHistory(null);
+        history.Remember("きしゃが", "帰社が");
+        var k = new CompositionTests.Keyboard(history: history, converter: hybrid);
+        k.Type("kishagakita ");
+        Assert.Equal("帰社が着た", k.Showing ?? "", "覚えた文節は覚えた語、ほかは Zenzai の結果");
+        // 文節ごとの候補に足す「その読みだけの変換」は Zenzai に頼まない (頼むと文節の数だけ待たされる)
+        string[] asked;
+        lock (server.Prompts) asked = server.Prompts.Select(ReadingIn).ToArray();
+        Assert.True(!asked.Contains("きしゃが") && !asked.Contains("きた"), "文節だけを Zenzai に頼まない: " + string.Join("|", asked));
+
+        // 助詞だけの文節 (に) は、かな以外の候補 (2) で当てはめない。当てはめると、助詞をかなに戻す決まりで 荷物をに階に運ぶ になる
+        var cargoClauses = hybrid.ConvertClauses("にもつをにかいにはこぶ", "前の文");
+        Assert.True(cargoClauses is [{ Text: "荷物を2階に運ぶ" }], "助詞の文節を数字にして当てはめない: " + Joined(cargoClauses));
+        var cargo = new CompositionTests.Keyboard(converter: hybrid);
+        cargo.Type("nimotsuwonikainihakobu ");
+        Assert.Equal("荷物を2階に運ぶ", cargo.Showing ?? "", "助詞の文節を数字にしない (1 つの文節のまま)");
+    }
+
+    /// <summary>zenz に渡した文 (U+EE00 + カタカナの読み + …) の読みを、ひらがなにして返す。</summary>
+    private static string ReadingIn(string prompt)
+    {
+        var start = prompt.IndexOf((char)0xEE00) + 1;
+        var end = prompt.IndexOfAny([(char)0xEE01, (char)0xEE02], start);
+        return string.Concat(prompt[start..(end < 0 ? prompt.Length : end)].Select(c => c is >= 'ァ' and <= 'ヶ' ? (char)(c - 0x60) : c));
+    }
+
+    private static string Joined(IReadOnlyList<ConversionClause>? clauses) => clauses is null ? "(null)" : string.Join("|", clauses.Select(c => $"{c.Reading}→{c.Text}"));
+
     /// <summary>
     /// 本物の llama-server と zenz のモデルがあるときだけ動かす (環境変数 MELTYPE_ZENZAI_SERVER と MELTYPE_ZENZAI_MODEL)。
     /// zenz の前処理 (gpt2-small-japanese-char) は本家の llama.cpp に無いが、起動するときに gpt-2 に差し替えて読む (本家の b11719 と zenz-v3.1-small で確かめた)。
