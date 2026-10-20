@@ -709,8 +709,8 @@ void TextService::StartHelloUpdates() {
     helloWindow_ = CreateWindowExW(0, cls.lpszClassName, L"", 0, 0, 0, 0, 0,
         HWND_MESSAGE, nullptr, g_module, this);
     helloPipe_ = std::make_shared<PipeClient>();
-    // 完了確認は 50ms ごと。実際の通信は Hello 内で約 2 秒に 1 回に制限する。
-    if (helloWindow_) SetTimer(helloWindow_, 1, 50, nullptr);
+    // 待機中は 2 秒ごとに取得する。要求中だけ短い間隔で完了を確認する。
+    if (helloWindow_) SetTimer(helloWindow_, 1, 2000, nullptr);
     Hello();
 }
 
@@ -731,7 +731,7 @@ void TextService::Hello() {
     if (disabled_ || deactivated_ || !helloPipe_) return;
     // 前の要求があれば追加で起動せず、下で完了だけを確認する。
     if (!helloResult_.valid()) {
-        if (lastHello_ != 0 && GetTickCount64() - lastHello_ <= 2000) return;
+        if (lastHello_ != 0 && GetTickCount64() - lastHello_ < 2000) return;
         lastHello_ = GetTickCount64();
         helloStateRevision_ = serverStateRevision_;
         auto pipe = helloPipe_;
@@ -749,11 +749,17 @@ void TextService::Hello() {
                     return std::make_pair(false, JsonValue{});
                 }
             });
-        } catch (...) { TipLog(L"設定取得のスレッドを開始できません"); }
+            if (helloWindow_) SetTimer(helloWindow_, 1, 50, nullptr);
+        } catch (...) {
+            if (helloWindow_) SetTimer(helloWindow_, 1, 2000, nullptr);
+            TipLog(L"設定取得のスレッドを開始できません");
+        }
         return;
     }
     // 未完了ならすぐ戻る。get は完了が確認できた場合にだけ呼ぶ。
     if (helloResult_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) return;
+    // 成功・失敗にかかわらず、結果を回収したら待機用の間隔へ戻す。
+    if (helloWindow_) SetTimer(helloWindow_, 1, 2000, nullptr);
     auto result = helloResult_.get();
     // 設定確認の失敗で、使えている変換接続まで無効にしない。
     if (!result.first) return;
