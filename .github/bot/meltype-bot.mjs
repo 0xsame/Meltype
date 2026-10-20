@@ -65,8 +65,12 @@ function lastKey(text) {
 
 const isKeys = text => text.length > 0 && /^[\x20-\x7e]+$/.test(text);
 
+function commentMarker(kind) {
+  return `${COMMENT_MARKER}<!-- ${kind} -->`;
+}
+
 async function findBotComment(issue, kind) {
-  const marker = `${COMMENT_MARKER}<!-- ${kind} -->`;
+  const marker = commentMarker(kind);
   for (let page = 1; ; page++) {
     const comments = await gh('GET', `/issues/${issue}/comments?per_page=100&page=${page}`);
     const mine = comments.find(c => c.user?.type === 'Bot' && c.body?.includes(marker));
@@ -76,7 +80,7 @@ async function findBotComment(issue, kind) {
 
 async function upsertComment(issue, kind, text) {
   const mine = await findBotComment(issue, kind);
-  const marker = `${COMMENT_MARKER}<!-- ${kind} -->`;
+  const marker = commentMarker(kind);
   const body = `${marker}\n${text}`;
   if (mine) await gh('PATCH', `/issues/comments/${mine.id}`, { body });
   else await gh('POST', `/issues/${issue}/comments`, { body });
