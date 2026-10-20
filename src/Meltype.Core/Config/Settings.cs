@@ -657,7 +657,9 @@ public sealed class Settings
             {
                 if (merged.ContainsKey(key) && !SharedKeys.Contains(key)) merged[key] = value?.DeepClone();
             }
-            values = (merged.Deserialize(JsonType) ?? new Settings()).Normalize().ProfileValues();
+            var imported = merged.Deserialize(JsonType) ?? new Settings();
+            imported.ActiveProfile = name.Length == 0 ? "読み込んだプロファイル" : name;
+            values = imported.Normalize().ProfileValues();
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or NotSupportedException)
         {
@@ -880,20 +882,25 @@ public sealed class Settings
         copy.AppRules = AppRules.Select(r => new AppRule { Process = r.Process, Enabled = r.Enabled, Profile = r.Profile, Kind = r.Kind }).ToList();
         copy.AppKinds = AppKinds.Select(k => k.Clone()).ToList();
         copy.Profiles = (Profiles ?? []).Select(p => p.Clone()).ToList();
-        copy.ToggleShortcuts = ToggleShortcuts?.Select(b => b with { }).ToList();
+        copy.ToggleShortcuts = ToggleShortcuts?.Select(b => b is null ? null! : b with { }).ToList();
         return copy;
     }
 
-    /// <summary>手で編集された config.json の極端な値を安全な範囲に収める。</summary>
-    public Settings Normalize()
+    /// <summary>設定値を安全な範囲に収める。編集中の設定収集では reportShortcutExclusions を false にし、キー除外のログ・通知を抑制する。</summary>
+    public Settings Normalize(bool reportShortcutExclusions = true)
     {
         ToggleShortcuts ??= ToggleShortcut.Defaults();
         if (ToggleShortcuts is { } shortcuts)
         {
             var valid = new List<ToggleShortcut>();
             foreach (var shortcut in shortcuts)
-                if (shortcut is not null && ToggleShortcutValidator.Validate(shortcut, this, valid) == ShortcutValidationError.None)
+            {
+                var error = shortcut is null ? ShortcutValidationError.Invalid : ToggleShortcutValidator.Validate(shortcut, this, valid);
+                if (shortcut is not null && error == ShortcutValidationError.None)
                     valid.Add(shortcut with { Key = ToggleShortcut.NormalizeHankakuKey(shortcut.Key) });
+                else if (reportShortcutExclusions)
+                    Diagnostics.ShortcutExclusions.Report(shortcut, error, ActiveProfile);
+            }
             ToggleShortcuts = valid;
         }
         JapaneseThreshold = Math.Clamp(JapaneseThreshold, 2, 20);

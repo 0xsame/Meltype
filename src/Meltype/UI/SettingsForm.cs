@@ -806,8 +806,8 @@ internal sealed class SettingsForm : Form, IMessageFilter
         foreach (var binding in _bindings) binding.Load(settings);
     }
 
-    /// <summary>画面の内容を設定にする。画面に出していない項目 (SettingsVersion・プロファイルの一覧など) は今の値を引き継ぐ。</summary>
-    private Settings Collect() => CollectValues().Normalize();
+    /// <summary>画面の内容を設定にする。画面に出していない項目は引き継ぎ、編集中の正規化では除外ログ・通知を出さない。</summary>
+    private Settings Collect() => CollectValues().Normalize(reportShortcutExclusions: false);
 
     private Settings CollectValues()
     {

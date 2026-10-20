@@ -10,6 +10,90 @@ namespace Meltype.Tests;
 /// <summary>入力モード切り替えショートカットの取り込み (Recorder)、キー判定 (Detector)、設定移行とバリデーション。</summary>
 internal static class ToggleShortcutTests
 {
+    /// <summary>編集中も既存どおりキーや数値を正規化するが除外は報告せず、通常の読み込みでは報告すること。</summary>
+    [Test]
+    public static void Shortcut_EditNormalizationSuppressesOnlyExclusionReports()
+    {
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        try
+        {
+            var settings = new Settings { ConvertKeysSwitchKeyboard = true, JapaneseThreshold = 100, ToggleShortcuts = [new() { Key = 28 }, new() { Key = 29 }, new() { Key = 32, Modifiers = ShortcutModifiers.Control }] };
+            var edited = settings.Clone().Normalize(reportShortcutExclusions: false);
+            Assert.Equal(20, edited.JapaneseThreshold, "数値は正規化する");
+            Assert.Equal(1, edited.EffectiveToggleShortcuts.Count, "キーの正規化は既存どおり");
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "編集時は通知しない");
+            settings.Normalize();
+            Assert.Equal(1, settings.EffectiveToggleShortcuts.Count, "通常の読み込みでは除外する");
+            Assert.Equal(2, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "通常の除外は報告する");
+        }
+        finally { Meltype.Diagnostics.ShortcutExclusions.Drain(); }
+    }
+
+    /// <summary>設定の読み込み・プロファイル切り替え・インポートで除外したキーと理由を保持し、正規化済みの設定では再通知しないこと。</summary>
+    [Test]
+    public static void Shortcut_ExclusionsSurviveLoadAndProfileImport()
+    {
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        var directory = Path.Combine(Path.GetTempPath(), "Meltype-exclusions-" + Guid.NewGuid());
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = Path.Combine(directory, "config.json");
+            File.WriteAllText(path, "{\"SettingsVersion\":6,\"ActiveProfile\":\"仕事\",\"ConvertKeysSwitchKeyboard\":true,\"ToggleShortcuts\":[{\"Key\":28},{\"Key\":29},{\"Key\":32,\"Modifiers\":2}]}");
+            var settings = Settings.Load(path);
+            var exclusions = Meltype.Diagnostics.ShortcutExclusions.Drain();
+            Assert.Equal(2, exclusions.Length);
+            Assert.True(exclusions.All(e => e.Reason == ShortcutValidationError.ConvertKeys && e.Profile == "仕事"), "理由とプロファイルを保持");
+            Assert.True(Meltype.Diagnostics.Log.Snapshot().Any(e => e.Level == Meltype.Diagnostics.LogLevel.Warn && e.Message.Contains("Key=28") && e.Message.Contains("ConvertKeys")), "キーと理由を警告ログへ記録");
+            settings.Clone().Normalize();
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "再正規化は通知しない");
+            var values = settings.ProfileValues();
+            values["ToggleShortcuts"] = new JsonArray(new JsonObject { ["Key"] = 28 });
+            settings.Profiles.Add(new SettingsProfile { Name = "古い設定", Values = values });
+            settings.SwitchProfile("古い設定");
+            Assert.Equal("古い設定", Meltype.Diagnostics.ShortcutExclusions.Drain().Single().Profile);
+            var file = new JsonObject { ["format"] = "meltype-profile", ["name"] = "取り込み", ["values"] = values.DeepClone() };
+            Assert.True(settings.ImportProfile(file.ToJsonString()) is not null, "取り込み成功");
+            Assert.Equal("取り込み", Meltype.Diagnostics.ShortcutExclusions.Drain().Single().Profile, "取り込み途中の除外も保持");
+        }
+        finally
+        {
+            Meltype.Diagnostics.ShortcutExclusions.Drain();
+            Directory.Delete(directory, true);
+        }
+    }
+
+    /// <summary>不正・重複・既存操作との衝突を理由ごとに記録し、通知情報は一度だけ取り出せ、有効な登録や空の一覧では警告しないこと。</summary>
+    [Test]
+    public static void Shortcut_ExclusionsReportReasonsAndConsumeOnce()
+    {
+        Meltype.Diagnostics.ShortcutExclusions.Drain();
+        var signals = 0;
+        // 除外した登録ごとに追加イベントが発生した回数を数える。
+        void Added() => signals++;
+        Meltype.Diagnostics.ShortcutExclusions.Added += Added;
+        try
+        {
+            new Settings { ToggleShortcuts = [null!, new() { Key = 32, Modifiers = ShortcutModifiers.Control }, new() { Key = 32, Modifiers = ShortcutModifiers.Control }, new() { Key = 65 }, new() { Key = 85, Modifiers = ShortcutModifiers.Control }] }.Clone().Normalize();
+            var exclusions = Meltype.Diagnostics.ShortcutExclusions.Drain();
+            Assert.Equal(4, exclusions.Length);
+            Assert.Equal(4, signals);
+            Assert.Equal(ShortcutValidationError.Invalid, exclusions[0].Reason);
+            Assert.Equal(ShortcutValidationError.Duplicate, exclusions[1].Reason);
+            Assert.Equal(ShortcutValidationError.UnmodifiedKey, exclusions[2].Reason);
+            Assert.Equal(ShortcutValidationError.Conversion, exclusions[3].Reason);
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length);
+            new Settings().Normalize();
+            new Settings { ToggleShortcuts = [] }.Normalize();
+            Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length);
+        }
+        finally
+        {
+            Meltype.Diagnostics.ShortcutExclusions.Added -= Added;
+            Meltype.Diagnostics.ShortcutExclusions.Drain();
+        }
+    }
+
     private static KeyEvent Key(int vk, bool up = false, bool injected = false, int scan = 0) => new(vk, scan, false, up, injected, 1000);
 
     /// <summary>直接入力でアプリへ渡した判定中の英字は未確定文字とみなさず、文字を変換せず入力モードを切り替えること。</summary>
