@@ -34,6 +34,15 @@ src="$mozc/src"
 
 mkdir -p "$out"
 
+# v1.3.1-pre.1 までは UT の語を dictionary00.txt に追記していた (記録は schema 1)。
+# このスクリプトは dictionary00.txt に触らないので、残った語が標準のビルドに黙って混ざらないよう止める。
+if [[ -e "$out/MOZC-UT.json" ]] && grep -q '"schema": 1,' "$out/MOZC-UT.json"; then
+    echo "エラー: 以前の方式で Mozc-UT を統合した記録があります ($out/MOZC-UT.json)。" >&2
+    echo "Mozc の dictionary00.txt に Mozc-UT の語が残っているので、次を実行して戻してから、ビルドし直してください。" >&2
+    echo "  git -C \"$mozc\" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt && rm \"$out/MOZC-UT.json\"" >&2
+    exit 1
+fi
+
 # Mozc-UT の語は Mozc の辞書とは別の dictionary_ut.txt に置き、ビルドのたびに作り直す
 # (Mozc の辞書は書き換えないので、手元で書き換えた辞書も残る)。
 # dictionary_ut.txt はいつもビルドに含め、MELTYPE_UT_DICTIONARY が無いときは空にする。

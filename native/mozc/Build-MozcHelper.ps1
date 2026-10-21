@@ -124,6 +124,14 @@ $utReport = Join-Path $bin 'MOZC-UT.json'
 $utPending = Join-Path $bin 'MOZC-UT.json.tmp'
 if (Test-Path -LiteralPath $utPending) { Remove-Item -LiteralPath $utPending -Force }
 
+# v1.3.1-pre.1 までは UT の語を dictionary00.txt に追記していた (記録は schema 1)。
+# このスクリプトは dictionary00.txt に触らないので、残った語が標準のビルドに黙って混ざらないよう止める。
+if ((Test-Path -LiteralPath $utReport) -and ([IO.File]::ReadAllText($utReport) -match '"schema": 1,')) {
+    throw ("以前の方式で Mozc-UT を統合した記録があります ($utReport)。`n" +
+        "Mozc の dictionary00.txt に Mozc-UT の語が残っているので、次を実行して戻してから、ビルドし直してください。`n" +
+        "  git -C `"$MozcSource`" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt; Remove-Item `"$utReport`"")
+}
+
 # Mozc-UT の語は Mozc の辞書とは別の dictionary_ut.txt に置き、ビルドのたびに作り直す
 # (Mozc の辞書は書き換えないので、手元で書き換えた辞書も残る)。
 # dictionary_ut.txt はいつもビルドに含め、-UtDictionary が無いときは空にする。
