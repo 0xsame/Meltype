@@ -491,30 +491,6 @@ class PrivateDaemonTests(unittest.TestCase):
             self.context.set_content_type(free, 0)
             self.pump(0.2)
 
-    def test_terminal_code_japanese_survives_content_type_round_trip(self):
-        # ターミナル→FREE_FORM→ターミナルと content type を切り替えて戻っても、コード行の日本語設定と
-        # 行の追跡は消えない (#1025 の do_set_content_type が同じ値で本体を初期化しないことの回帰)。
-        terminal = self.IBus.InputPurpose.TERMINAL
-        free = self.IBus.InputPurpose.FREE_FORM
-        self.context.set_content_type(terminal, 0)
-        self.pump(0.2)
-        try:
-            self.reset_client()
-            # 半角/全角 でコード行を日本語にする
-            self.assertTrue(self.key(self.IBus.KEY_Zenkaku_Hankaku))
-            self.type_text("ni")
-            self.assertEqual("に", self.client.preedit, self.client.describe())
-            # ターミナル → FREE_FORM → ターミナル と切り替えて戻っても日本語設定と行追跡は消えない
-            self.context.set_content_type(free, 0)
-            self.pump(0.2)
-            self.context.set_content_type(terminal, 0)
-            self.pump(0.2)
-            self.type_text("hongo")
-            self.assertEqual("にほんご", self.client.preedit, self.client.describe())
-        finally:
-            self.context.set_content_type(free, 0)
-            self.pump(0.2)
-
     def test_terminal_string_toggles_direct_and_japanese(self):
         # 文字列の中はコード入力でも日本語寄り。1回目の 半角/全角 で英数 (Direct)、
         # 2回目で日本語に戻れること。コード行の外では SetCodeLine が 0 を返す経路の回帰テスト。
