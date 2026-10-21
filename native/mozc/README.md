@@ -51,5 +51,5 @@ $env:MELTYPE_UT_DICTIONARY = 'C:\path\to\mozcdic-ut.txt'
 - **辞書の入手方法・ライセンス・性能への影響・うまくいかないとき**: [../../docs/MOZC-UT.md](../../docs/MOZC-UT.md)
   (English: [../../docs/MOZC-UT.en.md](../../docs/MOZC-UT.en.md))
 - 何を統合したかは `bin/MOZC-UT.json` に残ります (辞書と Mozc のハッシュ・品詞 ID の対応・除外した件数)。
-- **標準の Mozc に戻すとき**は、`MELTYPE_UT_DICTIONARY` を指定せずにビルドし直します。前回の統合は自動で取り消されます (統合先の `dictionary00.txt` を Mozc の git から戻すため、語は残りません)。
+- **標準の Mozc に戻すとき**は、`MELTYPE_UT_DICTIONARY` を指定せずにビルドし直します。Mozc-UT の語は Mozc の辞書とは別の `dictionary_ut.txt` に入れ、指定しないビルドではこのファイルを空にするので、語は残りません。Mozc の辞書 (`dictionary00.txt` など) は書き換えません。
 - 統合するのは Mozc の辞書のテキストだけで、Meltype の変換エンジン (C#) は変えていません。ヘルパーを差し替えるだけで候補が変わります。
