@@ -252,12 +252,12 @@ class MeltypeEngine(IBus.Engine):
         return consumed
 
     def _notify_caret_moved(self, vk, control):
+        """アプリに通したキーでのキャレット移動を本体へ伝える。コード行の日本語状態 (self._code_japanese) は
+        本体 MeltypeSession.CaretMoved が単一情報源で決めるので、ここでは模倣しない (元から英数のとき本体は
+        if (!_codeJapanese) で何もせず、Python だけ落とすとずれる)。"""
         if not self._code_input or _caret_moved is None:
             return
         _caret_moved(self._session, vk, 1 if control else 0)
-        # MeltypeSession.CaretMoved と同じ条件。片方だけ変えると _code_japanese がずれる。
-        if control or vk in (0x09, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2E):
-            self._code_japanese = False
 
     def _finalize_on_focus_loss(self):
         """フォーカスが外れる・Reset のときの後始末。
@@ -343,7 +343,8 @@ class MeltypeEngine(IBus.Engine):
         # 古い本体にはコード行を日本語にする API が無い。有効にすると日本語に戻せないので、その場合は有効にしない
         code_input = purpose == IBus.InputPurpose.TERMINAL and _set_code_line is not None
         if code_input != self._code_input:
-            # 同じ値の再設定でも本体が行の追跡と日本語の指定を初期化するので、変わったときだけ伝える
+            # 変わったときだけ本体へ伝える。同じ値で meltype_set_code_input を呼ぶと本体が行の追跡と日本語の指定を
+            # 初期化してしまうので、変わらない再通知では呼ばない (ターミナルに戻っても日本語設定と行追跡は消えない)。
             self._code_input = code_input
             self._code_japanese = False
             if _set_code_input is not None:
