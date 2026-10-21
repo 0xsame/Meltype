@@ -94,8 +94,14 @@ if (-not (Test-Path (Join-Path $MozcSource '.git'))) {
 # 前に取ってきた版が MOZC_COMMIT と違えば取り直す (取ってきていなければ HEAD は空)
 $head = & git -C $MozcSource rev-parse -q --verify HEAD
 if ($head) {
-    # 前に足したヘルパーの定義・dictionary_ut.txt を消し、取ってきたときの BUILD.bazel に戻す (BUILD.fragment の変更を反映し、checkout が止まらないように)
-    Invoke-Native git @('-C', $MozcSource, 'checkout', '-q', 'HEAD', '--', 'src/converter/BUILD.bazel', 'src/data/dictionary_oss/BUILD.bazel') 'BUILD.bazel を戻せませんでした。'
+    # 前に足したヘルパーの定義を消し、取ってきたときの BUILD.bazel に戻す (BUILD.fragment の変更を反映し、checkout が止まらないように)
+    Invoke-Native git @('-C', $MozcSource, 'checkout', '-q', 'HEAD', '--', 'src/converter/BUILD.bazel') 'BUILD.bazel を戻せませんでした。'
+    # 辞書の BUILD.bazel は利用者が書き換えていることがあるので、checkout せずに、足した dictionary_ut.txt の行だけを消す
+    $dictionaryBuild = Join-Path $MozcSource 'src\data\dictionary_oss\BUILD.bazel'
+    $buildText = [IO.File]::ReadAllText($dictionaryBuild)
+    if ($buildText -match '"dictionary_ut\.txt"') {
+        [IO.File]::WriteAllText($dictionaryBuild, ($buildText -replace '(?m)^ *"dictionary_ut\.txt",\r?\n', ''))
+    }
 }
 if ($head -ne $commit) {
     Invoke-Native git @('-C', $MozcSource, 'fetch', '-q', '--depth', '1', 'origin', $commit) "Mozc ($commit) を取得できませんでした。"

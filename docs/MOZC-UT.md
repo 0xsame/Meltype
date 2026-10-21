@@ -177,5 +177,6 @@ python3 native/mozc/merge-ut-dictionary.py --mozc-src ~/mozc/src \
 
 - **Mozc の変換エンジンだけ**が対象です (Windows・Linux の `meltype_mozc_helper`)。Mac 版は azooKey なので対象外です。
 - UT 辞書はビルド時に Mozc の辞書へ足す方式です。辞書を切り替えるたびにヘルパーのビルド (辞書の組み込み直し) が要ります。ビルドのキャッシュが効くので、2 回目以降は数分です。
+- ビルドスクリプトは Mozc の `src/data/dictionary_oss/BUILD.bazel` に `dictionary_ut.txt` を足したままにします。`dictionary_ut.txt` を消すと、その Mozc のフォルダーで `bazel build` を直接実行したときに失敗します。ビルドはビルドスクリプトから実行してください。
 - UT 辞書の品質 (候補の順位・表記) は UT 側のものです。Meltype は並べ替えも選別もしません。
 - 辞書のライセンスは辞書ごとに違います。とくに **alt-cannadic (GPL-2.0 のみ) を含む辞書は使わないでください**。

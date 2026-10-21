@@ -174,5 +174,6 @@ python3 native/mozc/merge-ut-dictionary.py --mozc-src ~/mozc/src \
 
 - **Only the Mozc engine** is affected (the Windows/Linux `meltype_mozc_helper`). The macOS build uses azooKey.
 - The UT dictionary is added to Mozc at build time, so switching dictionaries requires rebuilding the helper (re-embedding the dictionary). Bazel's cache makes later builds take a few minutes.
+- The build script leaves `dictionary_ut.txt` listed in Mozc's `src/data/dictionary_oss/BUILD.bazel`. If you delete `dictionary_ut.txt`, running `bazel build` directly in that Mozc checkout fails. Build through the build script.
 - Candidate quality and ordering come from the UT dictionary; Meltype neither reorders nor filters it.
 - Licenses differ per dictionary. In particular, **do not use a dictionary that includes alt-cannadic (GPL-2.0-only)**.
