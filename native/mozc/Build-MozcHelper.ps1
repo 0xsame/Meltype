@@ -97,6 +97,7 @@ if ($head) {
     # 前に足したヘルパーの定義を消し、取ってきたときの BUILD.bazel に戻す (BUILD.fragment の変更を反映し、checkout が止まらないように)
     Invoke-Native git @('-C', $MozcSource, 'checkout', '-q', 'HEAD', '--', 'src/converter/BUILD.bazel') 'BUILD.bazel を戻せませんでした。'
     # 辞書の BUILD.bazel は利用者が書き換えていることがあるので、checkout せずに、足した dictionary_ut.txt の行だけを消す
+    # (build-mozc-helper.sh は Mozc の版を変えないので、この処理が無い。版を合わせる処理を足すときは同じ手当てが要る)
     $dictionaryBuild = Join-Path $MozcSource 'src\data\dictionary_oss\BUILD.bazel'
     $buildText = [IO.File]::ReadAllText($dictionaryBuild)
     if ($buildText -match '"dictionary_ut\.txt"') {
@@ -131,10 +132,28 @@ if ((Test-Path -LiteralPath $utReport) -and ([IO.File]::ReadAllText($utReport) -
         "Mozc の dictionary00.txt に Mozc-UT の語が残っているので、次を実行して戻してから、ビルドし直してください。`n" +
         "  git -C `"$MozcSource`" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt; Remove-Item `"$utReport`"")
 }
+# 以前の方式はビルドが通ったときだけ記録を書いたので、ビルドの失敗や bin の削除で、記録が無いまま語が残ることがある。
+# 利用者が手元で語を足した場合 (#961) と見分けられないので、止めずに知らせる。
+# git が失敗したときに黙って続けると、残った語に気づけないので止める。
+$previous = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try { $numstat = & git -C $MozcSource diff --numstat HEAD -- src/data/dictionary_oss/dictionary00.txt 2>$null }
+finally { $ErrorActionPreference = $previous }
+if ($LASTEXITCODE -ne 0) {
+    throw "Mozc の辞書の状態を調べられませんでした (git diff: exit code $LASTEXITCODE)。Mozc のフォルダーを取り直してください。"
+}
+$added = if ($numstat) { ($numstat -split "`t")[0] } else { '0' }
+if ($added -ne '0') {
+    Write-Warning ("Mozc の dictionary00.txt が、取ってきたときより $added 行増えています。`n" +
+        "以前の方式で統合した Mozc-UT の語なら、標準のビルドにも入るので、次を実行して戻してください (手元で足した語なら、そのままでかまいません)。`n" +
+        "  git -C `"$MozcSource`" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt")
+}
 
 # Mozc-UT の語は Mozc の辞書とは別の dictionary_ut.txt に置き、ビルドのたびに作り直す
 # (Mozc の辞書は書き換えないので、手元で書き換えた辞書も残る)。
 # dictionary_ut.txt はいつもビルドに含め、-UtDictionary が無いときは空にする。
+# BUILD.bazel は "dictionary09.txt", の行を目印に、その次の行に足す。同じ書き換えを build-mozc-helper.sh も行い、
+# merge-ut-dictionary.py (ensure_registered) が足した行を確かめるので、Mozc の BUILD.bazel の形が変わったら 3 か所を直す。
 $dictionaryBuild = Join-Path $src 'data\dictionary_oss\BUILD.bazel'
 $buildText = [IO.File]::ReadAllText($dictionaryBuild)
 if ($buildText -notmatch '"dictionary_ut\.txt"') {

@@ -42,10 +42,22 @@ if [[ -e "$out/MOZC-UT.json" ]] && grep -q '"schema": 1,' "$out/MOZC-UT.json"; t
     echo "  git -C \"$mozc\" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt && rm \"$out/MOZC-UT.json\"" >&2
     exit 1
 fi
+# 以前の方式はビルドが通ったときだけ記録を書いたので、ビルドの失敗や bin の削除で、記録が無いまま語が残ることがある。
+# 利用者が手元で語を足した場合 (#961) と見分けられないので、止めずに知らせる。
+added="$(git -C "$mozc" diff --numstat HEAD -- src/data/dictionary_oss/dictionary00.txt | cut -f1)"
+if [[ -n "$added" && "$added" != 0 ]]; then
+    echo "注意: Mozc の dictionary00.txt が、取ってきたときより $added 行増えています。" >&2
+    echo "以前の方式で統合した Mozc-UT の語なら、標準のビルドにも入るので、次を実行して戻してください (手元で足した語なら、そのままでかまいません)。" >&2
+    echo "  git -C \"$mozc\" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt" >&2
+fi
 
 # Mozc-UT の語は Mozc の辞書とは別の dictionary_ut.txt に置き、ビルドのたびに作り直す
 # (Mozc の辞書は書き換えないので、手元で書き換えた辞書も残る)。
 # dictionary_ut.txt はいつもビルドに含め、MELTYPE_UT_DICTIONARY が無いときは空にする。
+# BUILD.bazel は "dictionary09.txt", の行を目印に、その次の行に足す。同じ書き換えを Build-MozcHelper.ps1 も行い、
+# merge-ut-dictionary.py (ensure_registered) が足した行を確かめるので、Mozc の BUILD.bazel の形が変わったら 3 か所を直す。
+# Build-MozcHelper.ps1 は Mozc の版を変える前に、足した dictionary_ut.txt の行を消している。このスクリプトは Mozc が無いときに
+# 取るだけで版を変えないので要らないが、版を合わせる処理を足すときは同じ手当てが要る。
 dictionary_build="$src/data/dictionary_oss/BUILD.bazel"
 if ! grep -q '"dictionary_ut.txt"' "$dictionary_build"; then
     sed -i 's/^\( *\)"dictionary09\.txt",$/&\n\1"dictionary_ut.txt",/' "$dictionary_build"

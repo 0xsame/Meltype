@@ -375,7 +375,11 @@ def remove_duplicates(entries: list[Entry],
 
 
 def ensure_registered(mozc_src: Path) -> None:
-    """出力先が Mozc のビルドに含まれるか確かめる。含まれないと、書いた語が黙って捨てられる。"""
+    """出力先が Mozc のビルドに含まれるか確かめる。含まれないと、書いた語が黙って捨てられる。
+
+    出力先の行は、ビルドスクリプト (build-mozc-helper.sh の sed と Build-MozcHelper.ps1 の正規表現) が
+    BUILD.bazel の "dictionary09.txt", の行を目印に足す。Mozc の BUILD.bazel の形が変わったら 3 か所を直す。
+    """
     build = mozc_src / BUILD_RELATIVE
     text = build.read_text(encoding="utf-8") if build.is_file() else ""
     if f'"{OUTPUT_RELATIVE.name}"' not in text:
