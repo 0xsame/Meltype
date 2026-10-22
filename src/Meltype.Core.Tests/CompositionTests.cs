@@ -708,6 +708,9 @@ internal static class CompositionTests
         Assert.True(predictor.PredictEnglishNames("ぎっと") is { } git && git.Contains("GitHub") && git.Contains("GitLab"), string.Join(",", predictor.PredictEnglishNames("ぎっと")));
         Assert.True(predictor.PredictEnglishNames("しゃおみ").Contains("Xiaomi"), "読みを打ち終わっても出す");
         Assert.Equal(1, predictor.PredictEnglishNames("しゃおみ").Count(w => w == "Xiaomi"), "同じ語は 1 つだけ (しゃおみ・しゃおみー)");
+        // #1040・#959: めるたいぷ → Meltype (候補と予測の両方)
+        Assert.True(predictor.PredictEnglishNames("めるた").Contains("Meltype"), string.Join(",", predictor.PredictEnglishNames("めるた")));
+        Assert.True(CandidateDictionary.Load(null).Lookup("めるたいぷ").Contains("Meltype"), "めるたいぷ の候補に Meltype");
         Assert.Equal(0, predictor.PredictEnglishNames("しゃ").Count, "2 文字では出さない");
         Assert.True(predictor.PredictEnglishNames("あいあ").Count <= Predictor.MaxPredictions, "多すぎない");
         Assert.Equal(0, predictor.PredictEnglishNames("ゐゐゐ").Count, "無い読みは出さない");
