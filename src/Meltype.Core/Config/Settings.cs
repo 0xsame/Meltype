@@ -252,7 +252,7 @@ public sealed class Settings
     public bool EscRevertsSelectedClause { get; set; }
 
     [Category("1. 全般"), DisplayName("変換中の F6〜F10 は選んだ文節だけに効かせる"),
-     Description("文節に分けて変換しているとき、F6〜F10 (ひらがな・カタカナ・半角カタカナ・全角英数・半角英数) を全体ではなく、選んでいる文節だけに効かせます (今日は|Google の「今日は」だけをカタカナにするなど)。")]
+     Description("文節に分けて変換しているとき、F6〜F10 (ひらがな・カタカナ・半角カタカナ・全角英数・半角英数) を全体ではなく、選んでいる文節だけに効かせます (今日は|Google の「今日は」だけをカタカナにするなど)。打った英字が分からない文節 (かな入力など) では何もしません。")]
     public bool FunctionKeysAffectSelectedClause { get; set; }
 
     [Category("1. 全般"), DisplayName("Ctrl + K / L で文節の長さを変える"),
