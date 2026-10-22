@@ -4660,7 +4660,11 @@ internal static class CompositionTests
         var on = new Keyboard();
         on.Type("z.\n");
         Assert.Equal("…", on.Host.Document, "既定 (ON) は今までどおり");
+    }
+
+    [Test]
     public static void Issue989_NumberKeysCommitConversion()
+    {
         // #989: 設定を OFF にすると、変換中の上の段の数字は、今の候補で確定してから数字を入力する (zu Space 1 → 図1)
         var off = new Keyboard { NumberKeysSelectCandidates = false };
         off.Type("kyouha ");
@@ -4668,6 +4672,7 @@ internal static class CompositionTests
         off.Type("10\n");
         Assert.Equal("今日は10", off.Host.Document);
         // 既定 (ON) は今までどおり番号で選ぶ (数字は入らない)
+        var on = new Keyboard();
         on.Type("kyouha ");
         on.Type("1");
         Assert.True(!on.Host.Document.Contains('1'), "番号で選ぶ: " + on.Host.Document);
