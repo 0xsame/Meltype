@@ -10,8 +10,10 @@ namespace Meltype.Composition;
 /// 両方 (既定) なら Mozc で変換し、Mozc が使えない・変換できないときは OS の変換エンジンで変換する。
 /// 候補の一覧は Mozc の候補の後ろに OS の変換エンジンの候補を足す (Microsoft IME に登録した単語も出る)。
 /// </summary>
+/// <param name="zenzaiFailed">変換で例外になった Zenzai を、持ち主 (zenzai を渡した側) に知らせる。止めて作り直すのは持ち主が行う。</param>
 public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter? mozc, IKanjiConverter system,
-    Func<string, IReadOnlyList<string>>? systemCandidates, Func<ZenzaiConverter?>? zenzai = null) : IKanjiConverter, ILearningConverter, IWideContextConverter, IStandaloneConverter
+    Func<string, IReadOnlyList<string>>? systemCandidates, Func<ZenzaiConverter?>? zenzai = null, Action<ZenzaiConverter>? zenzaiFailed = null)
+    : IKanjiConverter, ILearningConverter, IWideContextConverter, IStandaloneConverter
 {
     /// <summary>Zenzai に渡す広い文脈 (Mozc / Microsoft IME には渡さない)。</summary>
     public string? WideContext { get; set; }
@@ -20,8 +22,8 @@ public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter
     /// 設定で Zenzai が使えるとき、その変換結果 (読み全体で 1 つの文節)。使えない・変換できなければ null。
     /// Zenzai を作れない・変換で例外になったときも null (Mozc などで変換する)。Zenzai の失敗で入力全体を止めないように
     /// (#973: 同梱の .NET に System.Net.Http が無く、Zenzai を作るたびに例外になって、日本語を打てなくなった)。
-    /// 変換で例外になった Zenzai は、それからは使わず、止める (打つたびに例外にしない。llama-server も残さない)。
-    /// 設定が変わって作り直されたら、また使う。
+    /// 変換で例外になった Zenzai は、それからは使わず (打つたびに例外にしない)、持ち主に知らせる (zenzaiFailed)。
+    /// 止める (Dispose) のは持ち主で、ここでは止めない。持ち主が新しく作ったら、それは使う。
     /// </summary>
     private IReadOnlyList<ConversionClause>? Zenzai(string hiragana, string? context)
     {
@@ -37,7 +39,7 @@ public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter
             var failed = (object?)z ?? CouldNotCreate;
             if (!ReferenceEquals(failed, _failedZenzai)) Diagnostics.Log.Error($"Zenzai で変換できないので、今までの変換エンジンで変換します: {ex}");
             _failedZenzai = failed;
-            z?.Dispose();
+            if (z is not null) zenzaiFailed?.Invoke(z);
             return null;
         }
     }

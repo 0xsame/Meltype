@@ -244,7 +244,8 @@ internal static class ZenzaiConverterTests
         // 答えの content が文字列でない: ZenzaiConverter が拾わない例外 (InvalidOperationException) になる
         using var server = new FakeServer { RawBody = "{\"content\":1}" };
         using var zenzai = new ZenzaiConverter(server.Endpoint, timeoutMs: 5000);
-        var hybrid = new HybridConverter(() => ConversionEngine.Mozc, null, new CompositionTests.FakeConverter(), null, () => zenzai);
+        var reported = new List<ZenzaiConverter>();
+        var hybrid = new HybridConverter(() => ConversionEngine.Mozc, null, new CompositionTests.FakeConverter(), null, () => zenzai, reported.Add);
         Assert.True(hybrid.ConvertClauses("たんいをとる") is [{ Text: "単位を" }, { Text: "取る" }], "例外になっても、ほかの変換エンジンで変換する");
         int asked;
         lock (server.Prompts) asked = server.Prompts.Count;
@@ -252,6 +253,45 @@ internal static class ZenzaiConverterTests
         Assert.True(hybrid.ConvertClauses("たんいをとる") is [{ Text: "単位を" }, { Text: "取る" }], "2 回目も、ほかの変換エンジンで変換する");
         lock (server.Prompts) asked = server.Prompts.Count;
         Assert.Equal(1, asked, "例外になった Zenzai には、もう頼まない (打つたびに例外にしない)");
+        Assert.True(reported.Count == 1 && ReferenceEquals(reported[0], zenzai), "例外になった Zenzai を、持ち主に 1 回知らせる");
+        // 止めるのは持ち主 (ZenzaiHolder)。HybridConverter は止めない (持ち主がほかで使っていても壊さない)
+        server.RawBody = null;
+        server.Answer = _ => "湖に架かる橋";
+        Assert.Equal("湖に架かる橋", Joined(zenzai.ConvertClauses("みずうみにかかるはし")).Split('→')[^1], "HybridConverter は Zenzai を止めない");
+    }
+
+    [Test]
+    public static void Holder_ZenzaiThatCannotBeCreated_IsRetriedAfterAWhile()
+    {
+        var now = 0L;
+        var created = 0;
+        using var holder = new ZenzaiHolder((s, m) => { created++; throw new FileNotFoundException("Could not load file or assembly 'System.Net.Http'"); }, () => now);
+        Assert.True(holder.Get("server", "model") is null, "作れなければ null (Mozc などで変換する)");
+        Assert.True(holder.Get("server", "model") is null && created == 1, "すぐには作り直さない (打つたびに例外にしない)");
+        now += (long)holder.RetryAfter.TotalMilliseconds;
+        Assert.True(holder.Get("server", "model") is null && created == 2, "しばらくたったら、もう一度作る");
+        Assert.True(holder.Get("server", "other") is null && created == 3, "場所を変えたら、待たずに作る");
+    }
+
+    [Test]
+    public static void Holder_FailedZenzai_IsStoppedAndRecreatedAfterAWhile()
+    {
+        using var server = new FakeServer { Answer = p => ReadingIn(p) == "はし" ? "橋" : "箸" };
+        var now = 0L;
+        var created = new List<ZenzaiConverter>();
+        using var holder = new ZenzaiHolder((s, m) => { var z = new ZenzaiConverter(server.Endpoint, timeoutMs: 5000); created.Add(z); return z; }, () => now);
+        var first = holder.Get("server", "model");
+        Assert.True(first is not null && ReferenceEquals(holder.Get("server", "model"), first), "同じ場所なら同じものを使う");
+        holder.Failed(new ZenzaiConverter(server.Endpoint));
+        Assert.True(ReferenceEquals(holder.Get("server", "model"), first), "持っていないものを知らされても、今のものは止めない");
+        holder.Failed(first!);
+        Assert.True(first!.ConvertClauses("はし") is null, "例外になった Zenzai は止める (llama-server を残さない)");
+        Assert.True(holder.Get("server", "model") is null, "止めたあと、しばらくは使わない");
+        now += (long)holder.RetryAfter.TotalMilliseconds;
+        var second = holder.Get("server", "model");
+        Assert.True(second is not null && !ReferenceEquals(second, first) && created.Count == 2, "しばらくたったら作り直す (一時的な失敗で止めたままにしない)");
+        Assert.Equal("橋", Joined(second!.ConvertClauses("はし")).Split('→')[^1], "作り直したものは使える");
+        Assert.True(holder.Get("", "") is null && second.ConvertClauses("はしを") is null, "OFF にしたら止める");
     }
 
     /// <summary>zenz に渡した文 (U+EE00 + カタカナの読み + …) の読みを、ひらがなにして返す。</summary>

@@ -139,6 +139,31 @@ internal static class SelfTest
             return copied ? "コピーできる" : "コピーできない";
         });
 
+        Check("HTTP (Zenzai・GitHub の題名)", () =>
+        {
+            // Zenzai (llama-server と HttpClient で話す) と GitHub の Issue の題名の候補 (HTTPS) が使う。どちらも既定は OFF で、ほかの機能では読み込まれない。
+            // 配布用にランタイムを削るとき、ここで読み込まないと「読み込まれなかった大きなアセンブリ」として消え、
+            // ON にしたとたん、打つたびに例外になって日本語を打てなくなった (#973)。
+            // loopback に HTTP を 1 回送り、HTTPS で使う TLS (SslStream) と証明書の確かめ (X509Chain) の型にも触る (外へはつながない)。
+            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            var server = Task.Run(() =>
+            {
+                using var client = listener.AcceptTcpClient();
+                using var stream = client.GetStream();
+                var request = new StringBuilder();
+                var buffer = new byte[1024];
+                int read;
+                while (!request.ToString().Contains("\r\n\r\n") && (read = stream.Read(buffer)) > 0) request.Append(Encoding.ASCII.GetString(buffer, 0, read));
+                stream.Write(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"));
+            });
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var body = http.GetStringAsync($"http://127.0.0.1:{port}/").GetAwaiter().GetResult();
+            server.Wait(TimeSpan.FromSeconds(10));
+            return $"loopback={body}, {typeof(System.Net.Security.SslStream).Name}, {typeof(System.Security.Cryptography.X509Certificates.X509Chain).Name}";
+        });
+
         report.AppendLine(failed == 0 ? "すべて OK" : $"{failed} 件失敗");
         // 配布用パッケージの作成で、使わない部品を削るのに使う (Build-Package.ps1)。
         report.AppendLine("LOADED: " + string.Join(" ", AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetName().Name).Order()));
