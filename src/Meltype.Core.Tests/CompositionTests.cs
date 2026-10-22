@@ -3146,6 +3146,7 @@ internal static class CompositionTests
         Assert.True(dictionary.Split("しょたこん")?.Any(p => p.Word == "ショタコン") == true, "しょたこん → ショタコン");
         // 報告 (#1028): todorisuto → トドリスト
         Assert.True(dictionary.Split("とどりすと")?.Any(p => p.Word == "todoリスト") == true, "とどりすと → todoリスト");
+        Assert.True(dictionary.Split("りょかい")?.Any(p => p.Word == "りょかい") == true, "りょかい → りょかい (#1041)");
         Assert.Equal(0, dictionary.Count, "同梱の語句はユーザー辞書の一覧に出さない");
     }
 
