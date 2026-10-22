@@ -10,6 +10,71 @@ namespace Meltype.Tests;
 /// <summary>入力モード切り替えショートカットの取り込み (Recorder)、キー判定 (Detector)、設定移行とバリデーション。</summary>
 internal static class ToggleShortcutTests
 {
+    /// <summary>v6/v7 移行時の解析失敗ログと競合除外のログ・通知は各1回で、保存後の再読み込みでは繰り返さないこと。</summary>
+    [Test]
+    public static void Shortcut_LoadReportsLegacyMigrationProblemsExactlyOnce()
+    {
+        // v5 はプロファイルの初期化も通り、v6 は旧追加キーだけを移行する。
+        foreach (var version in new[] { 5, 6 })
+        {
+            var path = Path.Combine(Path.GetTempPath(), "Meltype-migration-reports-" + Guid.NewGuid() + ".json");
+            var profile = "移行通知-" + Guid.NewGuid();
+            var notifications = 0;
+            void Added() => notifications++;
+            Meltype.Diagnostics.ShortcutExclusions.Drain();
+            Meltype.Diagnostics.ShortcutExclusions.Added += Added;
+            try
+            {
+                var values = new JsonObject
+                {
+                    ["ToggleShortcuts"] = new JsonArray(),
+                    ["ToggleKeyboardShortcuts"] = "UnknownKey; Ctrl+U; Ctrl+Space",
+                };
+                File.WriteAllText(path, new JsonObject
+                {
+                    ["SettingsVersion"] = version,
+                    ["ActiveProfile"] = profile,
+                    ["ToggleShortcuts"] = new JsonArray(),
+                    ["ToggleKeyboardShortcuts"] = "UnknownKey; Ctrl+U; Ctrl+Space",
+                    ["Profiles"] = new JsonArray(new JsonObject { ["Name"] = profile, ["Values"] = values }),
+                }.ToJsonString());
+
+                var settings = Settings.Load(path);
+                Assert.Equal(new ToggleShortcut { Key = VirtualKeys.Space, Modifiers = ShortcutModifiers.Control },
+                    settings.EffectiveToggleShortcuts.Single(), "有効な登録は保存前に残す");
+                var exclusion = Meltype.Diagnostics.ShortcutExclusions.Drain().Single();
+                Assert.Equal(ShortcutValidationError.Conversion, exclusion.Reason);
+                Assert.Equal(new ToggleShortcut { Key = 'U', Modifiers = ShortcutModifiers.Control }, exclusion.Shortcut);
+                Assert.Equal(profile, exclusion.Profile);
+                Assert.Equal(1, notifications, "除外イベントは1回だけ発火する");
+
+                // 同じ旧値がトップレベルとプロファイルにあるため、解析失敗は出所ごとに1件ずつ記録する。
+                var warnings = Meltype.Diagnostics.Log.Snapshot()
+                    .Where(e => e.Level == Meltype.Diagnostics.LogLevel.Warn && e.Message.Contains(profile)).ToArray();
+                Assert.Equal(2, warnings.Count(e => e.Message.Contains("UnknownKey") && e.Message.Contains("書式")),
+                    "旧値の各出所を1回だけ報告する");
+                Assert.Equal(1, warnings.Count(e => e.Message.Contains("Conversion")), "除外ログは1回だけ記録する");
+                Assert.Equal(3, warnings.Length, "予期しない警告がない");
+
+                var saved = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+                Assert.Equal(Settings.CurrentVersion, saved["SettingsVersion"]!.GetValue<int>());
+                Assert.True(!File.ReadAllText(path).Contains("ToggleKeyboardShortcuts"), "各出所の旧設定を保存しない");
+                Assert.Equal(settings.EffectiveToggleShortcuts.Single(), Settings.Load(path).EffectiveToggleShortcuts.Single());
+                Assert.Equal(0, Meltype.Diagnostics.ShortcutExclusions.Drain().Length, "保存後は除外を再通知しない");
+                Assert.Equal(1, notifications, "再読み込みでイベントを発火しない");
+                Assert.Equal(warnings.Length, Meltype.Diagnostics.Log.Snapshot()
+                    .Count(e => e.Level == Meltype.Diagnostics.LogLevel.Warn && e.Message.Contains(profile)),
+                    "再読み込みで警告ログを追加しない");
+            }
+            finally
+            {
+                Meltype.Diagnostics.ShortcutExclusions.Added -= Added;
+                Meltype.Diagnostics.ShortcutExclusions.Drain();
+                File.Delete(path);
+            }
+        }
+    }
+
     /// <summary>Control の割り当てを入力処理と同じ書式で解釈し、有効な英字の Ctrl および Ctrl+Shift だけを競合とすること。</summary>
     [Test]
     public static void Shortcut_ControlKeyBindingsUseSharedParsingRules()
