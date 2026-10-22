@@ -3147,6 +3147,8 @@ internal static class CompositionTests
         // 報告 (#1028): todorisuto → トドリスト
         Assert.True(dictionary.Split("とどりすと")?.Any(p => p.Word == "todoリスト") == true, "とどりすと → todoリスト");
         Assert.True(dictionary.Split("りょかい")?.Any(p => p.Word == "りょかい") == true, "りょかい → りょかい (#1041)");
+        Assert.True(dictionary.Split("にがっき")?.Any(p => p.Word == "二学期") == true, "にがっき → 二学期 (#1037)");
+        Assert.True(dictionary.Split("さんがっき")?.Any(p => p.Word == "三学期") == true, "さんがっき → 三学期 (#1037)");
         Assert.Equal(0, dictionary.Count, "同梱の語句はユーザー辞書の一覧に出さない");
     }
 
