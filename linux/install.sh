@@ -78,14 +78,22 @@ fcitx5_refresh() {
     return 1
 }
 
+# 動いている fcitx5 の PID (自分のユーザーのものだけ)。動いていなければ空。
+# pgrep -x fcitx5 だけだと、複数人でログインしている PC ではほかのユーザーの fcitx5 を拾う。
+# その PID には kill -0 が権限なしで失敗するので、起動し直せていないのに成功と判定してしまう。
+fcitx5_pid() {
+    pgrep -u "$(id -u)" -x fcitx5 2> /dev/null | head -n 1 || true
+}
+
 # fcitx5 を起動し直す。起動し直せたら 0、起動し直せない (KDE Plasma の Wayland など) なら 1
 fcitx5_restart() {
     local before
-    before="$(pgrep -x fcitx5 | head -n 1)" || true
+    before="$(fcitx5_pid)"
     [[ -n "$before" ]] || return 0
     (fcitx5 -r -d > /dev/null 2>&1 &)
     # 前の fcitx5 が終わるのを待つ。終わらなければ起動し直せていない
     # (起動しかけてすぐ終わる fcitx5 を、起動し直せたと数えないようにする)
+    # 待ち方 (0.2 秒 × 25 回) は uninstall.sh の同じ待ちと対になっている。片方だけ変えない。
     for _ in {1..25}; do
         sleep 0.2
         if ! kill -0 "$before" 2> /dev/null; then break; fi
@@ -101,27 +109,24 @@ fcitx5_restart() {
 
 # 走っている fcitx5 に、新しい Meltype を読ませる。読ませられたら 0、新しいものが使われていなければ 1
 fcitx5_reload() {
-    pgrep -x fcitx5 > /dev/null || return 0    # 動いていなければ、次に起動したときに読まれる
-    local was_loaded=false
-    if fcitx5_has_meltype; then was_loaded=true; fi
     local before
-    before="$(pgrep -x fcitx5 | head -n 1)" || true
-    # 新しいアドオンと入力メソッドを読ませる (fcitx5 を止めずに読める)
-    if fcitx5_refresh; then
-        for _ in {1..25}; do
-            if fcitx5_has_meltype; then break; fi
-            sleep 0.2
-        done
-    fi
-    if ! fcitx5_has_meltype; then
-        # 読めなかったときは、起動し直して読ませる
+    before="$(fcitx5_pid)"
+    [[ -n "$before" ]] || return 0    # 動いていなければ、次に起動したときに読まれる
+    if fcitx5_has_meltype; then
+        # 前から Meltype を読み込んでいる。共有ライブラリは読み直せないので、Refresh しても
+        # 古いアドオンのまま。起動し直して、新しいものに切り替える (Refresh は呼ばない)
         fcitx5_restart || return 1
         return 0
     fi
-    if $was_loaded && [[ "$(pgrep -x fcitx5 | head -n 1)" == "$before" ]]; then
-        # 前から Meltype が入っていた。いま動いているのは前のアドオンなので、起動し直して新しいものにする
-        fcitx5_restart || return 1
+    # 新しいアドオンと入力メソッドを読ませる (fcitx5 を止めずに読める)
+    if fcitx5_refresh; then
+        for _ in {1..25}; do
+            if fcitx5_has_meltype; then return 0; fi
+            sleep 0.2
+        done
     fi
+    # Refresh では読めなかった。起動し直して読ませる
+    fcitx5_restart || return 1
     return 0
 }
 
@@ -137,9 +142,8 @@ if $use_fcitx5; then
         sudo cp fcitx5/meltype-addon.conf /usr/share/fcitx5/addon/meltype.conf
         sed "s|@DIR@|$target|g" fcitx5/meltype.conf | sudo tee /usr/share/fcitx5/inputmethod/meltype.conf > /dev/null
         # 動いている fcitx5 に読み直させる。読ませられなかったときは、あとで知らせる
-        if pgrep -x fcitx5 > /dev/null; then
-            fcitx5_reload || fcitx5_needs_restart=true
-        fi
+        # (動いていなければ、fcitx5_reload は何もせずに 0 を返す)
+        fcitx5_reload || fcitx5_needs_restart=true
     fi
 fi
 
