@@ -74,6 +74,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             ZSymbols = () => _engine.Settings.ZSymbols,
             SpaceAroundEnglish = () => _engine.Settings.SpaceAroundEnglish,
             SpaceAroundNumbers = () => _engine.Settings.SpaceAroundNumbers,
+            NumberKeysSelectCandidates = () => _engine.Settings.NumberKeysSelectCandidates,
             ShiftSpaceHalfWidth = () => _engine.Settings.ShiftSpaceHalfWidth,
             EnterCommitsAsShown = () => _engine.Settings.EnterCommitsAsShown,
             AlphanumericKeyStartsAsTyped = () => _engine.Settings.AlphanumericKeyStartsAsTyped,

@@ -104,6 +104,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             ZSymbols = options.ZSymbols,
             SpaceAroundEnglish = options.SpaceAroundEnglish,
             SpaceAroundNumbers = options.SpaceAroundNumbers,
+            NumberKeysSelectCandidates = options.NumberKeysSelectCandidates,
             ShiftSpaceHalfWidth = options.ShiftSpaceHalfWidth,
             EnterCommitsAsShown = options.EnterCommitsAsShown,
             AlphanumericKeyStartsAsTyped = options.AlphanumericKeyStartsAsTyped,
