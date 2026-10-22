@@ -150,9 +150,10 @@ internal static class SelfTest
             var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
             var server = Task.Run(() => AnswerOnce(listener, """{"content":"今日は"}"""));
             using var zenzai = new ZenzaiConverter(new Uri($"http://127.0.0.1:{port}/"), timeoutMs: 10000);
-            var text = zenzai.Convert("きょうは") ?? throw new InvalidOperationException("偽の llama-server から答えを受け取れない");
+            var text = zenzai.Convert("きょうは");
+            // 偽のサーバーの側で例外になったときは、その例外を出す (Wait が投げる)
             server.Wait(TimeSpan.FromSeconds(10));
-            return text;
+            return text ?? throw new InvalidOperationException("偽の llama-server から答えを受け取れない");
         });
         Check("GitHub の題名 (HTTPS)", () =>
             // TLS (SslStream) と証明書の確かめ (X509Chain) の型に触って読み込むだけ。外へはつながないので、TLS の接続そのものは確かめていない

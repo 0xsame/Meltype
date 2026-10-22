@@ -18,10 +18,11 @@ public sealed class ZenzaiHolder(Func<string, string, ZenzaiConverter>? create =
     private readonly Func<long> _now = now ?? (() => Environment.TickCount64);
     private ZenzaiConverter? _zenzai;
     private string _key = "";
-    private long _createdAt;
     private long _retryAt;
-    // 続けて使えなかった回数 (待つ時間を延ばす)。場所が変わったとき、長く使えていたあとに失敗したときは 0 から
+    // 続けて使えなかった回数 (待つ時間を延ばす)。場所が変わったとき、一度でも答えたものが失敗したときは 0 から
     private int _failures;
+    // 作れなかったときの例外の中身を、この場所でもう書いたか (2 回目からは要点だけ書く)
+    private bool _loggedCreateError;
 
     /// <summary>使えなくなってから、もう一度作るまでの最初の時間。</summary>
     public TimeSpan RetryAfter { get; init; } = TimeSpan.FromMinutes(5);
@@ -48,23 +49,24 @@ public sealed class ZenzaiHolder(Func<string, string, ZenzaiConverter>? create =
             _key = key;
             _retryAt = 0;
             _failures = 0;
+            _loggedCreateError = false;
         }
-        // 何度も失敗して諦めた (llama-server が起動しない・答えない。例外にはならない) ときも、止めて待ってから作り直す。
-        // 場所にファイルが無い (IsInstalled が false) ときは、場所を直すまで作り直しても同じなので、そのまま
-        if (_zenzai is { IsInstalled: true, IsAvailable: false }) StopAndWait("Zenzai が答えないので止めました");
+        // 何度も失敗して諦めた (llama-server が起動しない・答えない・空の答えが続く。例外にはならない) ときも、止めて待ってから作り直す。
+        // 場所にファイルが無いときは諦めない (ZenzaiConverter が使えないと答えるだけ) ので、場所を直すまでそのまま
+        if (_zenzai is { GaveUp: true }) StopAndWait("Zenzai が何度も変換できなかったので止めました");
         if (_zenzai is null && _now() >= _retryAt)
         {
             try
             {
                 _zenzai = _create(server, model);
-                _createdAt = _now();
             }
             catch (Exception ex)
             {
                 // 作れないとき (#973: 同梱の .NET に System.Net.Http が無い) は、変換は Mozc などで続ける
-                // (HybridConverter は Zenzai が無ければ今までどおり変換する)。例外の中身を書くのは 1 回目だけ
+                // (HybridConverter は Zenzai が無ければ今までどおり変換する)。例外の中身を書くのは、この場所で 1 回目だけ
                 var wait = WaitBeforeRetry();
-                var detail = _failures == 1 ? ex.ToString() : ex.Message;
+                var detail = _loggedCreateError ? ex.Message : ex.ToString();
+                _loggedCreateError = true;
                 Diagnostics.Log.Error($"Zenzai を使えないので、今までの変換エンジンで変換します ({wait.TotalMinutes} 分後にもう一度試します): {detail}");
             }
         }
@@ -81,8 +83,8 @@ public sealed class ZenzaiHolder(Func<string, string, ZenzaiConverter>? create =
 
     private void StopAndWait(string reason)
     {
-        // 長く使えていたあとの失敗は、一時的なものとして最初の待ち時間から
-        if (_now() - _createdAt >= MaxRetryAfter.TotalMilliseconds) _failures = 0;
+        // 一度でも答えたものの失敗は、一時的なものとして最初の待ち時間から
+        if (_zenzai is { HasAnswered: true }) _failures = 0;
         Stop();
         var wait = WaitBeforeRetry();
         Diagnostics.Log.Info($"{reason}。{wait.TotalMinutes} 分後にもう一度使います");

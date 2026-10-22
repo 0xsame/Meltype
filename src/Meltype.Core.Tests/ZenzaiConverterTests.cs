@@ -270,13 +270,21 @@ internal static class ZenzaiConverterTests
         Assert.True(holder.Get("server", "model") is null && created == 1, "すぐには作り直さない (打つたびに例外にしない)");
         now += (long)holder.RetryAfter.TotalMilliseconds;
         Assert.True(holder.Get("server", "model") is null && created == 2, "しばらくたったら、もう一度作る");
-        now += (long)holder.RetryAfter.TotalMilliseconds;
+        // 待つ時間は 5 → 10 → 20 → 40 → 60 (上限。倍にすると 80) 分
+        const long minute = 60_000;
+        now += 5 * minute;
         Assert.True(holder.Get("server", "model") is null && created == 2, "続けて作れないときは、待つ時間を延ばす (5 分ごとに作り直さない)");
-        now += (long)holder.RetryAfter.TotalMilliseconds;
+        now += 5 * minute;
         Assert.True(holder.Get("server", "model") is null && created == 3, "延ばした時間がたったら、もう一度作る");
-        now += (long)holder.MaxRetryAfter.TotalMilliseconds;
-        Assert.True(holder.Get("server", "model") is null && created == 4, "待つ時間は上限まで");
-        Assert.True(holder.Get("server", "other") is null && created == 5, "場所を変えたら、待たずに作る");
+        now += 20 * minute;
+        Assert.True(holder.Get("server", "model") is null && created == 4, "20 分待つ");
+        now += 40 * minute;
+        Assert.True(holder.Get("server", "model") is null && created == 5, "40 分待つ");
+        now += 60 * minute - 1;
+        Assert.True(holder.Get("server", "model") is null && created == 5, "上限の 60 分たつまでは作らない");
+        now += 1;
+        Assert.True(holder.Get("server", "model") is null && created == 6, "待つ時間は上限 (60 分) まで");
+        Assert.True(holder.Get("server", "other") is null && created == 7, "場所を変えたら、待たずに作る");
     }
 
     [Test]
@@ -297,6 +305,12 @@ internal static class ZenzaiConverterTests
         var second = holder.Get("server", "model");
         Assert.True(second is not null && created.Count == 2, "しばらくたったら作り直す (llama-server が一時的に落ちただけなら、また使える)");
         Assert.Equal("橋", Joined(second!.ConvertClauses("はし")).Split('→')[^1], "作り直したものは使える");
+        // 一度でも答えたものが諦めたときは、一時的な失敗として最初の待ち時間 (5 分) から (続けて失敗した 2 回目の 10 分にしない)
+        server.Status = 500;
+        for (var i = 0; i < 3; i++) second.ConvertClauses("かわ" + new string('の', i));
+        Assert.True(holder.Get("server", "model") is null, "また諦めたら止める");
+        now += (long)holder.RetryAfter.TotalMilliseconds;
+        Assert.True(holder.Get("server", "model") is not null && created.Count == 3, "使えていたあとの失敗は、最初の待ち時間で作り直す");
         using var missing = new ZenzaiHolder(now: () => now);
         var notInstalled = missing.Get("/no/such/llama-server", "/no/such.gguf");
         Assert.True(notInstalled is not null && ReferenceEquals(missing.Get("/no/such/llama-server", "/no/such.gguf"), notInstalled), "場所にファイルが無いだけなら、作り直さない (場所を直すまで同じ)");
