@@ -172,7 +172,7 @@ public static unsafe class Exports
         }
         catch (Exception ex)
         {
-            Diagnostics.Log.Error($"入力の処理で例外: {ex}");
+            Diagnostics.Log.Error($"Mac: 入力の処理で例外: {ex}");
         }
     }
 
@@ -187,12 +187,12 @@ public static unsafe class Exports
         }
         catch (Exception ex)
         {
-            Diagnostics.Log.Error($"入力の処理で例外: {ex}");
+            Diagnostics.Log.Error($"Mac: 入力の処理で例外: {ex}");
             return 0;
         }
     }
 
-    /// <summary>アプリに通したキーによるキャレット移動を通知する (消費したキーには呼ばない)。passedVk は Windows の仮想キーコード (0 はキーなし)、control は非 0 なら Ctrl。</summary>
+    /// <summary>アプリに通したキーによるキャレット移動を通知する (消費したキーには呼ばない)。passedVk = 0 はキーなし、control は非 0 なら Ctrl。</summary>
     [UnmanagedCallersOnly(EntryPoint = "meltype_caret_moved")]
     public static void CaretMoved(IntPtr handle, int passedVk, int control)
     {
@@ -203,7 +203,23 @@ public static unsafe class Exports
         }
         catch (Exception ex)
         {
-            Diagnostics.Log.Error($"入力の処理で例外: {ex}");
+            Diagnostics.Log.Error($"Mac: 入力の処理で例外: {ex}");
+        }
+    }
+
+    /// <summary>次のキーをコードの英数として通すなら 1。それ以外・失敗時は 0。before は借用する UTF-8 (NULL 可)。</summary>
+    [UnmanagedCallersOnly(EntryPoint = "meltype_code_english_at")]
+    public static int CodeEnglishAt(IntPtr handle, byte* before)
+    {
+        try
+        {
+            if (handle == IntPtr.Zero || GCHandle.FromIntPtr(handle).Target is not MeltypeSession session) return 0;
+            return session.CodeEnglishAt(FromUtf8(before)) ? 1 : 0;
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log.Error($"Mac: 入力の処理で例外: {ex}");
+            return 0;
         }
     }
 

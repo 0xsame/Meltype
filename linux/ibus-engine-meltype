@@ -82,6 +82,10 @@ _set_code_line = getattr(_lib, "meltype_set_code_line", None)
 if _set_code_line is not None:
     _set_code_line.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p]
     _set_code_line.restype = ctypes.c_int
+_code_english_at = getattr(_lib, "meltype_code_english_at", None)
+if _code_english_at is not None:
+    _code_english_at.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    _code_english_at.restype = ctypes.c_int
 _set_code_terminal = getattr(_lib, "meltype_set_code_terminal", None)
 if _set_code_terminal is not None:
     _set_code_terminal.argtypes = [ctypes.c_void_p, ctypes.c_int]
@@ -203,9 +207,8 @@ class MeltypeEngine(IBus.Engine):
         self._can_delete = True
         # 確定し直しが実際に効いたかを次の入力で確かめるための期待値 (効かなければ以降やめる)
         self._replace_expect = None
-        # 入力欄がターミナルでコード入力になっているか / そのコード行を日本語にしているか
+        # 入力欄がターミナルでコード入力になっているか。日本語の指定は本体だけで持つ。
         self._code_input = False
-        self._code_japanese = False
         self._lookup = IBus.LookupTable.new(9, 0, True, True)
         self._lookup.set_orientation(IBus.Orientation.VERTICAL)
         self._candidates = []
@@ -252,14 +255,10 @@ class MeltypeEngine(IBus.Engine):
         return consumed
 
     def _notify_caret_moved(self, vk, control):
-        """アプリに通したキーでのキャレット移動を本体へ伝え、Python 側の日本語状態も合わせる。"""
+        """アプリに通したキーを本体へ伝える。日本語を解除する条件は本体だけで判断する。"""
         if not self._code_input or _caret_moved is None:
             return
         _caret_moved(self._session, vk, 1 if control else 0)
-        # MeltypeSession.CaretMoved と同じ条件。本体だけが日本語を落とすと、次の 半角/全角 が
-        # 「日本語にする」ではなく「英数にする」と誤認するので、Python 側も同じ条件で落とす。
-        if control or vk in (0x09, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2E):
-            self._code_japanese = False
 
     def _finalize_on_focus_loss(self):
         """フォーカスが外れる・Reset のときの後始末。
@@ -290,38 +289,37 @@ class MeltypeEngine(IBus.Engine):
         self._apply(_result(_lib.meltype_commit(self._session)))
         before, _after = (None, None) if self._preedit_visible else self._surrounding_text()
         was_direct = self._direct
-        japanese_key = keyval not in ALWAYS_DIRECT_KEYS
-        if self._code_input and _set_code_line is not None:
-            # 直接入力のままなら、まず日本語側へ戻してからコード行の切り替えを試す。
-            # 切り替えに失敗しても、下の直接入力の切り替えが「押す前」の状態から決まるように was_direct を使う。
-            if self._direct and japanese_key:
-                self._direct = False
-                _lib.meltype_set_direct(self._session, 0)
-            if not self._direct:
-                # 半角/全角 は日本語と英数の切り替え。ひらがな・変換は日本語、英数・無変換は英数。
-                # コメント・文字列の中など、本体が扱えない行は下の直接入力の切り替えに任せる
-                if keyval in ALWAYS_DIRECT_KEYS:
-                    japanese = False
-                elif keyval in ZENKAKU_HANKAKU_KEYS:
-                    japanese = not self._code_japanese
-                else:
-                    japanese = True
-                # 周りの文字が取れる入力欄では、キャレットより前を渡して行の種類を合わせる
-                if _set_code_line(self._session, 1 if japanese else 0,
-                                  before.encode() if before is not None else None):
-                    self._code_japanese = japanese
-                    # 英数・無変換は、コード行の外 (文字列など) でも Direct にする
-                    if japanese or keyval not in ALWAYS_DIRECT_KEYS:
-                        return
+        if self._switch_code_mode(keyval, before):
+            return
         to_direct = keyval in ALWAYS_DIRECT_KEYS or (keyval in ZENKAKU_HANKAKU_KEYS and not was_direct)
         self._direct = to_direct
         _lib.meltype_set_direct(self._session, 1 if to_direct else 0)
 
+    def _switch_code_mode(self, keyval, before):
+        """コード行の切り替えを扱ったら True。文字列・コメント内などは通常の切り替えに任せる。"""
+        if not self._code_input or _set_code_line is None or _code_english_at is None:
+            return False
+        if self._direct:
+            if keyval in ALWAYS_DIRECT_KEYS:
+                return False
+            self._direct = False
+            _lib.meltype_set_direct(self._session, 0)
+        before_utf8 = before.encode() if before is not None else None
+        if keyval in ALWAYS_DIRECT_KEYS:
+            _set_code_line(self._session, 0, before_utf8)
+            # 英数・無変換は文字列内でも Direct にするため、通常の切り替えへ進む。
+            return False
+        # 英数のコード行なら日本語へ、それ以外なら明示的な日本語の解除を試す。
+        # 文字列・コメント内でも 0 になるが、SetCodeLine が扱わなければ通常の切り替えへ進む。
+        japanese = True
+        if keyval in ZENKAKU_HANKAKU_KEYS:
+            japanese = bool(_code_english_at(self._session, before_utf8))
+        return bool(_set_code_line(self._session, 1 if japanese else 0, before_utf8))
+
     def _reset_code_japanese(self):
         """コード行の日本語をやめる (フォーカスが外れたとき)。"""
-        if self._code_japanese and _set_code_line is not None:
+        if self._code_input and _set_code_line is not None:
             _set_code_line(self._session, 0, None)
-        self._code_japanese = False
 
     def do_focus_out(self):
         # 別の入力欄・アプリに移るときは、未確定の内容を確定する。
@@ -342,13 +340,13 @@ class MeltypeEngine(IBus.Engine):
         # コード行は 半角/全角 で日本語にできる (下の _switch_mode)。
         if not self._session:
             return
-        # 古い本体にはコード行を日本語にする API が無い。有効にすると日本語に戻せないので、その場合は有効にしない
-        code_input = purpose == IBus.InputPurpose.TERMINAL and _set_code_line is not None
+        # 切り替え・状態問い合わせの両方がある本体でだけ有効にする。古い本体では通常の IME 切り替えを使う。
+        code_input = (purpose == IBus.InputPurpose.TERMINAL and _set_code_input is not None
+                      and _set_code_line is not None and _code_english_at is not None)
         if code_input != self._code_input:
             # 変わったときだけ本体へ伝える。同じ値で meltype_set_code_input を呼ぶと本体が行の追跡と日本語の指定を
-            # 初期化してしまうので、変わらない再通知では呼ばない (ターミナルに戻っても日本語設定と行追跡は消えない)。
+            # 初期化してしまうので、変わらない再通知では呼ばない。別の種類の入力欄へ移ったら初期化する。
             self._code_input = code_input
-            self._code_japanese = False
             if _set_code_input is not None:
                 _set_code_input(self._session, 1 if code_input else 0)
             if code_input and self._direct:

@@ -533,6 +533,66 @@ class PrivateDaemonTests(unittest.TestCase):
             self.pump(0.2)
 
 
+    def test_terminal_japanese_can_be_reenabled_after_navigation(self):
+        terminal = self.IBus.InputPurpose.TERMINAL
+        free = self.IBus.InputPurpose.FREE_FORM
+        actions = ((self.IBus.KEY_Left, 0), (self.IBus.KEY_Tab, 0),
+                   (self.IBus.KEY_c, self.IBus.ModifierType.CONTROL_MASK))
+        for keyval, state in actions:
+            with self.subTest(keyval=keyval, state=state):
+                self.context.set_content_type(terminal, 0)
+                self.pump(0.2)
+                try:
+                    self.reset_client()
+                    self.assertTrue(self.key(self.IBus.KEY_Zenkaku_Hankaku))
+                    # 未確定文字がない状態で移動キーをアプリへ渡すと、本体が英数へ戻る。
+                    self.assertFalse(self.key(keyval, state=state))
+                    self.assertTrue(self.key(self.IBus.KEY_Zenkaku_Hankaku))
+                    self.type_text("nihongo")
+                    self.assertEqual("にほんご", self.client.preedit, self.client.describe())
+                    self.assertTrue(self.key(self.IBus.KEY_Return))
+                    self.assert_document("にほんご")
+                finally:
+                    self.context.set_content_type(free, 0)
+                    self.pump(0.2)
+
+    def test_terminal_reset_preserves_japanese(self):
+        terminal = self.IBus.InputPurpose.TERMINAL
+        free = self.IBus.InputPurpose.FREE_FORM
+        self.context.set_content_type(terminal, 0)
+        self.pump(0.2)
+        try:
+            self.reset_client()
+            self.assertTrue(self.key(self.IBus.KEY_Zenkaku_Hankaku))
+            self.context.reset()
+            self.pump()
+            self.type_text("nihongo")
+            self.assertEqual("にほんご", self.client.preedit, self.client.describe())
+            self.assertTrue(self.key(self.IBus.KEY_Return))
+            self.assert_document("にほんご")
+        finally:
+            self.context.set_content_type(free, 0)
+            self.pump(0.2)
+
+    def test_terminal_focus_out_clears_japanese(self):
+        terminal = self.IBus.InputPurpose.TERMINAL
+        free = self.IBus.InputPurpose.FREE_FORM
+        self.context.set_content_type(terminal, 0)
+        self.pump(0.2)
+        try:
+            self.reset_client()
+            self.assertTrue(self.key(self.IBus.KEY_Zenkaku_Hankaku))
+            self.context.focus_out()
+            self.pump()
+            self.context.focus_in()
+            self.pump()
+            self.assertFalse(self.scalar("k"))
+            self.assertEqual("", self.client.preedit, self.client.describe())
+        finally:
+            self.context.set_content_type(free, 0)
+            self.pump(0.2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path, help="existing Meltype-linux package directory")
