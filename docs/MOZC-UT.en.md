@@ -121,7 +121,23 @@ Remove-Item Env:\MELTYPE_UT_DICTIONARY
 .\native\mozc\Build-MozcHelper.ps1 -Python python -Bazelisk C:\tools\bazelisk.exe
 ```
 
-A build without the variable empties the file that holds the UT words (`dictionary_ut.txt`) before building, so no UT words remain.
+A build without the variable empties the file that holds the UT words (`dictionary_ut.txt`) before building, so no UT words remain (if you built with v1.3.1-pre.1, see "Updating from v1.3.1-pre.1" below).
+
+## Updating from v1.3.1-pre.1
+
+If you built with `MELTYPE_UT_DICTIONARY` on v1.3.1-pre.1, Mozc's `dictionary00.txt` still contains the Mozc-UT words.
+The current build scripts never modify `dictionary00.txt`, so those words also end up in builds without the variable, and a newer UT dictionary keeps the old dictionary's words and costs.
+After updating, run the following once to restore the file. Building with the variable afterwards adds the Mozc-UT words again.
+
+```bash
+git -C ~/mozc checkout HEAD -- src/data/dictionary_oss/dictionary00.txt
+```
+
+```powershell
+git -C $env:USERPROFILE\mozc checkout HEAD -- src/data/dictionary_oss/dictionary00.txt
+```
+
+If you keep Mozc somewhere else, replace `~/mozc` (`$env:USERPROFILE\mozc` on Windows) with that location.
 
 ## Performance and size (measured)
 

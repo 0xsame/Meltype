@@ -125,30 +125,6 @@ $utReport = Join-Path $bin 'MOZC-UT.json'
 $utPending = Join-Path $bin 'MOZC-UT.json.tmp'
 if (Test-Path -LiteralPath $utPending) { Remove-Item -LiteralPath $utPending -Force }
 
-# v1.3.1-pre.1 までは UT の語を dictionary00.txt に追記していた (記録は schema 1)。
-# このスクリプトは dictionary00.txt に触らないので、残った語が標準のビルドに黙って混ざらないよう止める。
-if ((Test-Path -LiteralPath $utReport) -and ([IO.File]::ReadAllText($utReport) -match '"schema": 1,')) {
-    throw ("以前の方式で Mozc-UT を統合した記録があります ($utReport)。`n" +
-        "Mozc の dictionary00.txt に Mozc-UT の語が残っているので、次を実行して戻してから、ビルドし直してください。`n" +
-        "  git -C `"$MozcSource`" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt; Remove-Item `"$utReport`"")
-}
-# 以前の方式はビルドが通ったときだけ記録を書いたので、ビルドの失敗や bin の削除で、記録が無いまま語が残ることがある。
-# 利用者が手元で語を足した場合 (#961) と見分けられないので、止めずに知らせる。
-# git が失敗したときに黙って続けると、残った語に気づけないので止める。
-$previous = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-try { $numstat = & git -C $MozcSource diff --numstat HEAD -- src/data/dictionary_oss/dictionary00.txt 2>$null }
-finally { $ErrorActionPreference = $previous }
-if ($LASTEXITCODE -ne 0) {
-    throw "Mozc の辞書の状態を調べられませんでした (git diff: exit code $LASTEXITCODE)。Mozc のフォルダーを取り直してください。"
-}
-$added = if ($numstat) { ($numstat -split "`t")[0] } else { '0' }
-if ($added -ne '0') {
-    Write-Warning ("Mozc の dictionary00.txt が、取ってきたときより $added 行増えています。`n" +
-        "以前の方式で統合した Mozc-UT の語なら、標準のビルドにも入るので、次を実行して戻してください (手元で足した語なら、そのままでかまいません)。`n" +
-        "  git -C `"$MozcSource`" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt")
-}
-
 # Mozc-UT の語は Mozc の辞書とは別の dictionary_ut.txt に置き、ビルドのたびに作り直す
 # (Mozc の辞書は書き換えないので、手元で書き換えた辞書も残る)。
 # dictionary_ut.txt はいつもビルドに含め、-UtDictionary が無いときは空にする。

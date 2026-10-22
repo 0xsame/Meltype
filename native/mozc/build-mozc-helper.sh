@@ -34,23 +34,6 @@ src="$mozc/src"
 
 mkdir -p "$out"
 
-# v1.3.1-pre.1 までは UT の語を dictionary00.txt に追記していた (記録は schema 1)。
-# このスクリプトは dictionary00.txt に触らないので、残った語が標準のビルドに黙って混ざらないよう止める。
-if [[ -e "$out/MOZC-UT.json" ]] && grep -q '"schema": 1,' "$out/MOZC-UT.json"; then
-    echo "エラー: 以前の方式で Mozc-UT を統合した記録があります ($out/MOZC-UT.json)。" >&2
-    echo "Mozc の dictionary00.txt に Mozc-UT の語が残っているので、次を実行して戻してから、ビルドし直してください。" >&2
-    echo "  git -C \"$mozc\" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt && rm \"$out/MOZC-UT.json\"" >&2
-    exit 1
-fi
-# 以前の方式はビルドが通ったときだけ記録を書いたので、ビルドの失敗や bin の削除で、記録が無いまま語が残ることがある。
-# 利用者が手元で語を足した場合 (#961) と見分けられないので、止めずに知らせる。
-added="$(git -C "$mozc" diff --numstat HEAD -- src/data/dictionary_oss/dictionary00.txt | cut -f1)"
-if [[ -n "$added" && "$added" != 0 ]]; then
-    echo "注意: Mozc の dictionary00.txt が、取ってきたときより $added 行増えています。" >&2
-    echo "以前の方式で統合した Mozc-UT の語なら、標準のビルドにも入るので、次を実行して戻してください (手元で足した語なら、そのままでかまいません)。" >&2
-    echo "  git -C \"$mozc\" checkout HEAD -- src/data/dictionary_oss/dictionary00.txt" >&2
-fi
-
 # Mozc-UT の語は Mozc の辞書とは別の dictionary_ut.txt に置き、ビルドのたびに作り直す
 # (Mozc の辞書は書き換えないので、手元で書き換えた辞書も残る)。
 # dictionary_ut.txt はいつもビルドに含め、MELTYPE_UT_DICTIONARY が無いときは空にする。

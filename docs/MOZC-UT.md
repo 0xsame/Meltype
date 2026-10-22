@@ -121,7 +121,23 @@ Remove-Item Env:\MELTYPE_UT_DICTIONARY
 .\native\mozc\Build-MozcHelper.ps1 -Python python -Bazelisk C:\tools\bazelisk.exe
 ```
 
-環境変数を指定しないビルドでは、Mozc-UT の語を入れるファイル (`dictionary_ut.txt`) を空にしてからビルドするので、前回の語は残りません。
+環境変数を指定しないビルドでは、Mozc-UT の語を入れるファイル (`dictionary_ut.txt`) を空にしてからビルドするので、前回の語は残りません (v1.3.1-pre.1 でビルドしたときは、次の「v1.3.1-pre.1 から更新したとき」)。
+
+## v1.3.1-pre.1 から更新したとき
+
+v1.3.1-pre.1 で `MELTYPE_UT_DICTIONARY` を指定してビルドした場合は、Mozc の `dictionary00.txt` に Mozc-UT の語が残っています。
+今のビルドスクリプトは `dictionary00.txt` を書き換えないので、残った語は、環境変数を指定しないビルドにも入ります。UT 辞書を新しくしても、古い辞書の語とコストが残ります。
+更新したら一度、次を実行して戻してください。戻したあと環境変数を指定してビルドすれば、Mozc-UT の語はまた入ります。
+
+```bash
+git -C ~/mozc checkout HEAD -- src/data/dictionary_oss/dictionary00.txt
+```
+
+```powershell
+git -C $env:USERPROFILE\mozc checkout HEAD -- src/data/dictionary_oss/dictionary00.txt
+```
+
+Mozc を別の場所に置いている場合は、`~/mozc` (Windows は `$env:USERPROFILE\mozc`) をその場所に読み替えてください。
 
 ## 性能とサイズ (実測)
 
