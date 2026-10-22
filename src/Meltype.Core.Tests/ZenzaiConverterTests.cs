@@ -270,7 +270,36 @@ internal static class ZenzaiConverterTests
         Assert.True(holder.Get("server", "model") is null && created == 1, "すぐには作り直さない (打つたびに例外にしない)");
         now += (long)holder.RetryAfter.TotalMilliseconds;
         Assert.True(holder.Get("server", "model") is null && created == 2, "しばらくたったら、もう一度作る");
-        Assert.True(holder.Get("server", "other") is null && created == 3, "場所を変えたら、待たずに作る");
+        now += (long)holder.RetryAfter.TotalMilliseconds;
+        Assert.True(holder.Get("server", "model") is null && created == 2, "続けて作れないときは、待つ時間を延ばす (5 分ごとに作り直さない)");
+        now += (long)holder.RetryAfter.TotalMilliseconds;
+        Assert.True(holder.Get("server", "model") is null && created == 3, "延ばした時間がたったら、もう一度作る");
+        now += (long)holder.MaxRetryAfter.TotalMilliseconds;
+        Assert.True(holder.Get("server", "model") is null && created == 4, "待つ時間は上限まで");
+        Assert.True(holder.Get("server", "other") is null && created == 5, "場所を変えたら、待たずに作る");
+    }
+
+    [Test]
+    public static void Holder_ZenzaiThatGaveUp_IsRecreatedAfterAWhile()
+    {
+        // llama-server が落ちたなどで 3 回続けて答えないと、ZenzaiConverter は諦める (例外にはならない)。それも作り直す
+        using var server = new FakeServer { Status = 500 };
+        var now = 0L;
+        var created = new List<ZenzaiConverter>();
+        using var holder = new ZenzaiHolder((s, m) => { var z = new ZenzaiConverter(server.Endpoint, timeoutMs: 5000); created.Add(z); return z; }, () => now);
+        var first = holder.Get("server", "model")!;
+        for (var i = 0; i < 3; i++) first.ConvertClauses("はし" + new string('の', i));
+        Assert.True(!first.IsAvailable, "3 回答えないと ZenzaiConverter は諦める");
+        Assert.True(holder.Get("server", "model") is null, "諦めた Zenzai は止めて、しばらくは使わない");
+        server.Status = 200;
+        server.Answer = _ => "橋";
+        now += (long)holder.RetryAfter.TotalMilliseconds;
+        var second = holder.Get("server", "model");
+        Assert.True(second is not null && created.Count == 2, "しばらくたったら作り直す (llama-server が一時的に落ちただけなら、また使える)");
+        Assert.Equal("橋", Joined(second!.ConvertClauses("はし")).Split('→')[^1], "作り直したものは使える");
+        using var missing = new ZenzaiHolder(now: () => now);
+        var notInstalled = missing.Get("/no/such/llama-server", "/no/such.gguf");
+        Assert.True(notInstalled is not null && ReferenceEquals(missing.Get("/no/such/llama-server", "/no/such.gguf"), notInstalled), "場所にファイルが無いだけなら、作り直さない (場所を直すまで同じ)");
     }
 
     [Test]
@@ -282,7 +311,7 @@ internal static class ZenzaiConverterTests
         using var holder = new ZenzaiHolder((s, m) => { var z = new ZenzaiConverter(server.Endpoint, timeoutMs: 5000); created.Add(z); return z; }, () => now);
         var first = holder.Get("server", "model");
         Assert.True(first is not null && ReferenceEquals(holder.Get("server", "model"), first), "同じ場所なら同じものを使う");
-        holder.Failed(new ZenzaiConverter(server.Endpoint));
+        using (var other = new ZenzaiConverter(server.Endpoint)) holder.Failed(other);
         Assert.True(ReferenceEquals(holder.Get("server", "model"), first), "持っていないものを知らされても、今のものは止めない");
         holder.Failed(first!);
         Assert.True(first!.ConvertClauses("はし") is null, "例外になった Zenzai は止める (llama-server を残さない)");

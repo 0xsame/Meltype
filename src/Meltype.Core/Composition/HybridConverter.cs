@@ -44,8 +44,8 @@ public sealed class HybridConverter(Func<ConversionEngine> engine, MozcConverter
         }
     }
 
-    // 例外になった Zenzai。作るところで例外になったときは CouldNotCreate (このときはログを 1 回にするだけで、作るのは毎回試す。
-    // Windows 版では CompositionService が作れなかったことを覚えるので、ここまで例外は来ない)
+    // 例外になった Zenzai (持ち主が同じものをまた渡しても使わない)。作るところで例外になったときは CouldNotCreate
+    // (このときはログを 1 回にするだけ。Windows 版では ZenzaiHolder が作れなかったことを覚えて待つので、ここまで例外は来ない)
     private object? _failedZenzai;
     private static readonly object CouldNotCreate = new();
 

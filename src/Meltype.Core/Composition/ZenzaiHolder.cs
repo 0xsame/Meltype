@@ -5,8 +5,9 @@ namespace Meltype.Composition;
 
 /// <summary>
 /// Zenzai (llama-server + zenz の GGUF) の持ち主。設定で ON のときだけ作り、指定の場所が変わるたびに作り直す。
-/// 作れない・変換で例外になった (<see cref="Failed"/>) ときは止めて、<see cref="RetryAfter"/> たってから作り直す
-/// (打つたびに例外にしない。一時的な失敗で、ずっと止めたままにもしない。#973)。
+/// 使えなくなった (作れない・変換で例外になった <see cref="Failed"/>・何度も失敗して ZenzaiConverter が諦めた) ときは止めて、
+/// しばらくたってから作り直す (打つたびに例外にしない。一時的な失敗で、ずっと止めたままにもしない。#973)。
+/// 続けて使えないときは、待つ時間を <see cref="RetryAfter"/> から倍にしていく (<see cref="MaxRetryAfter"/> まで)。
 /// 止める (Dispose) のはここだけで、使う側 (HybridConverter) は止めない。
 /// </summary>
 /// <param name="create">llama-server と GGUF の場所から作る (テストでは差し替える)。</param>
@@ -17,10 +18,16 @@ public sealed class ZenzaiHolder(Func<string, string, ZenzaiConverter>? create =
     private readonly Func<long> _now = now ?? (() => Environment.TickCount64);
     private ZenzaiConverter? _zenzai;
     private string _key = "";
+    private long _createdAt;
     private long _retryAt;
+    // 続けて使えなかった回数 (待つ時間を延ばす)。場所が変わったとき、長く使えていたあとに失敗したときは 0 から
+    private int _failures;
 
-    /// <summary>作れなかった・止めたあと、もう一度作るまでの時間。</summary>
+    /// <summary>使えなくなってから、もう一度作るまでの最初の時間。</summary>
     public TimeSpan RetryAfter { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>続けて使えないときに、待つ時間の上限。</summary>
+    public TimeSpan MaxRetryAfter { get; init; } = TimeSpan.FromHours(1);
 
     /// <summary>今の Zenzai。場所が空 (OFF) なら止めて null。作れない・止めて待っている間も null (変換は Mozc などで続ける)。</summary>
     public ZenzaiConverter? Get(string serverPath, string modelPath)
@@ -40,34 +47,46 @@ public sealed class ZenzaiHolder(Func<string, string, ZenzaiConverter>? create =
             Stop();
             _key = key;
             _retryAt = 0;
+            _failures = 0;
         }
+        // 何度も失敗して諦めた (llama-server が起動しない・答えない。例外にはならない) ときも、止めて待ってから作り直す。
+        // 場所にファイルが無い (IsInstalled が false) ときは、場所を直すまで作り直しても同じなので、そのまま
+        if (_zenzai is { IsInstalled: true, IsAvailable: false }) StopAndWait("Zenzai が答えないので止めました");
         if (_zenzai is null && _now() >= _retryAt)
         {
             try
             {
                 _zenzai = _create(server, model);
+                _createdAt = _now();
             }
             catch (Exception ex)
             {
                 // 作れないとき (#973: 同梱の .NET に System.Net.Http が無い) は、変換は Mozc などで続ける
-                // (HybridConverter は Zenzai が無ければ今までどおり変換する)
-                WaitBeforeRetry();
-                Diagnostics.Log.Error($"Zenzai を使えないので、今までの変換エンジンで変換します ({RetryAfter.TotalMinutes} 分後にもう一度試します): {ex}");
+                // (HybridConverter は Zenzai が無ければ今までどおり変換する)。例外の中身を書くのは 1 回目だけ
+                var wait = WaitBeforeRetry();
+                var detail = _failures == 1 ? ex.ToString() : ex.Message;
+                Diagnostics.Log.Error($"Zenzai を使えないので、今までの変換エンジンで変換します ({wait.TotalMinutes} 分後にもう一度試します): {detail}");
             }
         }
         return _zenzai;
     }
 
-    /// <summary>変換で例外になった Zenzai を止める (HybridConverter から)。<see cref="RetryAfter"/> たってから作り直す。</summary>
+    /// <summary>変換で例外になった Zenzai を止める (HybridConverter から)。しばらくたってから作り直す。</summary>
     public void Failed(ZenzaiConverter failed)
     {
-        if (!ReferenceEquals(failed, _zenzai)) return;
-        Stop();
-        WaitBeforeRetry();
-        Diagnostics.Log.Info($"Zenzai を止めました。{RetryAfter.TotalMinutes} 分後にもう一度使います");
+        if (ReferenceEquals(failed, _zenzai)) StopAndWait("変換で例外になったので Zenzai を止めました");
     }
 
     public void Dispose() => Stop();
+
+    private void StopAndWait(string reason)
+    {
+        // 長く使えていたあとの失敗は、一時的なものとして最初の待ち時間から
+        if (_now() - _createdAt >= MaxRetryAfter.TotalMilliseconds) _failures = 0;
+        Stop();
+        var wait = WaitBeforeRetry();
+        Diagnostics.Log.Info($"{reason}。{wait.TotalMinutes} 分後にもう一度使います");
+    }
 
     private void Stop()
     {
@@ -75,7 +94,13 @@ public sealed class ZenzaiHolder(Func<string, string, ZenzaiConverter>? create =
         _zenzai = null;
     }
 
-    private void WaitBeforeRetry() => _retryAt = _now() + (long)RetryAfter.TotalMilliseconds;
+    private TimeSpan WaitBeforeRetry()
+    {
+        _failures++;
+        var wait = TimeSpan.FromTicks(Math.Min(MaxRetryAfter.Ticks, RetryAfter.Ticks << Math.Min(_failures - 1, 20)));
+        _retryAt = _now() + (long)wait.TotalMilliseconds;
+        return wait;
+    }
 
     private static ZenzaiConverter CreateAndWarmUp(string server, string model)
     {
