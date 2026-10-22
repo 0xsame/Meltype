@@ -241,6 +241,7 @@ public sealed class MeltypeSession
             SlashAsMiddleDot = () => settings.SlashAsMiddleDot,
             ZSymbols = () => settings.ZSymbols,
             SpaceAroundEnglish = () => settings.SpaceAroundEnglish,
+            SpaceAroundNumbers = () => settings.SpaceAroundNumbers,
             ShiftSpaceHalfWidth = () => settings.ShiftSpaceHalfWidth,
             EnterCommitsAsShown = () => settings.EnterCommitsAsShown,
             AlphanumericKeyStartsAsTyped = () => settings.AlphanumericKeyStartsAsTyped,
