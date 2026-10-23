@@ -144,6 +144,8 @@ Issue・Pull Request のコメントの 1 行目に書くと、bot が GitHub Ac
 
 「変換・判定の間違い」の Issue を作ると、`/repro` と同じことを自動で行います。漢字の変換は再現しません (日本語 / 英語の判定だけを見ます)。
 
+開いている Issue に「着手します」「対応します」「担当します」とだけ (1 行目に) コメントすると、bot がコメントした人を Assignees に入れ、👍 を付けます。「対応しますか?」のような質問では入れません。
+
 <a name="自動の仕分け"></a>
 <img src="docs/images/headings/contributing/s06.svg" alt="自動の仕分け" height="40">
 

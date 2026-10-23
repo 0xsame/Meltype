@@ -260,6 +260,17 @@ async function releaseCommand(issue, command, version) {
   ].join('\n'));
 }
 
+// 「着手します」「対応します」などのコメントで、コメントした人を Assignees に入れる (issue #1098)。
+// 1 行目がその言葉だけのときに限る (「対応しますか?」「だれか対応しますか」などの質問や、文の途中の言葉では入れない)
+const isClaim = line => /^(これ[はをも]?|この\s*issue\s*[はをも]?|私が|わたしが|僕が|ぼくが|自分が)?\s*(着手|対応|担当|作業)(します|しています|してみます|させてください|させていただきます)[。.!！]*$/i.test(line.replace(/\s+$/, ''));
+
+async function claim(issue, login) {
+  if (event.issue.assignees?.some(a => a.login === login)) return;
+  // 割り当てられない人 (Issue に関われない人) は、GitHub が黙って外す。入ったかどうかは返事で確かめる
+  const updated = await gh('POST', `/issues/${issue}/assignees`, { assignees: [login] });
+  if (updated.assignees?.some(a => a.login === login)) await react('+1');
+}
+
 async function parse() {
   const issue = event.issue.number;
   const isPr = Boolean(event.issue.pull_request);
@@ -305,6 +316,10 @@ async function parse() {
   }
 
   const line = (event.comment.body ?? '').split('\n')[0].trim();
+  if (!isPr && event.issue.state === 'open' && event.comment.user?.type !== 'Bot' && isClaim(line)) {
+    await claim(issue, event.comment.user.login);
+    return output({ action: 'none' });
+  }
   const match = line.match(/^\/(repro|explain|ca|jht|test-repro|test-jht|test-explain|test|pack|pre-release|release|help)\b\s*(.*)$/);
   if (!match || event.comment.user?.type === 'Bot') return output({ action: 'none' });
   const [, command, rest] = match;
