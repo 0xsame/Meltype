@@ -61,7 +61,7 @@ const summary = [
   '',
 ];
 if (added.length > 0) {
-  summary.push('| ファイル | 行 | 内容 |', '|---|---|---|', ...added.map(a => `| \`${a.file}\` | ${a.row} | ${a.message.replace(/\|/g, '\\|')} |`), '');
+  summary.push('| ファイル | 行 | 内容 |', '|---|---|---|', ...added.map(a => `| \`${a.file}\` | ${a.row} | ${a.message.replace(/[\\|]/g, '\\$&')} |`), '');
   summary.push('直すには `dotnet format whitespace --folder --include <ファイル>` を流し、変えた行の分だけ残してください。');
 }
 console.log(summary.join('\n'));
