@@ -54,12 +54,95 @@ function extractIdentifiers(text) {
   ].map(value => value.toLowerCase()))];
 }
 
-// Normalize the same Z+H/J/K/L arrow-key family when it is written as a chord
-// or as zh/zj/zk/zl, so equivalent feature reports share one distinctive signal.
-function normalizeArrowChordFamily(text) {
-  return text
-    .replace(/\bz\s*\+\s*h\s*\/\s*j\s*\/\s*k\s*\/\s*l\b/gi, ' zhjkl zhkey zjkey zkkey zlkey ')
-    .replace(/\bzh\b[\s、,/]+\bzj\b[\s、,/]+\bzk\b[\s、,/]+\bzl\b/gi, ' zhjkl zhkey zjkey zkkey zlkey ');
+const KEY_CONTEXT = /\b(?:key|keys|keyboard|shortcut|chord|press|pressed|type|typing)\b|キー|打鍵|押す|押した|打つ|打てる/i;
+const MODIFIER_CHORD = /\b((?:(?:ctrl|control|alt|shift|meta|cmd|command|win|windows)\s*\+\s*)+)([a-z0-9])\b/gi;
+
+function nearbyKeyContext(text, index, length) {
+  const start = Math.max(
+    text.lastIndexOf('\n', index - 1),
+    text.lastIndexOf('.', index - 1),
+    text.lastIndexOf('。', index - 1),
+    text.lastIndexOf('!', index - 1),
+    text.lastIndexOf('！', index - 1),
+    text.lastIndexOf('?', index - 1),
+    text.lastIndexOf('？', index - 1),
+    text.lastIndexOf(';', index - 1),
+    text.lastIndexOf('；', index - 1),
+  ) + 1;
+  const endCandidates = [
+    text.indexOf('\n', index + length),
+    text.indexOf('.', index + length),
+    text.indexOf('。', index + length),
+    text.indexOf('!', index + length),
+    text.indexOf('！', index + length),
+    text.indexOf('?', index + length),
+    text.indexOf('？', index + length),
+    text.indexOf(';', index + length),
+    text.indexOf('；', index + length),
+  ].filter(position => position >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : text.length;
+  return KEY_CONTEXT.test(text.slice(start, end));
+}
+
+function keySequenceToken(keys) {
+  return 'keyseq_' + keys.map(key => key.toLowerCase()).join('_');
+}
+
+function chordFamilyPattern() {
+  return /\b([a-z])\s*\+\s*([a-z](?:\s*\/\s*[a-z])*)\b/gi;
+}
+
+function compactChordFamilyPattern() {
+  return /\b[a-z]{2}(?:\s*[,、/]\s*[a-z]{2})+\b/gi;
+}
+
+function normalizeKeyInputText(text) {
+  let normalized = text.replace(chordFamilyPattern(), (match, first, rest, index) => {
+    if (!nearbyKeyContext(text, index, match.length)) return match;
+    return rest.match(/[a-z]/gi).map(key => keySequenceToken([first, key])).join(' ');
+  });
+  normalized = normalized.replace(compactChordFamilyPattern(), (match, index) => {
+    if (!nearbyKeyContext(normalized, index, match.length)) return match;
+    const keys = match.match(/[a-z]{2}/gi);
+    if (new Set(keys.map(key => key[0].toLowerCase())).size !== 1) return match;
+    return keys.map(key => keySequenceToken([...key])).join(' ');
+  });
+  return normalized.replace(MODIFIER_CHORD, (match, modifiers, key) => {
+    const keys = [...modifiers.matchAll(/\b(?:ctrl|control|alt|shift|meta|cmd|command|win|windows)\b/gi)]
+      .map(([modifier]) => modifier);
+    keys.push(key);
+    return keySequenceToken(keys);
+  });
+}
+
+function extractKeyInputSearchTerms(text) {
+  const terms = [];
+  const add = (keys, phrase) => {
+    terms.push([phrase, 20], [keys.join(''), 20]);
+  };
+  for (const match of text.matchAll(chordFamilyPattern())) {
+    if (!nearbyKeyContext(text, match.index, match[0].length)) continue;
+    for (const key of match[2].match(/[a-z]/gi)) {
+      add([match[1], key], match[1] + ' + ' + key);
+    }
+  }
+  for (const match of text.matchAll(compactChordFamilyPattern())) {
+    if (!nearbyKeyContext(text, match.index, match[0].length)) continue;
+    const sequences = match[0].match(/[a-z]{2}/gi);
+    if (new Set(sequences.map(key => key[0].toLowerCase())).size !== 1) continue;
+    for (const sequence of sequences) {
+      add([...sequence], sequence[0] + ' + ' + sequence[1]);
+    }
+  }
+  for (const match of text.matchAll(MODIFIER_CHORD)) {
+    const modifiers = [...match[1].matchAll(/\b(?:ctrl|control|alt|shift|meta|cmd|command|win|windows)\b/gi)]
+      .map(([modifier]) => modifier.toLowerCase());
+    const keys = [...modifiers, match[2].toLowerCase()];
+    const compact = keys.join('+');
+    const spaced = keys.join(' + ');
+    terms.push([compact, 20], [spaced, 20]);
+  }
+  return terms;
 }
 
 function extractTerms(title, body) {
@@ -68,7 +151,10 @@ function extractTerms(title, body) {
     const term = value.trim().toLowerCase();
     if (term.length < 2 || STOPWORDS.has(term) || /^\d+$/.test(term)) return;
     const rankedWeight = weight + (fromTitle ? 5 : 0);
-    terms.set(term, Math.max(terms.get(term) ?? 0, rankedWeight));
+    const previous = terms.get(term);
+    if (!previous || rankedWeight > previous.weight) {
+      terms.set(term, { weight: rankedWeight, fromTitle });
+    }
   };
   const collect = (source, fromTitle) => {
     for (const word of source.match(/[A-Za-z][A-Za-z0-9_.:-]{3,}/g) ?? []) add(word, 4, fromTitle);
@@ -81,22 +167,42 @@ function extractTerms(title, body) {
   };
   collect(title, true);
   collect(body, false);
-  return [...terms].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
+  return [...terms]
+    .map(([term, metadata]) => [term, metadata.weight, metadata.fromTitle])
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length);
 }
 
 export function extractIssueSignals(issue) {
-  const title = normalizeArrowChordFamily(String(issue?.title ?? '').replace(/^\[[^\]]+\]\s*/, ''));
-  const body = normalizeArrowChordFamily(searchableBody(issue?.body ?? ''));
+  const title = String(issue?.title ?? '').replace(/^\[[^\]]+\]\s*/, '');
+  const body = searchableBody(issue?.body ?? '');
   const text = title + '\n' + body;
+  const normalizedTitle = normalizeKeyInputText(title);
+  const normalizedBody = normalizeKeyInputText(body);
   const references = [...new Set([...text.matchAll(/(?:^|[^\w])#(\d+)\b/g)].map(match => Number(match[1])))];
   const identifiers = extractIdentifiers(text);
-  const terms = extractTerms(title, body).slice(0, MAX_EXTRACTED_TERMS);
+  const terms = extractTerms(normalizedTitle, normalizedBody).slice(0, MAX_EXTRACTED_TERMS);
+  const searchTerms = [
+    ...extractTerms(title, '').slice(0, MAX_EXTRACTED_TERMS),
+    ...extractTerms('', body).slice(0, MAX_EXTRACTED_TERMS),
+    ...extractKeyInputSearchTerms(text),
+  ];
   const labels = new Set(
     (issue?.labels ?? [])
       .map(label => typeof label === 'string' ? label : label.name)
       .filter(Boolean),
   );
-  return { title, text: text.toLowerCase(), references, identifiers, terms, labels };
+  return {
+    title,
+    body,
+    normalizedTitle: normalizedTitle.toLowerCase(),
+    normalizedBody: normalizedBody.toLowerCase(),
+    text: text.toLowerCase(),
+    references,
+    identifiers,
+    terms,
+    searchTerms,
+    labels,
+  };
 }
 
 function selectSearchTerms(terms) {
@@ -104,6 +210,7 @@ function selectSearchTerms(terms) {
   for (const entry of terms) {
     const term = Array.isArray(entry) ? entry[0] : entry;
     const weight = Array.isArray(entry) && Number.isFinite(entry[1]) ? entry[1] : 0;
+    const fromTitle = Array.isArray(entry) && entry[2] === true;
     if (typeof term !== 'string') continue;
     const normalized = term.trim().toLowerCase().replace(/["\\]/g, '');
     if (normalized.length < 2 || STOPWORDS.has(normalized) || /^\d+$/.test(normalized)) continue;
@@ -112,17 +219,27 @@ function selectSearchTerms(terms) {
     const priority = weight + lengthBonus + (identifier ? 100 : 0);
     const previous = unique.get(normalized);
     if (!previous || priority > previous.priority) {
-      unique.set(normalized, { term: normalized, priority });
+      unique.set(normalized, { term: normalized, priority, fromTitle });
     }
   }
-  return [...unique.values()]
+  const selected = [];
+  let titleTerms = 0;
+  for (const entry of [...unique.values()]
     .sort((a, b) =>
       b.priority - a.priority ||
       b.term.length - a.term.length ||
       a.term.localeCompare(b.term),
-    )
-    .slice(0, MAX_SEARCH_TERMS)
-    .map(entry => entry.term);
+    )) {
+    if (entry.fromTitle && titleTerms >= 3) continue;
+    if (selected.some(previous =>
+      Math.min(previous.term.length, entry.term.length) >= 3 &&
+      (previous.term.includes(entry.term) || entry.term.includes(previous.term))
+    )) continue;
+    selected.push(entry);
+    if (entry.fromTitle) titleTerms++;
+    if (selected.length === MAX_SEARCH_TERMS) break;
+  }
+  return selected.map(entry => entry.term);
 }
 
 export function buildSearchQuery(repo, terms, label = null) {
@@ -140,8 +257,8 @@ export function buildSearchQueries(repo, issue) {
   const preferredLabel =
     labels.find(label => CATEGORY_LABELS.has(label)) ??
     labels.find(label => FALLBACK_LABEL_PATTERN.test(label));
-  const primary = buildSearchQuery(repo, signals.terms, preferredLabel ?? null);
-  const fallback = buildSearchQuery(repo, signals.terms);
+  const primary = buildSearchQuery(repo, signals.searchTerms, preferredLabel ?? null);
+  const fallback = buildSearchQuery(repo, signals.searchTerms);
   return [...new Set([primary, fallback].filter(Boolean))].slice(0, MAX_SEARCH_QUERIES);
 }
 
@@ -161,8 +278,6 @@ export function scoreCandidate(currentIssue, candidate, current = extractIssueSi
   // Compare signals in both directions. Otherwise a related term that survives
   // the 80-term cap on only one issue can be missed depending on which issue
   // triggered the search.
-  const currentBody = current.text.slice(current.title.length + 1);
-  const otherBody = other.text.slice(other.title.length + 1);
   const sharedTerms = new Map();
   for (const [term, weight] of [...current.terms, ...other.terms]) {
     if (term.length < 3 || STOPWORDS.has(term)) continue;
@@ -171,10 +286,12 @@ export function scoreCandidate(currentIssue, candidate, current = extractIssueSi
   const titleMatches = [];
   const bodyMatches = [];
   for (const [term, weight] of sharedTerms) {
-    const inCurrentTitle = current.title.toLowerCase().includes(term);
-    const inOtherTitle = other.title.toLowerCase().includes(term);
-    const inCurrentBody = term.length >= MIN_BODY_TERM_LENGTH && currentBody.includes(term);
-    const inOtherBody = term.length >= MIN_BODY_TERM_LENGTH && otherBody.includes(term);
+    const inCurrentTitle = current.title.toLowerCase().includes(term) || current.normalizedTitle.includes(term);
+    const inOtherTitle = other.title.toLowerCase().includes(term) || other.normalizedTitle.includes(term);
+    const inCurrentBody = term.length >= MIN_BODY_TERM_LENGTH &&
+      (current.body.toLowerCase().includes(term) || current.normalizedBody.includes(term));
+    const inOtherBody = term.length >= MIN_BODY_TERM_LENGTH &&
+      (other.body.toLowerCase().includes(term) || other.normalizedBody.includes(term));
     if ((inCurrentTitle && inOtherTitle) ||
         (inCurrentTitle && inOtherBody) ||
         (inOtherTitle && inCurrentBody)) {
@@ -186,7 +303,7 @@ export function scoreCandidate(currentIssue, candidate, current = extractIssueSi
   const allMatches = [...titleMatches, ...bodyMatches];
   const meaningfulMatches = matches => matches.filter(match =>
     !allMatches.some(otherMatch =>
-      otherMatch.term.length >= match.term.length + 2 && otherMatch.term.includes(match.term)
+      otherMatch.term.length > match.term.length && otherMatch.term.includes(match.term)
     )
   );
   const distinctTitleMatches = meaningfulMatches(titleMatches);

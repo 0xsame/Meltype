@@ -10,6 +10,8 @@ import {
   formatRelatedIssueComment,
   scoreCandidate,
 } from '../issue-relation-candidates.mjs';
+import { searchIssueFixtures } from '../fixture-issue-search.mjs';
+import { keyInputIssues } from '../fixtures/key-input-normalization.mjs';
 
 test('extracts identifiers and excludes log/environment sections', () => {
   const signals = extractIssueSignals({
@@ -23,7 +25,7 @@ test('extracts identifiers and excludes log/environment sections', () => {
   assert.ok(!signals.text.includes('privatepath'));
 });
 
-test('builds repository-scoped queries with at most four OR operators', () => {
+test('builds repository-scoped queries with at most five OR alternatives', () => {
   const terms = [
     ['ordinarylongterm', 1],
     ['0x80004005', 1],
@@ -39,7 +41,8 @@ test('builds repository-scoped queries with at most four OR operators', () => {
   assert.ok(query.includes('repo:yksr-melt/Meltype is:issue'));
   assert.match(query, /"0x80004005"/);
   assert.match(query, /"win32error"/);
-  assert.ok((query.match(/ OR /g) ?? []).length <= 4, 'five terms permit at most four OR operators');
+  assert.equal((query.match(/ OR /g) ?? []).length, 4, 'the query uses exactly five distinct alternatives');
+  assert.equal(query.match(/"[^"]+"/g).length, 5);
   assert.equal((query.match(/"ordinarylongterm"/g) ?? []).length, 1);
   const identifierQuery = buildSearchQuery(
     'yksr-melt/Meltype',
@@ -47,6 +50,136 @@ test('builds repository-scoped queries with at most four OR operators', () => {
   );
   assert.equal(identifierQuery.split(' OR ').length - 1, 1);
   assert.equal(buildSearchQuery('yksr-melt/Meltype', []), null);
+});
+
+test('normalizes general key combinations without collapsing the individual keys', () => {
+  const spacedCtrlIssue = {
+    number: 9201,
+    title: 'Ctrl + X shortcut',
+    body: 'Press Ctrl+X to cut text.',
+  };
+  const compactCtrlIssue = {
+    number: 9202,
+    title: 'CTRL+X shortcut',
+    body: 'Press Ctrl + X to cut text.',
+  };
+  const spacedCtrl = extractIssueSignals(spacedCtrlIssue);
+  const compactCtrl = extractIssueSignals(compactCtrlIssue);
+  assert.ok(spacedCtrl.normalizedTitle.includes('keyseq_ctrl_x'));
+  assert.ok(compactCtrl.normalizedTitle.includes('keyseq_ctrl_x'));
+  assert.ok(spacedCtrl.terms.some(([term]) => term === 'keyseq_ctrl_x'));
+  assert.equal(spacedCtrl.text.includes('ctrl + x'), true, 'raw text remains available for references and identifiers');
+  assert.ok(scoreCandidate(spacedCtrlIssue, compactCtrlIssue));
+
+  const chord = extractIssueSignals(keyInputIssues[234]);
+  const compactSequences = extractIssueSignals(keyInputIssues[338]);
+  for (const key of ['h', 'j', 'k', 'l']) {
+    const token = `keyseq_z_${key}`;
+    assert.ok(chord.normalizedTitle.includes(token));
+    assert.ok(compactSequences.normalizedBody.includes(token));
+  }
+  assert.ok(scoreCandidate(keyInputIssues[234], keyInputIssues[338]));
+  assert.ok(scoreCandidate(keyInputIssues[338], keyInputIssues[234]));
+});
+
+test('query-term search finds a modifier chord across spacing and case variants', async () => {
+  const source = {
+    number: 9203,
+    title: 'Ctrl + X shortcut',
+    body: 'Press Ctrl + X to cut selected text.',
+  };
+  const candidate = {
+    number: 9204,
+    title: 'CTRL+X shortcut',
+    body: 'Press CTRL+X to cut selected text.',
+  };
+  const calls = [];
+  const found = await findRelatedIssues(source, {
+    repo: 'yksr-melt/Meltype',
+    search: query => {
+      calls.push(query);
+      return searchIssueFixtures(query, [candidate]);
+    },
+    getIssue: async () => null,
+  });
+  assert.ok(calls[0].includes('"ctrl+x"'));
+  assert.deepEqual(found.map(entry => entry.issue.number), [9204]);
+});
+
+test('normalizes key-input list separators and case, but leaves ordinary letter text untouched', () => {
+  const slashList = extractIssueSignals({
+    title: 'A + B / C key combinations',
+    body: 'The a b / a c sequences are alternatives.',
+  });
+  const commaList = extractIssueSignals({
+    title: 'AB, AC key combinations',
+    body: 'Press ab, ac for the same actions.',
+  });
+  assert.ok(slashList.normalizedTitle.includes('keyseq_a_b'));
+  assert.ok(slashList.normalizedTitle.includes('keyseq_a_c'));
+  assert.ok(commaList.normalizedTitle.includes('keyseq_a_b'));
+  assert.ok(commaList.normalizedTitle.includes('keyseq_a_c'));
+
+  const ordinary = extractIssueSignals({
+    title: 'This is an ordinary English sentence',
+    body: 'A + B is a mathematical expression. A shortcut is documented later.',
+  });
+  assert.ok(!ordinary.normalizedTitle.includes('keyseq_'));
+  assert.ok(!ordinary.normalizedBody.includes('keyseq_'));
+  assert.match(ordinary.normalizedBody, /a \+ b/i);
+
+  const unrelatedContext = extractIssueSignals({
+    title: 'Letters are part of this name',
+    body: 'A + B is a formula. The keyboard shortcut is Ctrl+X.',
+  });
+  assert.ok(!unrelatedContext.normalizedBody.includes('keyseq_a_b'));
+  assert.ok(unrelatedContext.normalizedBody.includes('keyseq_ctrl_x'));
+
+  const compactList = extractIssueSignals({
+    title: 'zh / zj / zk / zl key sequence',
+    body: '',
+  });
+  for (const key of ['h', 'j', 'k', 'l']) {
+    assert.ok(compactList.normalizedTitle.includes(`keyseq_z_${key}`));
+  }
+});
+
+test('retrieves fixture Issues by OR query terms and does not return unrelated text', async () => {
+  const calls = [];
+  const retrieved = new Set();
+  const found = await findRelatedIssues(keyInputIssues[234], {
+    repo: 'yksr-melt/Meltype',
+    search: query => {
+      calls.push(query);
+      const result = searchIssueFixtures(query, Object.values(keyInputIssues));
+      for (const issue of result.items) retrieved.add(issue.number);
+      return result;
+    },
+    getIssue: async () => null,
+  });
+  assert.ok(calls.length >= 1 && calls.length <= 2);
+  assert.ok(calls.some(query => query.includes('"z + h"')));
+  assert.ok(calls.some(query => query.includes('"zh"')));
+  assert.ok(!retrieved.has(9001), 'query-term search must not return the unrelated shortcut fixture');
+  assert.ok(calls.every(query => (query.match(/ OR /g) ?? []).length <= 4));
+  assert.deepEqual(found.map(candidate => candidate.issue.number), [338]);
+  assert.ok(!found.some(candidate => candidate.issue.number === 9001));
+});
+
+test('fixture retrieval applies case-insensitive OR substring terms separately from labels', () => {
+  const matches = searchIssueFixtures(
+    'repo:yksr-melt/Meltype is:issue label:"bug" ("trackball" OR "firmware")',
+    [
+      { number: 1, title: 'Trackball reset', body: '', labels: [{ name: 'bug' }] },
+      { number: 2, title: 'Driveway firmwared tool', body: '', labels: [{ name: 'bug' }] },
+      { number: 3, title: 'Trackball reset', body: '', labels: [{ name: '提案' }] },
+      { number: 4, title: 'Unrelated printer', body: '', labels: [{ name: 'bug' }] },
+    ],
+  );
+  assert.deepEqual(matches.items.map(issue => issue.number), [1, 2]);
+  assert.deepEqual(searchIssueFixtures('repo:yksr-melt/Meltype is:issue', [
+    { number: 5, title: 'Anything', body: '', labels: [] },
+  ]).items, []);
 });
 
 
@@ -119,6 +252,22 @@ test('returns an empty list when search finds no candidates', async () => {
     getIssue: async () => null,
   });
   assert.deepEqual(found, []);
+});
+
+test('does not search for empty terms but still resolves explicit issue references', async () => {
+  const source = { number: 9401, title: '[提案]', body: 'See #9402' };
+  const referenced = { number: 9402, title: 'Unrelated title', body: '' };
+  let searchCalls = 0;
+  const found = await findRelatedIssues(source, {
+    repo: 'yksr-melt/Meltype',
+    search: async () => {
+      searchCalls++;
+      return { items: [] };
+    },
+    getIssue: async number => number === 9402 ? referenced : null,
+  });
+  assert.equal(searchCalls, 0);
+  assert.deepEqual(found.map(candidate => candidate.issue.number), [9402]);
 });
 
 test('propagates search API failures to the caller', async () => {

@@ -46,18 +46,6 @@ export const historical = {
     body: 'Claude のチャット入力欄で英単語 Claude の後に空白を入れず日本語を続けると、残りがローマ字として読まれる。#261 と同じ環境で起きており、関連するかもしれない。\n\nRelates to #261',
     labels: [{ name: 'windows' }, { name: 'bug' }],
   },
-  234: {
-    number: 234,
-    title: '[機能提案] Z + H / J / K / L キーでの矢印入力機能の追加',
-    body: '従来のMacの日本語入力などであれば、Z + H / J / K / L キーでそれぞれ ← / ↓ / ↑ / → が入力できたが、meltypeではまだ対応していない。Z + H / J / K / L キーで、それぞれ ← / ↓ / ↑ / → が入力できる機能。',
-    labels: [{ name: '提案' }],
-  },
-  338: {
-    number: 338,
-    title: '[機能提案] zlで→と矢印が打てるようにしてほしい',
-    body: '矢印を使う際に時間短縮となる。zh、zj、zk、zlで←、↓、↑、→とGoogle日本語入力では矢印が打てるので、こちらでも使えるようにしてほしい。zlと打つと、自動で→が表示される、またはzlと入力してスパースでの変換候補にあるだけでもいい。',
-    labels: [{ name: '提案' }],
-  },
   717: {
     number: 717,
     title: '[誤判定] URL入力時に日本語と判別されてしまう',
@@ -85,8 +73,6 @@ export const historical = {
 };
 
 export const cases = [
-  { source: 234, expected: 338, related: true, note: 'Z+H/J/K/L arrow-input feature' },
-  { source: 338, expected: 234, related: true, note: 'reciprocal arrow-input feature' },
   { source: 873, expected: 874, related: true, note: 'Brave/PWA IME input failure' },
   { source: 874, expected: 873, related: true, note: 'reciprocal Brave/PWA IME input failure' },
   { source: 878, expected: 873, related: true, note: 'explicitly consolidated Brave issue' },
@@ -95,6 +81,8 @@ export const cases = [
   { source: 95, expected: 6, related: true, note: 'explicitly consolidated duplicate/related app-input report' },
   { source: 717, expected: 725, related: false, note: 'same form/category but different defect' },
   { source: 725, expected: 717, related: false, note: 'reciprocal unrelated-defect control' },
+  { source: 717, expected: 95, related: false, note: 'overlapping Japanese n-grams are not distinct evidence' },
+  { source: 95, expected: 717, related: false, note: 'reciprocal control for overlapping Japanese n-grams' },
   { source: 111, expected: 117, related: false, note: 'same broad bug label, different app and failure mode' },
   { source: 117, expected: 111, related: false, note: 'reciprocal unrelated app/failure-mode control' },
 ];

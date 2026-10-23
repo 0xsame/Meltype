@@ -29,7 +29,6 @@ async function searchIssues(query) {
 }
 
 const cases = [
-  { source: 234, expected: 338, related: true, note: 'Z+H/J/K/L arrow-input feature' },
   { source: 873, expected: 874, related: true, note: 'Brave/PWA IME input failure; later grouped in #878' },
   { source: 316, expected: 261, related: true, note: 'explicit reference; recall when keyword search misses' },
   { source: 717, expected: 725, related: false, note: 'same form/category but different defect' },
@@ -59,7 +58,7 @@ const positives = results.filter(result => result.related);
 const negatives = results.filter(result => !result.related);
 console.log(JSON.stringify({
   mode: 'live GitHub Issue API + candidate search/scoring pipeline',
-  boundedRequests: '4 source Issues, 4 expected Issues, at most 8 bounded Issue searches, plus explicit-reference lookups only',
+  boundedRequests: '3 source Issues, 3 expected Issues, at most 6 bounded Issue searches, plus explicit-reference lookups only',
   summary: {
     cases: results.length,
     passed: results.filter(result => result.pass).length,
