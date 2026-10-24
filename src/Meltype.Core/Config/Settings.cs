@@ -392,7 +392,7 @@ public sealed class Settings
     public bool CorrectTypos { get; set; } = true;
 
     [Category("1. 全般"), DisplayName("/ キーで中黒「・」"),
-     Description("かなのすぐ後ろで打った / を中黒「・」にします (いーろん/ますく → イーロン・マスク)。英字・数字の後ろ (and/or、3/4、URL) は / のままです。文章の入力欄の打ち始めの / は、この設定に関係なく「・」になり、Space で / にできます。OFF のときも、z/ または / を打って Space で「・」にできます。")]
+     Description("かなのすぐ後ろで打った / を中黒「・」にします (いーろん/ますく → イーロン・マスク)。英字・数字の後ろ (and/or、3/4、URL) は / のままです。文章の入力欄の打ち始めの / は、この設定に関係なく「・」になり、Space で / にできます。OFF のときも、z/ (設定「z + 記号・hjkl で記号・矢印を入れる」が ON のとき) または / を打って Space で「・」にできます。")]
     public bool SlashAsMiddleDot { get; set; }
 
     [Category("1. 全般"), DisplayName("z + 記号・hjkl で記号・矢印を入れる"),
