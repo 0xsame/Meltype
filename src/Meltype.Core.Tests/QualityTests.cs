@@ -117,6 +117,8 @@ internal static class Quality
         // 英単語 + と + っ で始まる続き (not|to|tte) は、っ の綴りで続く日本語 (則って: issue #1030)
         new("日本語", "nottotte", "のっとって"),
         new("日本語", "kanreininottotte", "かんれいにのっとって"),
+        new("混在", "exceltoppt", "excelとppt"),
+        new("混在", "pythontoffmpeg", "pythonとffmpeg"),
         new("混在", "cattodog", "catとdog"),
         // 数字の前後がかなとして読める (huuso|ku|6|me) のは、略語 (i18n) ではなく数字を挟んだ日本語 (issue #1017)
         new("日本語", "huusoku6me-toru", "ふうそく6めーとる"),
