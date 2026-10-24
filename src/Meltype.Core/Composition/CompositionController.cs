@@ -1338,11 +1338,11 @@ public sealed class CompositionController
             case VirtualKeys.Up:
                 NextCandidate(-1);
                 return true;
-            case 0x22 /* PageDown */:
+            case VirtualKeys.PageDown:
                 // 候補の一覧のページ送り (Microsoft IME と同じ。アプリに通すと確定してしまっていた: issue #1016)
                 NextCandidatePage(+1);
                 return true;
-            case 0x21 /* PageUp */:
+            case VirtualKeys.PageUp:
                 NextCandidatePage(-1);
                 return true;
             case VirtualKeys.Right when shift:
