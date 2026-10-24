@@ -110,6 +110,8 @@ internal static class Quality
         // 英単語の最後の d / t と は (android|ha の dha = でゃ にしない: issue #1044)
         new("混在", "Androidha", "Androidは"),
         new("混在", "kyouhaAndroidhaii", "きょうはAndroidはいい"),
+        new("混在", "Androidwa", "Androidわ"),
+        new("混在", "redditwo", "redditを"),
         new("混在", "Discordha", "Discordは"),
         new("日本語", "dhisuku", "でぃすく"),
         new("混在", "foo_bar@example.com", "foo_bar@example.com"),
