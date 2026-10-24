@@ -122,6 +122,8 @@ internal static class Quality
         new("混在", "cattodog", "catとdog"),
         // 数字の前後がかなとして読める (huuso|ku|6|me) のは、略語 (i18n) ではなく数字を挟んだ日本語 (issue #1017)
         new("日本語", "huusoku6me-toru", "ふうそく6めーとる"),
+        new("記号・数字", "e2e", "e2e"),
+        new("記号・数字", "o2o", "o2o"),
         new("混在", "i18n", "i18n"),
         new("混在", "k8s", "k8s"),
         new("混在", "h2o", "h2o"),
