@@ -577,6 +577,17 @@ public sealed class CompositionText
             var analysis = romaji.AnalyzeFragment(original.ToLowerInvariant());
             var position = 0;
             var tokens = analysis.Tokens;
+            // 最初の 1 文字を head の単位にして、残りをかなの単位に分ける (corn|yo の n、android|ha の d、vrc|ya の c)
+            void AddSplit(string head, string letters, Detection.RomajiAnalysis tail)
+            {
+                _units.Add(new CompositionUnit(head, letters[..1]));
+                var offset = 1;
+                foreach (var token in tail.Tokens)
+                {
+                    _units.Add(new CompositionUnit(token.Kana, letters.Substring(offset, token.Romaji.Length)));
+                    offset += token.Romaji.Length;
+                }
+            }
             for (var i = 0; i < tokens.Count; i++)
             {
                 var length = tokens[i].Romaji.Length;
@@ -594,46 +605,22 @@ public sealed class CompositionText
                 else if (raw.Length >= 3 && raw[..2].Equals("ny", StringComparison.OrdinalIgnoreCase) &&
                          LettersBefore(_units.Count) + raw[..1] is var word && EndsWithEnglishWord(word) && !romaji.Analyze(word.ToLowerInvariant()).IsValid &&
                          romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } rest)
-                {
-                    _units.Add(new CompositionUnit("ん", raw[..1]));
-                    var offset = 1;
-                    foreach (var token in rest.Tokens)
-                    {
-                        _units.Add(new CompositionUnit(token.Kana, raw.Substring(offset, token.Romaji.Length)));
-                        offset += token.Romaji.Length;
-                    }
-                }
-                // 英単語の最後の d / t + は行・わ行 (android|ha の dha = でゃ、reddit|ha の tha = てゃ) は、d / t を英単語に残して は と分ける
+                    AddSplit("ん", raw, rest);
+                // 英単語の最後の d / t + は行・わ行 (android|ha の dha = でゃ、reddit|ha の tha = てゃ、android|wa の dwa = どぁ) は、d / t を英単語に残して は と分ける
                 // (d が でゃ とつながって、英単語の区切りが無くなっていた。Androidha が Andろいでゃ になっていた: issue #1044)。
                 // 英単語は単位の区切りから始まり、ローマ字として読めないものだけ (日本語の でゃ・てぃ を割らない)。
-                else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) is 'd' or 't' && char.ToLowerInvariant(raw[1]) == 'h' &&
+                else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) is 'd' or 't' && char.ToLowerInvariant(raw[1]) is 'h' or 'w' &&
                          EndsWithEnglishWordFromUnit(_units.Count, raw[..1]) &&
                          !romaji.Analyze((LettersBefore(_units.Count) + raw[..1]).ToLowerInvariant()).IsValid &&
                          romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } particle)
-                {
-                    _units.Add(new CompositionUnit(raw[..1], raw[..1]));
-                    var offset = 1;
-                    foreach (var token in particle.Tokens)
-                    {
-                        _units.Add(new CompositionUnit(token.Kana, raw.Substring(offset, token.Romaji.Length)));
-                        offset += token.Romaji.Length;
-                    }
-                }
+                    AddSplit(raw[..1], raw, particle);
                 // ローマ字として読めない略語の最後の c + h / y (vrc|ya、vc|ha、jc|ha の cya・cha = ちゃ) は、c を略語に残して や・は と分ける
                 // (c が ちゃ とつながって、略語の区切りが無くなっていた。vrcyaranai が vrちゃらない になっていた)。
                 // 読める語 (mac|hi = まち) は日本語のことが多いので分けない。
                 else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) == 'c' && char.ToLowerInvariant(raw[1]) is 'h' or 'y' &&
                          EndsWithListedAbbreviation(raw[..1]) &&
                          romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } after)
-                {
-                    _units.Add(new CompositionUnit(raw[..1], raw[..1]));
-                    var offset = 1;
-                    foreach (var token in after.Tokens)
-                    {
-                        _units.Add(new CompositionUnit(token.Kana, raw.Substring(offset, token.Romaji.Length)));
-                        offset += token.Romaji.Length;
-                    }
-                }
+                    AddSplit(raw[..1], raw, after);
                 else _units.Add(new CompositionUnit(tokens[i].Kana, raw));
                 position += length;
             }
