@@ -1639,9 +1639,100 @@ internal static class CompositionTests
     [Test]
     public static void Issue537_ProcrasticleStaysEnglish()
     {
-        var k = new Keyboard();
-        k.Type("procrasticle\n");
-        Assert.Equal("procrasticle", k.Host.Document);
+        var segmentation = Detector.UseScoredSegmentation;
+        try
+        {
+            foreach (var scored in new[] { false, true })
+            {
+                Detector.UseScoredSegmentation = () => scored;
+                var k = new Keyboard();
+                k.Type("procrasticle");
+                Assert.Equal("procrasticle", k.Showing);
+                k.Type("\n");
+                Assert.Equal("procrasticle", k.Host.Document);
+            }
+        }
+        finally
+        {
+            Detector.UseScoredSegmentation = segmentation;
+        }
+    }
+
+    [Test]
+    public static void Issue1132_ShortEnglishThenJapanese()
+    {
+        // 短い英単語の後ろが読める日本語でも、#537 の補正で全文英字に戻っていた。
+        var segmentation = Detector.UseScoredSegmentation;
+        var spellChecker = Detector.SpellChecker;
+        try
+        {
+            foreach (var scored in new[] { false, true })
+            foreach (var spell in new[] { false, true })
+            foreach (var live in new[] { false, true })
+            {
+                Detector.UseScoredSegmentation = () => scored;
+                Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                foreach (var (typed, expected) in new[]
+                {
+                    ("usbtunaide", "usbつないで"), ("usbtsunaide", "usbつないで"),
+                    ("USBtunaide", "USBつないで"), ("pctunaide", "pcつないで"),
+                    ("usbsuru", "usbする"), ("usbtsukatte", "usbつかって"),
+                    ("usbnuite", "usbぬいて"), ("usbwotunaide", "usbをつないで"),
+                    ("hdmitunaide", "hdmiつないで"),
+                })
+                {
+                    var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
+                    var k = new Keyboard(live: live);
+                    k.Type(typed);
+                    Assert.Equal(expected, k.Showing, message + " 表示");
+                    k.Type("\n");
+                    Assert.Equal(expected, k.Host.Document, message + " Enter");
+
+                    k = new Keyboard(live: live);
+                    k.Type(typed + " ");
+                    Assert.True(k.Host.View?.Converting == true, message + " Space で変換を始める");
+                    k.Type("\n");
+                    Assert.Equal(expected, k.Host.Document, message + " Space → Enter");
+                }
+            }
+        }
+        finally
+        {
+            Detector.UseScoredSegmentation = segmentation;
+            Detector.SpellChecker = spellChecker;
+        }
+    }
+
+    [Test]
+    public static void Issue1132_ShortEnglishThenPendingJapanese()
+    {
+        var segmentation = Detector.UseScoredSegmentation;
+        var spellChecker = Detector.SpellChecker;
+        try
+        {
+            Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+            foreach (var scored in new[] { false, true })
+            {
+                Detector.UseScoredSegmentation = () => scored;
+                foreach (var (typed, showing, committed) in new[]
+                {
+                    ("usbtun", "usbつn", "usbつん"),
+                    ("usbtsukatt", "usbつかっt", "usbつかっt"),
+                })
+                {
+                    var k = new Keyboard();
+                    k.Type(typed);
+                    Assert.Equal(showing, k.Showing, typed + " 入力途中");
+                    k.Type("\n");
+                    Assert.Equal(committed, k.Host.Document, typed + " Enter");
+                }
+            }
+        }
+        finally
+        {
+            Detector.UseScoredSegmentation = segmentation;
+            Detector.SpellChecker = spellChecker;
+        }
     }
 
     [Test]

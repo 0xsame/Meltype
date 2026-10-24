@@ -302,7 +302,9 @@ public sealed partial class CompositionDetector
         var lowerWhole = whole.ToLowerInvariant();
         for (var len = head.Length + 1; len <= lowerWhole.Length; len++)
             if (IsKnownEnglishWord(lowerWhole[..len])) return false;
-        return segments.Skip(1).All(s => !s.IsEnglish && s.Raw.All(char.IsAsciiLetter));
+        // 読めない英字が残るときだけ補正する。usb + つないで のように、かなになった日本語は区切りを保つ。
+        return segments.Skip(1).All(s => !s.IsEnglish && s.Raw.All(char.IsAsciiLetter)) &&
+            segments.Skip(1).Any(s => s.Kana.Any(char.IsAsciiLetter));
     }
 
     /// <summary>
