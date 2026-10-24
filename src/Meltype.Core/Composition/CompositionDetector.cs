@@ -1139,9 +1139,10 @@ public sealed partial class CompositionDetector
         if (word.Length is < 3 or > 6) return -1;
         // 数字の前と後ろが、どちらもかなとして最後まで読める (huuso|ku|6|me|-toru の ku と me) なら、
         // 略語 (i18n の n、k8s の s、h2o の h) ではなく、数字を挟んだ日本語 (風速6メートル: issue #1017)。
+        // 母音 1 文字 (e2e・o2o の e・o) は、かなとして読めても略語のことが多いので、子音から始まる 2 文字以上のときだけ。
         var head = Raw(units, start, digitStart).ToLowerInvariant();
         var tail = (Raw(units, digitEnd, i) + pendingLetters).ToLowerInvariant();
-        if (tail.Length > 0 && _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } &&
+        if (head.Length >= 2 && tail.Length >= 2 && _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } &&
             _romaji.AnalyzeFragment(tail) is { IsValid: true, Partial: "" }) return -1;
         return i;
     }
