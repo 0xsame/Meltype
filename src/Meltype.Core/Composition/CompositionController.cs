@@ -2931,9 +2931,13 @@ public sealed class CompositionController
         var previous = string.IsNullOrEmpty(before) ? '\0' : before[^1];
         var next = string.IsNullOrEmpty(after) ? '\0' : after[0];
         var builder = new StringBuilder(text.Length + 8);
-        bool Spaced(char c) => english && char.IsAsciiLetter(c) || numbers && char.IsAsciiDigit(c);
+        // 英字を含む並び (iPhone15) は english の設定、数字だけの並び (15) は numbers の設定に従う (文字列の中と同じ判定)
+        bool SpacedWord(string word) => word.Any(char.IsAsciiLetter) ? english : numbers && word.Any(char.IsAsciiDigit);
+        // 前に確定した文字列の最後の語・キャレットの後ろの最初の語で決める (iPhone15 の 5 だけを見て数字にしない)
+        var previousWord = new string((before ?? "").Reverse().TakeWhile(IsWordChar).Reverse().ToArray());
+        var nextWord = new string((after ?? "").TakeWhile(IsWordChar).ToArray());
         // 前に確定した英単語 (数字) のすぐ後ろに日本語を続けるとき (GitHub|に、3|回)
-        if (IsJapanese(text[0]) && Spaced(previous)) builder.Append(' ');
+        if (IsJapanese(text[0]) && char.IsAsciiLetterOrDigit(previous) && SpacedWord(previousWord)) builder.Append(' ');
         var i = 0;
         while (i < text.Length)
         {
@@ -2951,7 +2955,7 @@ public sealed class CompositionController
             var word = text[start..stop];
             var left = start > 0 ? text[start - 1] : previous;
             var right = stop < text.Length ? text[stop] : next;
-            var isWord = word.Any(char.IsAsciiLetter) ? english : numbers && word.Any(char.IsAsciiDigit);
+            var isWord = SpacedWord(word);
             if (isWord && IsJapanese(left) && (builder.Length == 0 || builder[^1] != ' ')) builder.Append(' ');
             builder.Append(word);
             if (isWord && IsJapanese(right)) builder.Append(' ');
@@ -2959,7 +2963,7 @@ public sealed class CompositionController
             i = end;
         }
         // 確定した日本語のすぐ後ろが英単語 (数字) のとき (キャレットの後ろの文字)
-        if (IsJapanese(text[^1]) && Spaced(next)) builder.Append(' ');
+        if (IsJapanese(text[^1]) && char.IsAsciiLetterOrDigit(next) && SpacedWord(nextWord)) builder.Append(' ');
         return builder.ToString();
     }
 

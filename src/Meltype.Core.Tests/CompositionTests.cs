@@ -4413,6 +4413,9 @@ internal static class CompositionTests
             ("GitHubに3回push", null, null, true, "GitHub に 3 回 push"),
             ("回", "3", null, false, " 回"),                             // 前に確定した数字に続ける
             ("3", "今日は", "回", false, " 3 "),
+            ("を", "iPhone15", null, false, "を"),                     // 前の語に英字があれば英単語の設定に従う (5 だけを見ない: #1072 のレビュー)
+            ("を", "iPhone15", null, true, " を"),
+            ("買う", null, "15Pro", false, "買う"),                     // キャレットの後ろの語も同じ
         })
         {
             Assert.Equal(expected, CompositionController.AddSpacesAroundEnglish(text, before, after, english, numbers: true), text);
