@@ -124,18 +124,27 @@ bool resetProtection(Instance *instance, AddonInstance *frontend) {
     return true;
 }
 
-bool triggerJapanese(Instance *instance, AddonInstance *frontend) {
+bool triggerKeepsProtection(Instance *instance, AddonInstance *frontend) {
     ICUUID uuid;
     auto *ic = terminal(instance, frontend, uuid);
     if (!expect(ic != nullptr, "trigger input context exists")) return false;
     if (!expect(press(frontend, uuid, "Control+space"), "Fcitx trigger disables current IM")) return false;
+    frontend->call<ITestFrontend::sendKeyEvent>(uuid, Key("Control_L"), true);
     if (!expect(press(frontend, uuid, "Control+space"), "Fcitx trigger enables Meltype")) return false;
+    frontend->call<ITestFrontend::sendKeyEvent>(uuid, Key("Control_L"), true);
+    if (!expect(instance->inputMethod(ic) == "meltype", "Meltype is selected after the Fcitx trigger")) return false;
+    for (char c : std::string("kyouha")) {
+        if (!expect(!press(frontend, uuid, std::string(1, c)), "Fcitx activation keeps terminal code keys protected")) return false;
+    }
+    if (!expect(ic->inputPanel().preedit().empty(), "Fcitx activation does not start Japanese composition")) return false;
+    press(frontend, uuid, "Return");
+    if (!expect(press(frontend, uuid, "Henkan"), "explicit Japanese mode key still works after Fcitx activation")) return false;
     type(frontend, uuid, "kyouha");
-    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "explicit Fcitx activation selects terminal Japanese")) return false;
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "only the explicit mode key selects terminal Japanese")) return false;
     frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
     press(frontend, uuid, "Return");
     frontend->call<ITestFrontend::destroyInputContext>(uuid);
-    std::cout << "PASS: normal Fcitx trigger explicitly enables terminal Japanese\n";
+    std::cout << "PASS: Fcitx activation preserves terminal protection until explicit Japanese selection\n";
     return true;
 }
 
@@ -203,7 +212,7 @@ int main() {
             if (ok) ok = explicitJapanese(&instance, frontend);
             if (ok) ok = protectedAfterNavigation(&instance, frontend);
             if (ok) ok = resetProtection(&instance, frontend);
-            if (ok) ok = triggerJapanese(&instance, frontend);
+            if (ok) ok = triggerKeepsProtection(&instance, frontend);
             if (ok) ok = toggleJapanese(&instance, frontend);
             if (ok) ok = quotedEscapeProtection(&instance, frontend);
             testResult = ok ? 0 : 1;

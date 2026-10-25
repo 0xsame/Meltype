@@ -449,23 +449,6 @@ public:
         }
     }
 
-    void activate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
-        // 通常の FocusIn による再有効化は対象にせず、入力メソッドの切替イベントだけを見る。
-        if (!loaded_ || event.type() != fcitx::EventType::InputContextSwitchInputMethod) return;
-        auto *ic = event.inputContext();
-        if (!ic->capabilityFlags().test(fcitx::CapabilityFlag::Terminal)) return;
-        auto reason = static_cast<fcitx::InputContextSwitchInputMethodEvent &>(event).reason();
-        if (reason != fcitx::InputMethodSwitchedReason::Trigger && reason != fcitx::InputMethodSwitchedReason::AltTrigger &&
-            reason != fcitx::InputMethodSwitchedReason::Activate && reason != fcitx::InputMethodSwitchedReason::Enumerate) return;
-        auto *state = ic->propertyFor(&factory_);
-        if (!state->session()) return;
-        syncCanDelete(ic, state);
-        // Ctrl+Space・半角/全角は通常 Fcitx 本体が処理するので、キーイベントだけでは切り替わらない。
-        // Activate は専用有効化キーと D-Bus (fcitx5-remote -o) の両方で使われるため含める。
-        // この理由だけでは操作元を区別できず、どちらの切替もターミナルでの日本語指定として扱う。
-        switchMode(ic, state, false);
-    }
-
     // 別の入力欄・アプリに移るとき、入力欄が変わったときは、未確定の内容をそのまま確定する。
     void reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override { commitPending(event.inputContext()); }
     void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override { commitPending(event.inputContext()); }
