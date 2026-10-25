@@ -322,16 +322,16 @@ async function parse() {
     return output({ action: 'none' });
   }
 
+  const maintainer = Maintainers.includes(event.comment.author_association);
   const line = (event.comment.body ?? '').split('\n')[0].trim();
   if (!isPr && event.issue.state === 'open' && event.comment.user?.type !== 'Bot' && isClaim(line)
       && !event.issue.assignees?.some(a => a.login === event.comment.user.login)) {
-    await upsertComment(issue, 'self-assign-hint', untriaged() ? UntriagedNote : 'この Issue の担当になるときは、`/self-assign` とだけコメントしてください。bot が Assignees に入れます。');
+    await upsertComment(issue, 'self-assign-hint', untriaged() && !maintainer ? UntriagedNote : 'この Issue の担当になるときは、`/self-assign` とだけコメントしてください。bot が Assignees に入れます。');
     return output({ action: 'none' });
   }
   const match = line.match(/^\/(self-assign|repro|explain|ca|jht|test-repro|test-jht|test-explain|test|pack|pre-release|release|help)\b\s*(.*)$/);
   if (!match || event.comment.user?.type === 'Bot') return output({ action: 'none' });
   const [, command, rest] = match;
-  const maintainer = Maintainers.includes(event.comment.author_association);
   const prOnly = ['test', 'pack', 'test-repro', 'test-jht', 'test-explain'];
 
   if (command === 'release' || command === 'pre-release') {
