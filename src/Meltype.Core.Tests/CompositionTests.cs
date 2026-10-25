@@ -1667,32 +1667,36 @@ internal static class CompositionTests
         try
         {
             foreach (var scored in new[] { false, true })
-            foreach (var spell in new[] { false, true })
-            foreach (var live in new[] { false, true })
             {
-                Detector.UseScoredSegmentation = () => scored;
-                Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
-                foreach (var (typed, expected) in new[]
+                foreach (var spell in new[] { false, true })
                 {
+                    foreach (var live in new[] { false, true })
+                    {
+                        Detector.UseScoredSegmentation = () => scored;
+                        Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                        foreach (var (typed, expected) in new[]
+                        {
                     ("usbtunaide", "usbつないで"), ("usbtsunaide", "usbつないで"),
                     ("USBtunaide", "USBつないで"), ("pctunaide", "pcつないで"),
                     ("usbsuru", "usbする"), ("usbtsukatte", "usbつかって"),
                     ("usbnuite", "usbぬいて"), ("usbwotunaide", "usbをつないで"),
                     ("hdmitunaide", "hdmiつないで"),
                 })
-                {
-                    var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
-                    var k = new Keyboard(live: live);
-                    k.Type(typed);
-                    Assert.Equal(expected, k.Showing, message + " 表示");
-                    k.Type("\n");
-                    Assert.Equal(expected, k.Host.Document, message + " Enter");
+                        {
+                            var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
+                            var k = new Keyboard(live: live);
+                            k.Type(typed);
+                            Assert.Equal(expected, k.Showing, message + " 表示");
+                            k.Type("\n");
+                            Assert.Equal(expected, k.Host.Document, message + " Enter");
 
-                    k = new Keyboard(live: live);
-                    k.Type(typed + " ");
-                    Assert.True(k.Host.View?.Converting == true, message + " Space で変換を始める");
-                    k.Type("\n");
-                    Assert.Equal(expected, k.Host.Document, message + " Space → Enter");
+                            k = new Keyboard(live: live);
+                            k.Type(typed + " ");
+                            Assert.True(k.Host.View?.Converting == true, message + " Space で変換を始める");
+                            k.Type("\n");
+                            Assert.Equal(expected, k.Host.Document, message + " Space → Enter");
+                        }
+                    }
                 }
             }
         }
@@ -1711,38 +1715,42 @@ internal static class CompositionTests
         try
         {
             foreach (var scored in new[] { false, true })
-            foreach (var spell in new[] { false, true })
-            foreach (var live in new[] { false, true })
             {
-                Detector.UseScoredSegmentation = () => scored;
-                Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
-                foreach (var (typed, showing, committed) in new[]
+                foreach (var spell in new[] { false, true })
                 {
+                    foreach (var live in new[] { false, true })
+                    {
+                        Detector.UseScoredSegmentation = () => scored;
+                        Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                        foreach (var (typed, showing, committed) in new[]
+                        {
                     ("usbtun", "usbつn", "usbつん"),
                     ("usbtsukatt", "usbつかっt", "usbtsukatt"),
                     ("prozac", "proざc", "prozac"),
                     ("prozak", "proざk", "prozak"),
                 })
-                {
-                    var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
-                    var k = new Keyboard(live: live);
-                    k.Type(typed);
-                    Assert.Equal(showing, k.Showing, message + " 入力途中");
-                    k.Type("\n");
-                    Assert.Equal(committed, k.Host.Document, message + " Enter");
+                        {
+                            var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
+                            var k = new Keyboard(live: live);
+                            k.Type(typed);
+                            Assert.Equal(showing, k.Showing, message + " 入力途中");
+                            k.Type("\n");
+                            Assert.Equal(committed, k.Host.Document, message + " Enter");
 
-                    k = new Keyboard(live: live);
-                    k.Type(typed + " ");
-                    if (committed.All(char.IsAsciiLetter))
-                    {
-                        Assert.True(k.Host.View?.Converting != true, message + " Space で英字を確定する");
-                        Assert.Equal(committed + " ", k.Host.Document, message + " Space");
-                    }
-                    else
-                    {
-                        Assert.True(k.Host.View?.Converting == true, message + " Space で日本語を変換する");
-                        k.Type("\n");
-                        Assert.Equal(committed, k.Host.Document, message + " Space → Enter");
+                            k = new Keyboard(live: live);
+                            k.Type(typed + " ");
+                            if (committed.All(char.IsAsciiLetter))
+                            {
+                                Assert.True(k.Host.View?.Converting != true, message + " Space で英字を確定する");
+                                Assert.Equal(committed + " ", k.Host.Document, message + " Space");
+                            }
+                            else
+                            {
+                                Assert.True(k.Host.View?.Converting == true, message + " Space で日本語を変換する");
+                                k.Type("\n");
+                                Assert.Equal(committed, k.Host.Document, message + " Space → Enter");
+                            }
+                        }
                     }
                 }
             }
@@ -1763,15 +1771,17 @@ internal static class CompositionTests
         try
         {
             foreach (var scored in new[] { false, true })
-            foreach (var spell in new[] { false, true })
             {
-                Detector.UseScoredSegmentation = () => scored;
-                Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
-                var k = new Keyboard();
-                k.Type("pronate");
-                Assert.Equal("proなて", k.Showing, "既知の問題の現在の表示");
-                k.Type("\n");
-                Assert.Equal("proなて", k.Host.Document, "本来の期待は pronate。判定を改善したときに更新する");
+                foreach (var spell in new[] { false, true })
+                {
+                    Detector.UseScoredSegmentation = () => scored;
+                    Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                    var k = new Keyboard();
+                    k.Type("pronate");
+                    Assert.Equal("proなて", k.Showing, "既知の問題の現在の表示");
+                    k.Type("\n");
+                    Assert.Equal("proなて", k.Host.Document, "本来の期待は pronate。判定を改善したときに更新する");
+                }
             }
         }
         finally
