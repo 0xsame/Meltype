@@ -10,6 +10,8 @@ namespace Meltype.Tests;
 /// <summary>Mac 版・Linux 版から使う入力の本体 (MeltypeSession) のテスト。OS がキーを 1 つずつ渡し、使ったかをその場で返す。</summary>
 internal static class SessionFacadeTests
 {
+    private static readonly string[] GoCandidates = ["go", "ご"];
+
     private static MeltypeSession Create() => new(CompositionTests.Detector, new CompositionTests.FakeConverter(), new CompositionOptions(), () => new Settings());
 
     /// <summary>文字を 1 つずつ打つ (英字は大文字なら Shift 付き)。</summary>
@@ -657,7 +659,7 @@ internal static class SessionFacadeTests
         {
             var session = Create();
             var view = Type(session, "go")[^1].View!;
-            Assert.True(view.Candidates.SequenceEqual(new[] { "go", "ご" }), "入力中に両方の候補を返す");
+            Assert.True(view.Candidates.SequenceEqual(GoCandidates), "入力中に両方の候補を返す");
             Assert.Equal(expected, session.SelectCandidate(index).View?.Text);
             Assert.Equal(expected, Type(session, "\n")[0].Commits.Single().Text);
         }

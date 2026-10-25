@@ -34,7 +34,6 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     private readonly ZenzaiHolder _zenzai = new();
     private ZenzaiConverter? CurrentZenzai(CompositionOptions options) =>
         options.UseZenzai() ? _zenzai.Get(options.ZenzaiServerPath(), options.ZenzaiModelPath()) : _zenzai.Get("", "");
-    private readonly IME.Imm32ImeController _imm32 = new();
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 100 };
     private int _pumpScheduled;
 
@@ -468,9 +467,9 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         {
             if (!InputAllowed()) return;
             if (IME.ImeTarget.FromForeground() is not { } target) return;
-            var state = _imm32.GetState(target);
+            var state = IME.Imm32ImeController.GetState(target);
             if (state.Mode != IME.ImeMode.Open) return;
-            var closed = _imm32.TrySetOpen(target, false, null, 150);
+            var closed = IME.Imm32ImeController.TrySetOpen(target, false, null, 150);
             Diagnostics.Log.Warn($"確定時に Microsoft IME が ON になっていました ({state}) → {(closed ? "OFF にしてから入力します" : "OFF にできませんでした")}。");
         }
         catch (Exception ex)
@@ -804,7 +803,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
 
     private static bool IsShellSearchWindow(IntPtr hwnd)
     {
-        Native.GetWindowThreadProcessId(hwnd, out var processId);
+        if (Native.GetWindowThreadProcessId(hwnd, out var processId) == 0) return false;
         try
         {
             using var process = System.Diagnostics.Process.GetProcessById((int)processId);

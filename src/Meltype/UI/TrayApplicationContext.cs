@@ -657,7 +657,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>設定・学習データ・ユーザー辞書を 1 つのファイルに書き出す (PC の買い替え・別の PC への移行)。</summary>
-    private void CreateBackup()
+    private static void CreateBackup()
     {
         using var dialog = new SaveFileDialog
         {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Yukishiro
 
+using System.Globalization;
 namespace Meltype.Tests;
 
 /// <summary>
@@ -53,7 +54,7 @@ internal static class Program
                 return 0;
             case "--perf":
                 // --perf 出力ファイル [例文のファイル] [回数]: 変換エンジンの遅延・段階ごとの時間・候補の数・控えの使い回し・メモリ・正解率 (docs/PERFORMANCE.md)
-                Performance.Measure(args[1], args.ElementAtOrDefault(2), args.Length > 3 ? int.Parse(args[3]) : Performance.DefaultSamples);
+                Performance.Measure(args[1], args.ElementAtOrDefault(2), args.Length > 3 ? int.Parse(args[3], CultureInfo.InvariantCulture) : Performance.DefaultSamples);
                 Henkan.Shutdown();
                 return 0;
             case "--perf-compare":
@@ -92,11 +93,11 @@ internal static class Program
                 return 0;
             case "--dictionary-bench":
                 // --dictionary-bench [回数]: 1 打鍵あたりの時間と割り当て
-                DictionaryMemory.Bench(args.Length > 1 ? int.Parse(args[1]) : 15);
+                DictionaryMemory.Bench(args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 15);
                 return 0;
             case "--dictionary-lookup-bench":
                 // --dictionary-lookup-bench [回数]: 意味・英訳を直接引いたときの 1 検索あたりの時間と割り当て
-                DictionaryMemory.LookupBench(args.Length > 1 ? int.Parse(args[1]) : 7);
+                DictionaryMemory.LookupBench(args.Length > 1 ? int.Parse(args[1], CultureInfo.InvariantCulture) : 7);
                 return 0;
             case "--explain":
                 if (Environment.GetEnvironmentVariable("MELTYPE_UTF8") == "1") Console.OutputEncoding = new System.Text.UTF8Encoding(false);

@@ -152,7 +152,7 @@ internal sealed class TipServer : IDisposable
         Log.Info($"Meltype IME のサーバーを開始しました (\\\\.\\pipe\\{PipeName})。");
     }
 
-    private PipeSecurity CreateSecurity()
+    private static PipeSecurity CreateSecurity()
     {
         var user = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("ユーザーの SID が分かりません");
         // 本人・SYSTEM・管理者と、ストアアプリ (AppContainer) からつなげるようにする。
