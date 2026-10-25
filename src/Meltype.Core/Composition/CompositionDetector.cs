@@ -55,12 +55,7 @@ public sealed partial class CompositionDetector
         return new CompositionDetector(romaji, japanese, english, new TypoDetector(japanese.Words), proper, new KanaDetector(japaneseWords, romaji));
     }
 
-    private static readonly Lazy<WordList> ReadableEnglish = new(() =>
-    {
-        var list = new WordList();
-        foreach (var word in DictionarySource.Load("english-readable.txt", null)) list.Add(word);
-        return list;
-    });
+    private static readonly Lazy<WordList> ReadableEnglish = new(() => new WordList(DictionarySource.Load("english-readable.txt", null)));
 
     /// <summary>english.txt の「日本語由来で英語としても使われる語」(sushi, anime, tofu …)。</summary>
     private static readonly Lazy<HashSet<string>> JapaneseOriginWords = new(() =>
@@ -181,6 +176,10 @@ public sealed partial class CompositionDetector
                     var right = raw[(end + 2)..];
                     if (_romaji.Analyze(left.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
                     if (_romaji.Analyze(right.ToLowerInvariant()) is { IsValid: true, Partial: "" or "n" }) continue;
+                    // 右が同じ子音 2 つで始まり、ローマ字として読める (not|to|tte の tte = って) なら、っ の綴りで続く日本語 (則って) なので、英単語ではない (issue #1030)。
+                    // 読めないもの (ppt・ffmpeg・llm) は英単語のまま (excel|と|ppt)。
+                    if (right.Length >= 2 && char.ToLowerInvariant(right[0]) == char.ToLowerInvariant(right[1]) &&
+                        char.ToLowerInvariant(right[0]) is not ('a' or 'i' or 'u' or 'e' or 'o' or 'n') && _romaji.AnalyzeFragment(right.ToLowerInvariant()).IsValid) continue;
                     if (IsKnownEnglishWord(left + "to")) continue;
                     // 左が英単語でなく、to までで日本語の語 (chotto の っと) になるか、to が英単語の途中 (stories・symptom) なら助詞ではない
                     if (!IsKnownEnglishWord(left) && (EndsWithJapaneseWord(raw.ToLowerInvariant()[..(end + 2)]) || ToInsideEnglishWord(raw.ToLowerInvariant(), end))) continue;
@@ -525,13 +524,7 @@ public sealed partial class CompositionDetector
     internal bool IsJapaneseWordOrPrefix(string kana) => _kana?.IsJapaneseWordOrPrefix(kana) == true;
 
     /// <summary>kana が、よく使う語の読み (readings.txt、3 文字以上) かその頭か (すいちょ = すいちょく の頭)。</summary>
-    internal static bool IsJapaneseReadingOrPrefix(string kana)
-    {
-        var readings = SortedReadings.Value;
-        var index = Array.BinarySearch(readings, kana, StringComparer.Ordinal);
-        if (index >= 0) return true;
-        return ~index < readings.Length && readings[~index].StartsWith(kana, StringComparison.Ordinal);
-    }
+    internal static bool IsJapaneseReadingOrPrefix(string kana) => kana.Length >= 3 && CommonReadings.Words.HasPrefix(kana);
 
     /// <summary>スペルチェッカーが正しいと言う英単語か、よくある打ち間違い (teh、recieve) か。</summary>
     internal bool IsSpellWord(string lower) => SpellChecker is { } checker && (checker.IsWord(lower) || checker.AutoCorrection(lower) is not null);
@@ -619,16 +612,6 @@ public sealed partial class CompositionDetector
         return lower.Length == stem || lower.Length - stem >= 3;
     }
 
-    /// <summary>よく使う語の読み (readings.txt、3 文字以上)。かな入力で、英単語のキーが日本語の語を打っていないかを見る。</summary>
-    private static readonly Lazy<HashSet<string>> Readings = new(() =>
-        DictionarySource.ReadEmbedded("readings.txt").Split('\n')
-            .Select(line => line.Split('\t')[0].Trim())
-            .Where(reading => reading.Length >= 3 && !reading.StartsWith('#'))
-            .ToHashSet(StringComparer.Ordinal));
-
-    /// <summary>よく使う語の読み (readings.txt、3 文字以上) を並べたもの。読みの頭かどうかを二分探索で調べる。</summary>
-    private static readonly Lazy<string[]> SortedReadings = new(() => Readings.Value.Order(StringComparer.Ordinal).ToArray());
-
     /// <summary>
     /// かなの大部分 (3/4 以上) を占める、3 文字以上のよく使う語があるか。語は後ろのかな (kanaAfter) にはみ出してもよい
     /// (てにはい + る = 手に入る)。
@@ -639,7 +622,7 @@ public sealed partial class CompositionDetector
         for (var start = 0; start < kana.Length; start++)
             for (var length = 3; start + length <= text.Length; length++)
                 if (Math.Min(start + length, kana.Length) - start is var inside && inside * 100 >= kana.Length * 75 &&
-                    Readings.Value.Contains(text.Substring(start, length))) return true;
+                    CommonReadings.Words.Contains(text.AsSpan(start, length))) return true;
         return false;
     }
 
@@ -667,6 +650,12 @@ public sealed partial class CompositionDetector
         var stem = span[..^1];
         if (stem.Length < 3 || !stem.All(char.IsAsciiLetterLower)) return false;
         if (IsCommonJapanese?.Invoke(stem) == true || _japanese.Words.ContainsWord(stem)) return false;
+        // 数字が続き (A4・B5 の紙の大きさ)、小文字側がかなとして読める (dokyumento|wo|A4 の ntowo) なら、名前の最後の大文字ではなく、
+        // 大文字 + 数字の略記 (kamiwo|A4 = 紙をA4: issue #1005)。読めない製品名 (galaxyS24・xperiaZ5) は今までどおり名前。
+        if (next is [var digit, ..] && char.IsAsciiDigit(digit) && _romaji.AnalyzeFragment(stem) is { IsValid: true, Partial: "" }) return false;
+        // 小文字側が助詞で終わる日本語 (kyouha|A = 今日はA、kamiwo|A = 紙をA) なら、日本語 + 大文字 1 文字
+        if (_romaji.Analyze(stem) is { IsValid: true, Partial: "" } &&
+            TrailingParticles.Any(particle => stem.Length > particle.Length && stem.EndsWith(particle, StringComparison.Ordinal))) return false;
         return true;
     }
 
@@ -1143,6 +1132,7 @@ public sealed partial class CompositionDetector
         while (i < units.Count && IsDigit(units[i])) i++;
         var digitLen = Raw(units, digitStart, i).Length;
         if (digitLen is < 1 or > 2) return -1;
+        var digitEnd = i;
         var pendingLetters = i == units.Count && pending.Length > 0 && pending.All(char.IsAsciiLetter) ? pending : "";
         if (i < units.Count && IsLetter(units[i]))
         {
@@ -1156,7 +1146,15 @@ public sealed partial class CompositionDetector
         }
         else if (pendingLetters.Length is < 1 or > 3) return -1;
         var word = Raw(units, start, i) + pendingLetters;
-        return word.Length is >= 3 and <= 6 ? i : -1;
+        if (word.Length is < 3 or > 6) return -1;
+        // 数字の前と後ろが、どちらもかなとして最後まで読める (huuso|ku|6|me|-toru の ku と me) なら、
+        // 略語 (i18n の n、k8s の s、h2o の h) ではなく、数字を挟んだ日本語 (風速6メートル: issue #1017)。
+        // 母音 1 文字 (e2e・o2o の e・o) は、かなとして読めても略語のことが多いので、子音から始まる 2 文字以上のときだけ。
+        var head = Raw(units, start, digitStart).ToLowerInvariant();
+        var tail = (Raw(units, digitEnd, i) + pendingLetters).ToLowerInvariant();
+        if (head.Length >= 2 && tail.Length >= 2 && _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } &&
+            _romaji.AnalyzeFragment(tail) is { IsValid: true, Partial: "" }) return -1;
+        return i;
     }
 
     /// <summary>

@@ -29,6 +29,11 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
     // Mozc (同梱の mozc/meltype_mozc_helper.exe) と Microsoft IME を組み合わせた変換エンジン。
     private readonly MozcConverter _mozc = new(Path.Combine(AppContext.BaseDirectory, "mozc", "meltype_mozc_helper.exe"), Path.Combine(Config.AppPaths.DataDirectory, "mozc"));
     private HybridConverter _hybrid = null!;
+
+    // Zenzai (llama-server + zenz の GGUF)。設定で ON のときだけ、指定の場所が変わるたびに作り直す (持ち主は ZenzaiHolder)
+    private readonly ZenzaiHolder _zenzai = new();
+    private ZenzaiConverter? CurrentZenzai(CompositionOptions options) =>
+        options.UseZenzai() ? _zenzai.Get(options.ZenzaiServerPath(), options.ZenzaiModelPath()) : _zenzai.Get("", "");
     private readonly IME.Imm32ImeController _imm32 = new();
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 100 };
     private int _pumpScheduled;
@@ -75,7 +80,10 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
             RomajiTypos = options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji),
             CorrectTypos = options.CorrectTypos,
             SlashAsMiddleDot = options.SlashAsMiddleDot,
+            ZSymbols = options.ZSymbols,
             SpaceAroundEnglish = options.SpaceAroundEnglish,
+            SpaceAroundNumbers = options.SpaceAroundNumbers,
+            NumberKeysSelectCandidates = options.NumberKeysSelectCandidates,
             ShiftSpaceHalfWidth = options.ShiftSpaceHalfWidth,
             EnterCommitsAsShown = options.EnterCommitsAsShown,
             AlphanumericKeyStartsAsTyped = options.AlphanumericKeyStartsAsTyped,
@@ -108,7 +116,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         };
         Phrases = resolved.Predictor?.Phrases;
         TranslationHistory = resolved.TranslationHistory;
-        _hybrid = new HybridConverter(options.Engine, _mozc, _converter, reading => _windowsCandidates.Get(reading));
+        _hybrid = new HybridConverter(options.Engine, _mozc, _converter, reading => _windowsCandidates.Get(reading), () => CurrentZenzai(options), _zenzai.Failed);
         _resolved = resolved;
         Controller = new CompositionController(Gate, detector, _hybrid, this, resolved);
         Controller.Corrected += Corrections.Add;
@@ -899,6 +907,7 @@ internal sealed class CompositionService : ICompositionHost, IDisposable
         _converter.Dispose();
         _windowsCandidates.Dispose();
         _mozc.Dispose();
+        _zenzai.Dispose();
         _window.Dispose();
         _indicator.Dispose();
     }

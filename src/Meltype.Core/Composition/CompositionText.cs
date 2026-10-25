@@ -188,7 +188,7 @@ public sealed class CompositionText
                 _pending.Remove(0, _pending.Length - 1);
             }
             // zh / zj / zk / zl → ← ↓ ↑ →。z が 1 文字のときだけ (puzzle の zz の次の l は英単語)。
-            if (_pending.Length == 1 && char.ToLowerInvariant(_pending[0]) == 'z' && ZSymbol(c) is { } arrow)
+            if (_pending.Length == 1 && char.ToLowerInvariant(_pending[0]) == 'z' && ZSymbols() && ZSymbol(c) is { } arrow)
             {
                 var raw = _pending[0].ToString() + c;
                 _pending.Clear();
@@ -202,7 +202,7 @@ public sealed class CompositionText
             RereadSmallTsuAfterEnglishL();
             return;
         }
-        if (_pending.Length > 0 && char.ToLowerInvariant(_pending[^1]) == 'z' && ZSymbol(c) is { } z)
+        if (_pending.Length > 0 && char.ToLowerInvariant(_pending[^1]) == 'z' && ZSymbols() && ZSymbol(c) is { } z)
         {
             var raw = _pending[^1].ToString() + c;
             _pending.Length--;
@@ -232,6 +232,12 @@ public sealed class CompositionText
                 return;
             }
         }
+        // 文章の入力欄で打ち始めに打った / は ・ (Microsoft IME と同じ)。Space で / にできる。
+        if (c == '/' && _units.Count == 0 && SlashAtStart())
+        {
+            _units.Add(new CompositionUnit("・", "/"));
+            return;
+        }
         // / キーで中黒 (設定): かなのすぐ後ろの / は ・ (いろん/ますく → いろん・ますく)。英字・数字の後ろ (and/or、3/4、URL)
         // と入力の始め (/help) は / のまま (issue #122)。英語の区間に入ったときは、打ったままの / を見せる。
         if (c == '/' && SlashAsMiddleDot() && _units.Count > 0 && _units[^1].Kana is [.., var kana] && kana is >= 'ぁ' and <= 'ヺ' or 'ー')
@@ -250,6 +256,15 @@ public sealed class CompositionText
 
     /// <summary>かなのすぐ後ろの / を中黒 (・) にするか (設定)。</summary>
     public Func<bool> SlashAsMiddleDot { get; set; } = () => false;
+
+    /// <summary>z + 記号・hjkl を記号・矢印にするか (設定。OFF なら z はほかの英字と同じ: issue #1008)。</summary>
+    public Func<bool> ZSymbols { get; set; } = () => true;
+
+    /// <summary>空の変換ボックスに打った / を、打ち始めの / として中黒 (・) にするか。読むと次からは false。</summary>
+    public Func<bool> SlashAtStart { get; set; } = () => false;
+
+    /// <summary>打ち始めの / だけを ・ にして入れているか。</summary>
+    public bool IsSlashAtStart => _pending.Length == 0 && _units is [{ Kana: "・", Raw: "/" }];
 
     /// <summary>
     /// 英単語の最後の n と、続けて打った n + 母音 (の・な …) が「nn → ん」とまとまってしまうのを防ぐ
@@ -562,6 +577,17 @@ public sealed class CompositionText
             var analysis = romaji.AnalyzeFragment(original.ToLowerInvariant());
             var position = 0;
             var tokens = analysis.Tokens;
+            // 最初の 1 文字を head の単位にして、残りをかなの単位に分ける (corn|yo の n、android|ha の d、vrc|ya の c)
+            void AddSplit(string head, string letters, Detection.RomajiAnalysis tail)
+            {
+                _units.Add(new CompositionUnit(head, letters[..1]));
+                var offset = 1;
+                foreach (var token in tail.Tokens)
+                {
+                    _units.Add(new CompositionUnit(token.Kana, letters.Substring(offset, token.Romaji.Length)));
+                    offset += token.Romaji.Length;
+                }
+            }
             for (var i = 0; i < tokens.Count; i++)
             {
                 var length = tokens[i].Romaji.Length;
@@ -579,30 +605,22 @@ public sealed class CompositionText
                 else if (raw.Length >= 3 && raw[..2].Equals("ny", StringComparison.OrdinalIgnoreCase) &&
                          LettersBefore(_units.Count) + raw[..1] is var word && EndsWithEnglishWord(word) && !romaji.Analyze(word.ToLowerInvariant()).IsValid &&
                          romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } rest)
-                {
-                    _units.Add(new CompositionUnit("ん", raw[..1]));
-                    var offset = 1;
-                    foreach (var token in rest.Tokens)
-                    {
-                        _units.Add(new CompositionUnit(token.Kana, raw.Substring(offset, token.Romaji.Length)));
-                        offset += token.Romaji.Length;
-                    }
-                }
+                    AddSplit("ん", raw, rest);
+                // 英単語の最後の d / t + は行・わ行 (android|ha の dha = でゃ、reddit|ha の tha = てゃ、android|wa の dwa = どぁ) は、d / t を英単語に残して は と分ける
+                // (d が でゃ とつながって、英単語の区切りが無くなっていた。Androidha が Andろいでゃ になっていた: issue #1044)。
+                // 英単語は単位の区切りから始まり、ローマ字として読めないものだけ (日本語の でゃ・てぃ を割らない)。
+                else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) is 'd' or 't' && char.ToLowerInvariant(raw[1]) is 'h' or 'w' &&
+                         EndsWithEnglishWordFromUnit(_units.Count, raw[..1]) &&
+                         !romaji.Analyze((LettersBefore(_units.Count) + raw[..1]).ToLowerInvariant()).IsValid &&
+                         romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } particle)
+                    AddSplit(raw[..1], raw, particle);
                 // ローマ字として読めない略語の最後の c + h / y (vrc|ya、vc|ha、jc|ha の cya・cha = ちゃ) は、c を略語に残して や・は と分ける
                 // (c が ちゃ とつながって、略語の区切りが無くなっていた。vrcyaranai が vrちゃらない になっていた)。
                 // 読める語 (mac|hi = まち) は日本語のことが多いので分けない。
                 else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) == 'c' && char.ToLowerInvariant(raw[1]) is 'h' or 'y' &&
                          EndsWithListedAbbreviation(raw[..1]) &&
                          romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } after)
-                {
-                    _units.Add(new CompositionUnit(raw[..1], raw[..1]));
-                    var offset = 1;
-                    foreach (var token in after.Tokens)
-                    {
-                        _units.Add(new CompositionUnit(token.Kana, raw.Substring(offset, token.Romaji.Length)));
-                        offset += token.Romaji.Length;
-                    }
-                }
+                    AddSplit(raw[..1], raw, after);
                 else _units.Add(new CompositionUnit(tokens[i].Kana, raw));
                 position += length;
             }
@@ -876,6 +894,11 @@ public sealed class CompositionText
         foreach (var unit in units) pieces.Add((unit.Kana, unit.Raw));
         if (pending.Length > 0) pieces.Add((_detector.Romaji.ConvertLenient(pending.ToLowerInvariant(), final: true), pending));
 
+        return RawInPieces(pieces, start, length);
+    }
+
+    private static string? RawInPieces(List<(string Kana, string Raw)> pieces, int start, int length)
+    {
         var builder = new StringBuilder();
         var position = 0;
         foreach (var (kana, raw) in pieces)
@@ -890,6 +913,31 @@ public sealed class CompositionText
             position = end;
         }
         return builder.Length > 0 ? builder.ToString() : null;
+    }
+
+    /// <summary>
+    /// 文全体のかなを kanas の順に区切ったときの、各区切りに対応する打った英字。区切りは <see cref="RawForReading"/> と同じく 1 音の途中に入ると null。
+    /// かな入力のときと、kanas をつないだものが文全体のかな (<see cref="KanaForSegment"/> を全区間つないだもの) と一致しないときは、すべて null を返す。
+    /// 変換中に文節の区切りを動かしたあとで、文節ごとの打った英字を取り直すのに使う。
+    /// </summary>
+    public IReadOnlyList<string?> RawForKanas(IReadOnlyList<string> kanas)
+    {
+        var none = new string?[kanas.Count];
+        if (KanaInput) return none;
+        var units = UnitsInRawRange(_units, 0, Raw.Length, out var pending);
+        var pieces = new List<(string Kana, string Raw)>();
+        foreach (var unit in units) pieces.Add((unit.Kana, unit.Raw));
+        if (pending.Length > 0) pieces.Add((_detector.Romaji.ConvertLenient(pending.ToLowerInvariant(), final: true), pending));
+        if (string.Concat(pieces.Select(piece => piece.Kana)) != string.Concat(kanas)) return none;
+
+        var raws = new string?[kanas.Count];
+        var start = 0;
+        for (var i = 0; i < kanas.Count; i++)
+        {
+            raws[i] = RawInPieces(pieces, start, kanas[i].Length);
+            start += kanas[i].Length;
+        }
+        return raws;
     }
 
     /// <summary>
@@ -948,9 +996,12 @@ public sealed class CompositionText
         // かな入力では "@" は濁点などのキーで、ローマ字の原文とは意味が違う。保護判定はローマ字入力だけにする。
         if (KanaInput) return [];
         var raw = Raw;
-        if (_protectedCache is not null && _protectedCacheRaw == raw) return _protectedCache;
-        _protectedCache = ProtectedSpanScanner.Scan(raw);
-        _protectedCacheRaw = raw;
+        // 打ち始めの / を ・ にしたときは、続けて打った文字と合わせて / から始まるパス (/kyou) にしない。
+        var slash = _units is [{ Kana: "・", Raw: "/" }, ..];
+        var key = slash ? "・" + raw : raw;
+        if (_protectedCache is not null && _protectedCacheRaw == key) return _protectedCache;
+        _protectedCache = slash ? ProtectedSpanScanner.Scan(raw[1..]).Select(s => s with { Start = s.Start + 1 }).ToList() : ProtectedSpanScanner.Scan(raw);
+        _protectedCacheRaw = key;
         return _protectedCache;
     }
 
