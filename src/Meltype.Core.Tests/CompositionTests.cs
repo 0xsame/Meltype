@@ -3405,6 +3405,9 @@ internal static class CompositionTests
         Assert.Equal(0, dictionary.Count, "同梱の語句はユーザー辞書の一覧に出さない");
         // 報告 (#968): かんそうりつ の候補に 乾燥率
         Assert.True(CandidateDictionary.Load(null).Lookup("かんそうりつ").Contains("乾燥率"), "かんそうりつ → 乾燥率");
+        Assert.True(CandidateDictionary.Load(null).Lookup("ぶるあか").Contains("ブルーアーカイブ"), "ぶるあか → ブルーアーカイブ (#1106)");
+        Assert.True(CandidateDictionary.Load(null).Lookup("ー＞").Contains("→"), "ー＞ → → (#1135)");
+        Assert.True(CandidateDictionary.Load(null).Lookup("みかんせい").Contains("蜜柑星"), "みかんせい → 蜜柑星 (#1155)");
     }
 
     [Test]
