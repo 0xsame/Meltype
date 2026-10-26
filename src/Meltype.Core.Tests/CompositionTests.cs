@@ -4636,12 +4636,12 @@ internal static class CompositionTests
     [Test]
     public static void DLsite_IsVerbOnlyAfterJapanese()
     {
-        // #886: dlsite はサイト名 (DLsite) とも dl + して とも読める。前が日本語 (ファイルを) なら dlして、
-        // 単独・後ろに助詞が続く (dlsiteで) ならサイト名のまま。
+        // #886: dl + して は shite と打てば dlして。dlsite はサイト名 (DLsite) のまま。
         foreach (var (before, typed, expected) in new[]
         {
-            ("ファイルを", "dlsite", "ファイルをdlして"),
-            ("", "fairuwodlsite", "ふぁいるをdlして"),
+            ("ファイルを", "dlshite", "ファイルをdlして"),
+            ("", "fairuwodlshite", "ふぁいるをdlして"),
+            ("", "DLshite", "DLして"),
             ("", "dlsite", "dlsite"),
             ("", "dlsitede", "dlsiteで"),
             ("", "dlsitenokaiin", "dlsiteのかいいん"),
