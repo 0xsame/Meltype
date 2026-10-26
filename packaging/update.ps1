@@ -48,6 +48,10 @@ try {
     Remove-Item -LiteralPath $zip -Force
     if (-not (Test-Path -LiteralPath (Join-Path $target 'install.ps1'))) { Write-Output 'error zip に install.ps1 がありません'; exit 0 }
 
+    # リリースノートを残しておき、更新したあとの初めての起動で見せる (issue #1207)
+    Get-ChildItem -LiteralPath $Directory -Filter 'release-notes-*.md' | Remove-Item -Force -ErrorAction SilentlyContinue
+    if ($release.body) { [IO.File]::WriteAllText((Join-Path $Directory "release-notes-$latest.md"), [string]$release.body, (New-Object Text.UTF8Encoding $false)) }
+
     # 古い版の展開先を片付ける
     Get-ChildItem -LiteralPath $Directory -Directory | Where-Object { $_.Name -ne $latest } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     [IO.File]::WriteAllText($ready, "$latest`t$target", (New-Object Text.UTF8Encoding $false))

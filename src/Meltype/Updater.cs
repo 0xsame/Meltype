@@ -152,6 +152,24 @@ internal sealed class Updater : IDisposable
         }
     }
 
+    /// <summary>
+    /// 新しい版をダウンロードしたときに残しておいた、その版のリリースノート (issue #1207)。
+    /// インストーラーで入れた・読めないなど、無ければ null (リリースのページを開いてもらう)。
+    /// </summary>
+    public static string? ReleaseNotes(string version)
+    {
+        try
+        {
+            var file = Path.Combine(Directory, $"release-notes-{version}.md");
+            return File.Exists(file) ? File.ReadAllText(file) : null;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"リリースノートを読めませんでした: {ex.Message}");
+            return null;
+        }
+    }
+
     /// <summary>今すぐ確認する (トレイの「更新を確認」)。結果は Ready か戻り値の文言で返す。</summary>
     public Task<string> CheckNowAsync() => AppInfo.IsPublicRelease
         ? Task.Run(() => Run() ?? "更新を確認できませんでした。")
