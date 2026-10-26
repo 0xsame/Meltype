@@ -298,16 +298,29 @@ public sealed partial class CompositionDetector
         }
         else
         {
-            // 単位の途中から: 残りをローマ字として読み直す
-            var rest = text[start.._preparedRawOffsets[u + 1]];
-            if (kanaInput || rest.Any(char.IsAsciiLetterUpper) || _romaji.AnalyzeFragment(rest.ToLowerInvariant()) is not { IsValid: true, Partial: "" } reading)
+            // 単位の途中から: 残りをローマ字として読み直す。読み切れなければ、次の単位 (英字だけのもの) まで続けて読む
+            // (bacon|n + i の ni、quiz|k + a の ka)
+            Detection.RomajiAnalysis? reading = null;
+            var next = u + 1;
+            for (; !kanaInput && next <= Math.Min(units.Count, u + 3); next++)
+            {
+                if (next > u + 1 && units[next - 1].Raw is var raw && (raw.Length == 0 || !raw.All(char.IsAsciiLetterLower))) break;
+                var rest = text[start.._preparedRawOffsets[next]];
+                if (rest.Any(char.IsAsciiLetterUpper)) break;
+                if (_romaji.AnalyzeFragment(rest) is { IsValid: true, Partial: "" } complete)
+                {
+                    reading = complete;
+                    break;
+                }
+            }
+            if (reading is null)
             {
                 LetterEdge(start);
                 return edges;
             }
             kana = reading.Kana;
-            Add(_preparedRawOffsets[u + 1], kana);
-            u++;
+            Add(_preparedRawOffsets[next], kana);
+            u = next;
         }
         for (var k = u; k < units.Count; k++)
         {

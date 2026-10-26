@@ -137,56 +137,17 @@ public sealed class CompositionText
                 _units.Add(new CompositionUnit(c.ToString(), c.ToString()));
                 return;
             }
-            SplitEnglishFinalN(c);
             // 直前の「ローマ字として読めなかった英字」は、次の文字と合わせると読めることがある
             // (test の t を消して u を打つ → s + u = す)。入力途中の子音に戻して読み直す。略語の大文字 (TS の S) は戻さない。
+            // 英単語との区切り (commit|suru の t|s) は、単位の途中でも区切りの側 (ReadingLattice.cs) で選ぶ。
             var pulled = new StringBuilder();
             while (_units.Count > 0 && _units[^1] is { Raw.Length: 1 } last && last.Kana == last.Raw && char.IsAsciiLetter(last.Raw[0]) &&
-                   !(char.IsAsciiLetterUpper(last.Raw[0]) && _units.Count >= 2 && _units[^2].Raw is { Length: > 0 } before && char.IsAsciiLetterUpper(before[^1])) &&
-                   // 英単語の最後の l / x (hotel の l) は、次の文字と合わせて小書き文字 (lya = ゃ) にしない。
-                   !(last.Raw is "l" or "x" or "L" or "X" && EndsWithEnglishWordFromUnit(_units.Count)) &&
-                   // 英単語の最後の t (commit の t) も、続けて打った s と合わせて ts (つ) にしない。
-                   !(last.Raw is "t" or "T" && _pending.Length > 0 && _pending[0] is 's' or 'S' && EndsWithEnglishWordFromUnit(_units.Count, tsuFollows: true)) &&
-                   // 英単語全体の最後の子音 (github の b) は、助詞 ya の拗音 (bya = びゃ) に飲み込まれないようにする (githubya → githubや)。
-                   // 接尾辞だけが英単語のとき (kaibuns の buns) は日本語の拗音 (しょ) を優先する。
-                   // ただし y の後に母音まで打って、英字の並び全体を拗音 (tyo = ちょ) まで読むと日本語の語 (suityoku の すいちょ) なら日本語を優先する。
-                   !(EndsWithWholeEnglishWord(_units.Count) && (c is 'y' or 'Y' || _pending.Length > 0 && _pending[0] is 'y' or 'Y') &&
-                     !ReadsAsJapaneseWithYoon(c)))
+                   !(char.IsAsciiLetterUpper(last.Raw[0]) && _units.Count >= 2 && _units[^2].Raw is { Length: > 0 } before && char.IsAsciiLetterUpper(before[^1])))
             {
                 pulled.Insert(0, last.Raw);
                 _units.RemoveAt(_units.Count - 1);
             }
             _pending.Insert(0, pulled.ToString());
-            // 英単語 (hotel) の最後の l / x の次に打った文字は、l / x と合わせて小書き文字 (hotel + ya → ほてゃ) にしない。
-            if (_pending.Length == 1 && _pending[0] is 'l' or 'x' or 'L' or 'X' && EndsWithEnglishWordFromUnit(_units.Count, _pending.ToString()))
-            {
-                _units.Add(new CompositionUnit(_pending.ToString(), _pending.ToString()));
-                _pending.Clear();
-            }
-            // 英単語の最後の t の次に打った s は、t と合わせて ts (つ・つぃ) にしない
-            // (commit + suru・site → こっみつる・こっみつぃて ではなく commitする・commitして)。
-            // 読めない子音がいくつか残っていても同じ (reflect + sareta の ct + s → reflectされた。refェcつァれた になっていた: issue #77)。
-            if (_pending.Length >= 1 && _pending[^1] is 't' or 'T' && c is 's' or 'S' && _pending.ToString().All(char.IsAsciiLetter) &&
-                EndsWithEnglishWordFromUnit(_units.Count, _pending.ToString(), tsuFollows: true))
-            {
-                foreach (var letter in _pending.ToString()) _units.Add(new CompositionUnit(letter.ToString(), letter.ToString()));
-                _pending.Clear();
-            }
-            // 英単語全体の打ちかけ末尾の子音 (github の b) の次に y が来たら、拗音 (bya = びゃ) にせず子音を英字のまま確定する
-            // (githubya → githubや)。接尾辞だけ英単語の kaibuns + yo (かいぶんしょ) は分けない。
-            if (c is 'y' or 'Y' && _pending.Length > 0 && _pending.ToString().All(char.IsAsciiLetter) &&
-                EndsWithWholeEnglishWord(_units.Count, _pending.ToString()))
-            {
-                foreach (var letter in _pending.ToString()) _units.Add(new CompositionUnit(letter.ToString(), letter.ToString()));
-                _pending.Clear();
-            }
-            // つ にまとめた t + s (shut + s) の後ろが u 以外の母音なら つぁ・つぃ ではないので、英単語の t と s に分け直す (shutした)。
-            if (_pending.Length >= 2 && _pending[^2] is 't' or 'T' && _pending[^1] is 's' or 'S' && c is 'a' or 'i' or 'e' or 'o' or 'A' or 'I' or 'E' or 'O' &&
-                _pending.ToString().All(char.IsAsciiLetter) && EndsWithEnglishWordFromUnit(_units.Count, _pending.ToString()[..^1]))
-            {
-                foreach (var letter in _pending.ToString()[..^1]) _units.Add(new CompositionUnit(letter.ToString(), letter.ToString()));
-                _pending.Remove(0, _pending.Length - 1);
-            }
             // zh / zj / zk / zl → ← ↓ ↑ →。z が 1 文字のときだけ (puzzle の zz の次の l は英単語)。
             if (_pending.Length == 1 && char.ToLowerInvariant(_pending[0]) == 'z' && ZSymbols() && ZSymbol(c) is { } arrow)
             {
@@ -199,7 +160,6 @@ public sealed class CompositionText
             _pending.Append(c);
             SplitUnitAfterNumber(final: false);
             Normalize(final: false);
-            RereadSmallTsuAfterEnglishL();
             return;
         }
         if (_pending.Length > 0 && char.ToLowerInvariant(_pending[^1]) == 'z' && ZSymbols() && ZSymbol(c) is { } z)
@@ -265,208 +225,6 @@ public sealed class CompositionText
 
     /// <summary>打ち始めの / だけを ・ にして入れているか。</summary>
     public bool IsSlashAtStart => _pending.Length == 0 && _units is [{ Kana: "・", Raw: "/" }];
-
-    /// <summary>
-    /// 英単語の最後の n と、続けて打った n + 母音 (の・な …) が「nn → ん」とまとまってしまうのを防ぐ
-    /// (python + no → pythonno → python + ん + お ではなく python + の)。
-    /// 直前の単位が nn でできた ん で、その前の英字と 1 つ目の n で知っている英単語になり、今打ったのが母音か y なら、
-    /// ん を 1 つ目の n だけにして、2 つ目の n を今打った文字とつなげる。
-    /// </summary>
-    private void SplitEnglishFinalN(char c)
-    {
-        if (_pending.Length > 0 || _units.Count < 2 || char.ToLowerInvariant(c) is not ('a' or 'i' or 'u' or 'e' or 'o' or 'y')) return;
-        if (_units[^1] is not { Kana: "ん" } last || !last.Raw.Equals("nn", StringComparison.OrdinalIgnoreCase)) return;
-        // 直前の英字の並び (英字だけの単位) の後ろの部分 + n が英単語か (きょうは + python の python)。
-        var letters = new StringBuilder();
-        for (var i = _units.Count - 2; i >= 0 && _units[i].Raw.All(char.IsAsciiLetter); i--) letters.Insert(0, _units[i].Raw);
-        var run = letters.ToString() + last.Raw[0];
-        for (var start = 0; start <= run.Length - 3; start++)
-        {
-            if (!_detector.IsKnownEnglishWord(run[start..])) continue;
-            // ローマ字として最後まで読める語 (gomen の omen = おめ + n) は、日本語を打っている (ごめんよ)。
-            // 分けるのは、ローマ字として読めない英単語 (python、kotlin、json) だけ。
-            if (_detector.Romaji.AnalyzeFragment(run[start..].ToLowerInvariant()) is { IsValid: true } && !CompositionDetector.IsReadableEnglishWord(run[start..].ToLowerInvariant())) continue;
-            _units[^1] = new CompositionUnit("ん", last.Raw[..1]);
-            _pending.Append(last.Raw[1]);
-            return;
-        }
-    }
-
-    /// <summary>
-    /// 英単語の最後の l + tu / tsu を、英単語 + つ ではなく、英単語 + 小書きの っ で読み直す (moral|ltu|te = もらって)。
-    /// 英単語の最後の l は、次の文字を打った時点で英字として固定される (moral|tu = moralつ) ので、ここで読み直す。
-    /// 後ろの tute が日本語として不自然で、英単語 + つ の方が自然なとき (mail|tukau = つかう) は、今までどおり英単語 + つ に戻す。
-    /// 大文字を含むとき (Moraltute) と「っっ」になるとき (sukilltute) は読み直さない。
-    /// </summary>
-    private void RereadSmallTsuAfterEnglishL()
-    {
-        var common = _detector.IsCommonJapanese;
-        if (common is null) return;
-        var start = _units.Count;
-        while (start > 0 && _units[start - 1].Raw is { Length: > 0 } raw && raw.All(char.IsAsciiLetter)) start--;
-        // 末尾に近い方から、英字として固定された l (次が tu/tsu) か、ltu/ltsu を っ として読んだ単位を探す
-        var li = -1;
-        for (var i = _units.Count - 1; i >= start && li < 0; i--)
-        {
-            var fixedL = _units[i] is { Raw: "l", Kana: "l" } && i + 1 < _units.Count && _units[i + 1] is { Raw: "tu" or "tsu", Kana: "つ" };
-            if (fixedL || _units[i] is { Raw: "ltu" or "ltsu", Kana: "っ" }) li = i;
-        }
-        if (li < 0) return;
-        // l が重なる (hote|l + l|tu = hotelっ: issue #218)。前の l で英単語 (hotel・total) が終わっているなら、
-        // 後ろの l は英単語 (te|ll = tell) の続きではなく、わざわざ打った ltu (っ)。後ろの読みに関わらず っ にする。
-        if (li > start && _units[li - 1] is { Raw: "l", Kana: "l" } && EndsWithEnglishWordFromUnit(li))
-        {
-            var typed = _units[li].Raw + string.Concat(_units.Skip(li + 1).Select(u => u.Raw));
-            if (_units[li].Kana != "l" || typed.Any(char.IsAsciiLetterUpper) || _detector.Romaji.AnalyzeFragment(typed).Kana.Contains("っっ")) return;
-            var next = _units[li + 1];
-            _units.RemoveRange(li, 2);
-            _units.Insert(li, new CompositionUnit("っ", "l" + next.Raw));
-            return;
-        }
-        // 英単語の始まり: li - 1 から前へ、stem + l が 4 文字以上の知っている英単語になる位置
-        var w = -1;
-        var stem = "";
-        for (var i = li - 1; i >= start && w < 0; i--)
-        {
-            stem = _units[i].Raw + stem;
-            if (stem.Length + 1 >= 4 && (stem + "l") is var word && word.All(char.IsAsciiLetterLower) && _detector.IsKnownEnglishWord(word)) w = i;
-        }
-        if (w < 0) return;
-        var isFixedL = _units[li].Kana == "l";
-        var restAfterL = _units[li].Raw[1..] + string.Concat(_units.Skip(li + 1).Select(u => u.Raw));
-        var whole = stem + "l" + restAfterL;
-        if (whole.Any(char.IsAsciiLetterUpper)) return;
-        var useTsu = common(whole) && !common(restAfterL) && !_detector.Romaji.AnalyzeFragment(whole).Kana.Contains("っっ");
-        if (isFixedL && useTsu)
-        {
-            var tsu = _units[li + 1];
-            _units.RemoveRange(li, 2);
-            _units.Insert(li, new CompositionUnit("っ", "l" + tsu.Raw));
-        }
-        else if (!isFixedL && !useTsu)
-        {
-            var raw = _units[li].Raw;
-            _units[li] = new CompositionUnit("l", "l");
-            _units.Insert(li + 1, new CompositionUnit("つ", raw[1..]));
-        }
-    }
-
-    /// <summary>units の count 個目より前で、英字だけの単位が続く部分 (前の英字)。</summary>
-    private string LettersBefore(int count)
-    {
-        var letters = new StringBuilder();
-        for (var i = count - 1; i >= 0 && _units[i].Raw.Length > 0 && _units[i].Raw.All(char.IsAsciiLetter); i--) letters.Insert(0, _units[i].Raw);
-        return letters.ToString();
-    }
-
-    /// <summary>英字の並びの最後が、4 文字以上の知っている英単語で終わっているか (… hotel)。</summary>
-    private bool EndsWithEnglishWord(string letters)
-    {
-        for (var start = 0; start <= letters.Length - 4; start++)
-        {
-            if (_detector.IsKnownEnglishWord(letters[start..])) return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// 最後の count 個の単位 (の英字の並び) + extra が、4 文字以上の知っている英単語で終わっているか (ほ|て|l = hotel)。
-    /// 英単語は単位の区切りから始まるものだけを見る。音の途中から始まる語 (から|な|l の anal、だ|め|x の amex) は、
-    /// ローマ字で打っている日本語 (からなぁ・だめぇ) の一部なので英単語とみなさない。
-    /// </summary>
-    /// <summary>単位 i が、前の かな (o・u の段) を伸ばす う (そう・きょう・ほんとう・くう の u) か。</summary>
-    private bool IsLongVowelU(int i) =>
-        i > 0 && _units[i] is { Raw: "u", Kana: "う" } && _units[i - 1] is { Kana: [.., var kana], Raw: [.., var vowel] } &&
-        kana is >= 'ぁ' and <= 'ゖ' && vowel is 'o' or 'u';
-
-    /// <summary>
-    /// 単位 start から最後の t までを、t + s の つ まで含めて読むと日本語の語かその頭になるか
-    /// (shitsumon の しつ、teishutsu の しゅつ)。前の かな から読んでもよい (ochitsuku の おちつ)。
-    /// </summary>
-    private bool ReadsAsJapaneseWithTsu(int start, int count, string extra)
-    {
-        var last = count;
-        if (extra.Length == 0 && count > start && _units[count - 1].Raw is "t" or "T") last = count - 1;
-        else if (extra is not ("t" or "T")) return false;
-        var kana = "";
-        for (var i = last - 1; i >= 0; i--)
-        {
-            if (!_units[i].Kana.All(KanaChars.IsHiraganaOrLongMark) || _units[i].Raw.Length == 0 || !_units[i].Raw.All(char.IsAsciiLetter)) return false;
-            kana = _units[i].Kana + kana;
-            if (i <= start && kana.Length + 1 >= (i == start ? 2 : 3) && _detector.IsJapaneseWordOrPrefix(kana + "つ")) return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// 末尾の英字のまま残した子音 (suit の t) + 打ちかけの y + 今打った母音 c を拗音 (tyo = ちょ) と読み、
-    /// 前の英字の並び全体 (すい) と合わせると 3 文字以上の日本語の語・よく使う語の読みかその頭になるか (suityoku の すいちょ = すいちょく の頭)。
-    /// 並びの途中に かな にならない単位 (github の t) があれば読まない (githubya は githubや のまま)。
-    /// </summary>
-    private bool ReadsAsJapaneseWithYoon(char c)
-    {
-        if (c is not ('a' or 'i' or 'u' or 'e' or 'o') || _pending.ToString() is not ("y" or "Y")) return false;
-        var consonants = "";
-        var i = _units.Count - 1;
-        for (; i >= 0 && _units[i] is { Raw.Length: 1 } unit && unit.Kana == unit.Raw && char.IsAsciiLetter(unit.Raw[0]); i--) consonants = unit.Raw + consonants;
-        if (consonants.Length == 0) return false;
-        var yoon = _detector.Romaji.Analyze((consonants + "y" + c).ToLowerInvariant());
-        if (!yoon.IsValid || !yoon.Kana.All(KanaChars.IsHiraganaOrLongMark)) return false;
-        var kana = yoon.Kana;
-        for (; i >= 0 && _units[i].Raw.Length > 0 && _units[i].Raw.All(char.IsAsciiLetter); i--)
-        {
-            if (!_units[i].Kana.All(KanaChars.IsHiraganaOrLongMark)) return false;
-            kana = _units[i].Kana + kana;
-        }
-        return kana.Length >= 3 && (_detector.IsJapaneseWordOrPrefix(kana) || CompositionDetector.IsJapaneseReadingOrPrefix(kana));
-    }
-
-    private bool EndsWithEnglishWordFromUnit(int count, string extra = "", bool tsuFollows = false)
-    {
-        var letters = extra;
-        for (var i = count - 1; i >= 0 && _units[i].Raw.Length > 0 && _units[i].Raw.All(char.IsAsciiLetter); i--)
-        {
-            letters = _units[i].Raw + letters;
-            // 大文字の略語の途中 (AI の I) から始まる語 (Init) は見ない (AInitsuite の t と s を つ にまとめるように: issue #129)
-            if (i > 0 && char.IsAsciiLetterUpper(_units[i].Raw[0]) && _units[i - 1].Raw is [.., var before] && char.IsAsciiLetterUpper(before)) continue;
-            // 伸ばす音の う (そう・きょう・ほんとう の u) から始まる語 (unit) は見ない (sounitsuite の t と s を つ にまとめるように)
-            if (IsLongVowelU(i)) continue;
-            // 続けて打った s と合わせた つ まで読むと日本語の語 (shitsumon の shit) なら、英単語として見ない
-            if (tsuFollows && ReadsAsJapaneseWithTsu(i, count, extra)) continue;
-            if (letters.Length >= 4 && _detector.IsKnownEnglishWord(letters)) return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// 末尾の英字の並び全体が、同梱辞書の英単語か (接尾辞だけの一致・スペルチェッカーは含めない)。
-    /// github + ya は分けるが、kaibuns + yo (かいぶんしょ。buns だけ英単語 / Windows のスペルが kaibuns と言う) は分けない。
-    /// </summary>
-    private bool EndsWithWholeEnglishWord(int count, string extra = "")
-    {
-        var letters = extra;
-        for (var i = count - 1; i >= 0 && _units[i].Raw.Length > 0 && _units[i].Raw.All(char.IsAsciiLetter); i--)
-            letters = _units[i].Raw + letters;
-        return letters.Length >= 4 && _detector.IsListedEnglishWord(letters.ToLowerInvariant());
-    }
-
-    /// <summary>
-    /// 最後の単位からさかのぼった英字 + extra が、同梱の辞書の略語・語 (vrc・vc・jc) で、ローマ字としては読めないものか。
-    /// 語は単位の区切りから始まるものだけを見る。
-    /// </summary>
-    private bool EndsWithListedAbbreviation(string extra)
-    {
-        // 大文字の略語の後ろの小文字 (ED + cyau = ちゃう) は、略語の続きではない
-        if (_units.Count > 0 && _units[^1].Raw is [.., var last] && char.IsAsciiLetterUpper(last) && extra.Any(char.IsAsciiLetterLower)) return false;
-        var letters = extra;
-        for (var i = _units.Count - 1; i >= 0 && _units[i].Raw.Length > 0 && _units[i].Raw.All(char.IsAsciiLetter); i--)
-        {
-            letters = _units[i].Raw + letters;
-            var lower = letters.ToLowerInvariant();
-            if (_detector.IsListedEnglishWord(lower) && !_detector.Romaji.Analyze(lower).IsValid) return true;
-        }
-        return false;
-    }
 
     /// <summary>1 音 (または 1 文字) 消す。入力途中の子音があればそれを 1 文字消す。</summary>
     public void RemoveLast()
@@ -576,53 +334,10 @@ public sealed class CompositionText
             var original = _pending.ToString();
             var analysis = romaji.AnalyzeFragment(original.ToLowerInvariant());
             var position = 0;
-            var tokens = analysis.Tokens;
-            // 最初の 1 文字を head の単位にして、残りをかなの単位に分ける (corn|yo の n、android|ha の d、vrc|ya の c)
-            void AddSplit(string head, string letters, Detection.RomajiAnalysis tail)
+            foreach (var token in analysis.Tokens)
             {
-                _units.Add(new CompositionUnit(head, letters[..1]));
-                var offset = 1;
-                foreach (var token in tail.Tokens)
-                {
-                    _units.Add(new CompositionUnit(token.Kana, letters.Substring(offset, token.Romaji.Length)));
-                    offset += token.Romaji.Length;
-                }
-            }
-            for (var i = 0; i < tokens.Count; i++)
-            {
-                var length = tokens[i].Romaji.Length;
-                var raw = original.Substring(position, length);
-                // ん (n 1 つ) の後の っ + 子音 (meeting|ga の ngga = ん + っが) は、っ と が を別の単位にする。
-                // 日本語で ん の後に っ を打つことはまず無く、英単語の最後の g (meeting) が が とつながって、英単語の区切りが無くなっていた。
-                if (tokens[i].Kana is ['っ', _, ..] && raw.Length >= 2 && char.ToLowerInvariant(raw[0]) == char.ToLowerInvariant(raw[1]) &&
-                    _units.Count > 0 && _units[^1] is { Kana: "ん" } previous && previous.Raw.Length == 1)
-                {
-                    _units.Add(new CompositionUnit("っ", raw[..1]));
-                    _units.Add(new CompositionUnit(tokens[i].Kana[1..], raw[1..]));
-                }
-                // 英単語の最後の n + や行 (corn|yori の nyo = にょ) は、n を英単語に残して よ と分ける
-                // (n が にょ とつながって、英単語の区切りが無くなっていた。cornyori が 小r二より になっていた)。
-                else if (raw.Length >= 3 && raw[..2].Equals("ny", StringComparison.OrdinalIgnoreCase) &&
-                         LettersBefore(_units.Count) + raw[..1] is var word && EndsWithEnglishWord(word) && !romaji.Analyze(word.ToLowerInvariant()).IsValid &&
-                         romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } rest)
-                    AddSplit("ん", raw, rest);
-                // 英単語の最後の d / t + は行・わ行 (android|ha の dha = でゃ、reddit|ha の tha = てゃ、android|wa の dwa = どぁ) は、d / t を英単語に残して は と分ける
-                // (d が でゃ とつながって、英単語の区切りが無くなっていた。Androidha が Andろいでゃ になっていた: issue #1044)。
-                // 英単語は単位の区切りから始まり、ローマ字として読めないものだけ (日本語の でゃ・てぃ を割らない)。
-                else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) is 'd' or 't' && char.ToLowerInvariant(raw[1]) is 'h' or 'w' &&
-                         EndsWithEnglishWordFromUnit(_units.Count, raw[..1]) &&
-                         !romaji.Analyze((LettersBefore(_units.Count) + raw[..1]).ToLowerInvariant()).IsValid &&
-                         romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } particle)
-                    AddSplit(raw[..1], raw, particle);
-                // ローマ字として読めない略語の最後の c + h / y (vrc|ya、vc|ha、jc|ha の cya・cha = ちゃ) は、c を略語に残して や・は と分ける
-                // (c が ちゃ とつながって、略語の区切りが無くなっていた。vrcyaranai が vrちゃらない になっていた)。
-                // 読める語 (mac|hi = まち) は日本語のことが多いので分けない。
-                else if (raw.Length >= 3 && char.ToLowerInvariant(raw[0]) == 'c' && char.ToLowerInvariant(raw[1]) is 'h' or 'y' &&
-                         EndsWithListedAbbreviation(raw[..1]) &&
-                         romaji.AnalyzeFragment(raw[1..].ToLowerInvariant()) is { IsValid: true, Partial: "" } after)
-                    AddSplit(raw[..1], raw, after);
-                else _units.Add(new CompositionUnit(tokens[i].Kana, raw));
-                position += length;
+                _units.Add(new CompositionUnit(token.Kana, original.Substring(position, token.Romaji.Length)));
+                position += token.Romaji.Length;
             }
 
             if (analysis.IsValid)
