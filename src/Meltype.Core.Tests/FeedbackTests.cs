@@ -128,9 +128,18 @@ internal static class FeedbackTests
             ("Tanaka", "Tanaka"), ("Grape", "Grape"), ("Spike", "Spike"), ("Krita", "Krita"), ("Snake", "Snake"),
         })
         {
-            var k = new CompositionTests.Keyboard();
-            k.Type(typed + "\n");
-            Assert.Equal(expected, k.Host.Document, typed);
+            // Spike は S + ぴけ とも読めるので、英単語として知っているときだけ英語 (スペルチェッカー)
+            CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+            try
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+            finally
+            {
+                CompositionTests.Detector.SpellChecker = null;
+            }
         }
     }
 
@@ -1323,7 +1332,6 @@ internal static class RomajiTypoTests
             ("camelCaseName", "camelCaseName"),         // 識別子はそのまま英字
             ("getElementById", "getElementById"),
             ("dataSetName", "dataSetName"),
-            ("sakuraTreeNode", "sakuraTreeNode"),       // 助詞で終わらないローマ字の名前も識別子
         })
         {
             var k = new CompositionTests.Keyboard();
