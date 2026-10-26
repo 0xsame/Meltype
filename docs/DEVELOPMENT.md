@@ -98,7 +98,7 @@ Windows のアプリ本体・Mac / Linux の IME も同じ形で版を出せま�
 Windows のアプリ本体は GUI アプリ (WinExe) なので、cmd では版がプロンプトの後に出ます。
 コンソールアプリ (Exe) にすると、エクスプローラーやタスク スケジューラから起動したときにコンソールの窓が一瞬フォーカスを取り、その間に打ったキーが消えるので、WinExe のままにしています。
 
-`src/Meltype.Core.Tests/data/issue-cases.tsv` は、GitHub の `誤判定` の報告から「打ったもの」と「期待した結果」を取り出したコーパスです ([README](../src/Meltype.Core.Tests/data/README.md))。判定の作り方に関係なく同じ物差しで比べられるので、判定を変えるときは `--eval` と合わせて `--expect` で流します。いまの結果は 61/79 です (#1148 で辞書に語を足す前は 51/74 でした)。
+`src/Meltype.Core.Tests/data/issue-cases.tsv` は、GitHub の issue (open / closed) から「打ったもの」と「期待した結果」を取り出したコーパスです ([README](../src/Meltype.Core.Tests/data/README.md))。判定の作り方に関係なく同じ物差しで比べられるので、判定を変えるときは `--eval` と合わせて `--expect` で流します。いまの main での結果は `--expect` で 61/79 です (同梱の語句 `phrases.txt` を読むアプリと同じ条件では 62/79)。辞書に語を足した #1148 の前は、74 件版で 51/74 でした。
 
 環境変数 `MELTYPE_SCORED=1` を付けると、区切りを点数で選ぶ α版 (設定「区切りを点数で選ぶ (α版)」、`ScoredSegmentation.cs`) で動かせます。
 今までの区切りと比べるときは、同じコマンドを `MELTYPE_SCORED=0` と `1` で 2 回動かします。`--mixed-bench` は `MELTYPE_BENCH_OFFSET=31` などで調べる語を変えられます。
