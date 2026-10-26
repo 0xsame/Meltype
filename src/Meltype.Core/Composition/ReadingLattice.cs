@@ -18,6 +18,7 @@ namespace Meltype.Composition;
 /// | 知らない英字 (ローマ字として読めない所と、大文字を含む所) | 1 文字 1.5 (大文字は 1) |
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
+/// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる | 1 |
 ///
 /// 同じ重みなら日本語にする。大文字を含む区間は日本語にしない。綴りを名指しする条件は持たない。
 /// 知っている英単語は、英単語の書き方の大文字・小文字 (its・Its・ITS・GitHub) のときだけ (iTs は its にしない)。
@@ -30,6 +31,8 @@ public sealed partial class CompositionDetector
 {
     private const double SwitchCost = 1;
     private const double AdjacentEnglishCost = 1;
+    // 英単語のすぐ後ろが あ行のかな (thing|う・rate|ぃす): 英単語の最後の子音と次の母音の切り間違い
+    private const double VowelAfterEnglishCost = 1;
     private const double KnownEnglishCost = 1;
     private const double ReadableEnglishCost = 0.7;
     private const double UnknownLetterCost = 1.5;
@@ -113,7 +116,8 @@ public sealed partial class CompositionDetector
             LatticeState next;
             var japanese = !edge.English && !edge.Neutral;
             // 子音を重ねて打った っ は、前後をかなに挟まれているときだけ軽い (excelとっpt・cwっで にしない。ltu・xtu で打った っ と、Goって の って は除く)
-            var sokuon = (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
+            var vowel = japanese && state.PreviousEnglish && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
+            var sokuon = vowel + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
                 (japanese && edge.Kana == "っ" && DoubledAt(edge.Start) && state.Side != Side.Japanese ? DanglingSokuonCost : 0);
             if (edge.English)
             {
