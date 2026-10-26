@@ -24,16 +24,25 @@ internal sealed class Updater : IDisposable
 
     private readonly System.Threading.Timer _timer;
     private readonly Func<bool> _enabled;
+    private readonly Func<bool> _prerelease;
     private int _running;
 
     /// <summary>新しい版をダウンロードし終えた (UI スレッドとは限らない)。引数は版。</summary>
     public event Action<string>? Ready;
 
-    public Updater(Func<bool> enabled)
+    /// <param name="prerelease">プレリリース版も更新の対象にするか (issue #1206)。</param>
+    public Updater(Func<bool> enabled, Func<bool> prerelease)
     {
         _enabled = enabled;
+        _prerelease = prerelease;
         _timer = new System.Threading.Timer(_ => Check(), null, FirstCheck, Interval);
     }
+
+    /// <summary>
+    /// プレリリース版も更新の対象にするか (設定の「プレリリース版も自動で更新する」)。
+    /// OFF にしたら、ON の間にダウンロードしておいたプレリリース版には更新しない。
+    /// </summary>
+    public static Func<bool> AllowPrerelease { get; set; } = () => false;
 
     /// <summary>ダウンロード済みで、今より新しい版 (無ければ null)。</summary>
     public static (string Version, string Folder)? Staged()
@@ -43,6 +52,7 @@ internal sealed class Updater : IDisposable
             if (!File.Exists(ReadyFile)) return null;
             var parts = File.ReadAllText(ReadyFile).Trim().Split('\t');
             if (parts.Length != 2 || !IsNewer(parts[0]) || !File.Exists(Path.Combine(parts[1], "install.ps1"))) return null;
+            if (Config.ProjectInfo.IsPrerelease(parts[0]) && !AllowPrerelease()) return null;
             return (parts[0], parts[1]);
         }
         catch (Exception ex)
@@ -183,6 +193,7 @@ internal sealed class Updater : IDisposable
             {
                 start.ArgumentList.Add(arg);
             }
+            if (_prerelease()) start.ArgumentList.Add("-Prerelease");
             using var process = Process.Start(start)!;
             var output = ReadOutput(process, 15 * 60 * 1000)?.Trim();
             if (output is null)
@@ -226,8 +237,8 @@ internal sealed class Updater : IDisposable
         return output.Result;
     }
 
-    private static bool IsNewer(string version) =>
-        System.Version.TryParse(version, out var other) && System.Version.TryParse(AppInfo.Version, out var current) && other > current;
+    /// <summary>今の版より新しいか (1.3.1-pre.3 → 1.3.1-pre.4 → 1.3.1 の順)。</summary>
+    private static bool IsNewer(string version) => Config.ProjectInfo.CompareVersions(version, AppInfo.Version) > 0;
 
     public void Dispose() => _timer.Dispose();
 }

@@ -190,7 +190,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _engine.ToggleRequested += OnToggleRequested;
         _enabledItem.Text = _hotkey.Name is { } hotkey ? $"Meltype を有効にする (Ctrl+半角/全角, {hotkey})" : "Meltype を有効にする (Ctrl+半角/全角)";
         _engine.StatusChanged += OnEngineStatusChanged;
-        _updater = new Updater(() => !AppPaths.IsPortable && _engine.Settings.AutoUpdate);
+        _updater = new Updater(() => !AppPaths.IsPortable && _engine.Settings.AutoUpdate, () => _engine.Settings.UpdatePrerelease);
+        Updater.AllowPrerelease = () => _engine.Settings.UpdatePrerelease;
         _updater.Ready += OnUpdateReady;
         ShowUpdateItem();
         UpdateStatus();
