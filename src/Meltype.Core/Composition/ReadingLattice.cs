@@ -125,7 +125,7 @@ public sealed partial class CompositionDetector
             LatticeState next;
             var japanese = !edge.English && !edge.Neutral;
             // 子音を重ねて打った っ は、前後をかなに挟まれているときだけ軽い (excelとっpt・cwっで にしない。ltu・xtu で打った っ と、Goって の って は除く)
-            var vowel = japanese && state.PreviousEnglish && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
+            var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
             var sokuon = vowel + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
                 (japanese && edge.Kana == "っ" && DoubledAt(edge.Start) && state.Side != Side.Japanese ? DanglingSokuonCost : 0);
             if (edge.English)
