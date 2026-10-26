@@ -45,10 +45,8 @@ internal static class ContextBoundaryTests
     [Test]
     public static void IndependentProperNounPrefixes_RemainEnglishWhileGrowing()
     {
-        var romaji = new RomajiDetector();
-        var japanese = new DictionaryDetector([], romaji);
         var proper = new ProperNouns();
-        var detector = new CompositionDetector(romaji, japanese, new EnglishDetector([]), new TypoDetector(japanese.Words), proper);
+        var detector = new CompositionDetector(new RomajiDetector(), new EnglishDetector([]), proper);
         proper.AddText("Hanana");
         var text = new CompositionText(detector);
         foreach (var c in "hana") text.Append(c);

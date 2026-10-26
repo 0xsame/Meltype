@@ -1651,70 +1651,52 @@ internal static class CompositionTests
     [Test]
     public static void Issue537_ProcrasticleStaysEnglish()
     {
-        var segmentation = Detector.UseScoredSegmentation;
-        try
-        {
-            foreach (var scored in new[] { false, true })
-            {
-                Detector.UseScoredSegmentation = () => scored;
-                var k = new Keyboard();
-                k.Type("procrasticle");
-                Assert.Equal("procrasticle", k.Showing);
-                k.Type("\n");
-                Assert.Equal("procrasticle", k.Host.Document);
-            }
-        }
-        finally
-        {
-            Detector.UseScoredSegmentation = segmentation;
-        }
+        var k = new Keyboard();
+        k.Type("procrasticle");
+        Assert.Equal("procrasticle", k.Showing);
+        k.Type("\n");
+        Assert.Equal("procrasticle", k.Host.Document);
     }
 
     [Test]
     public static void Issue1132_ShortEnglishThenJapanese()
     {
         // 短い英単語の後ろが読める日本語でも、#537 の補正で全文英字に戻っていた。
-        var segmentation = Detector.UseScoredSegmentation;
         var spellChecker = Detector.SpellChecker;
         try
         {
-            foreach (var scored in new[] { false, true })
+            foreach (var spell in new[] { false, true })
             {
-                foreach (var spell in new[] { false, true })
+                foreach (var live in new[] { false, true })
                 {
-                    foreach (var live in new[] { false, true })
+                    Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                    foreach (var (typed, expected) in new[]
                     {
-                        Detector.UseScoredSegmentation = () => scored;
-                        Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
-                        foreach (var (typed, expected) in new[]
-                        {
-                    ("usbtunaide", "usbつないで"), ("usbtsunaide", "usbつないで"),
-                    ("USBtunaide", "USBつないで"), ("pctunaide", "pcつないで"),
-                    ("usbsuru", "usbする"), ("usbtsukatte", "usbつかって"),
-                    ("usbnuite", "usbぬいて"), ("usbwotunaide", "usbをつないで"),
-                    ("hdmitunaide", "hdmiつないで"),
-                })
-                        {
-                            var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
-                            var k = new Keyboard(live: live);
-                            k.Type(typed);
-                            Assert.Equal(expected, k.Showing, message + " 表示");
-                            k.Type("\n");
-                            Assert.Equal(expected, k.Host.Document, message + " Enter");
+                ("usbtunaide", "usbつないで"), ("usbtsunaide", "usbつないで"),
+                ("USBtunaide", "USBつないで"), ("pctunaide", "pcつないで"),
+                ("usbsuru", "usbする"), ("usbtsukatte", "usbつかって"),
+                ("usbnuite", "usbぬいて"), ("usbwotunaide", "usbをつないで"),
+                ("hdmitunaide", "hdmiつないで"),
+            })
+                    {
+                        var message = $"{typed} (スペル: {spell}, ライブ変換: {live})";
+                        var k = new Keyboard(live: live);
+                        k.Type(typed);
+                        Assert.Equal(expected, k.Showing, message + " 表示");
+                        k.Type("\n");
+                        Assert.Equal(expected, k.Host.Document, message + " Enter");
 
-                            k = new Keyboard(live: live);
-                            k.Type(typed + " ");
-                            Assert.True(k.Host.View?.Converting == true, message + " Space で変換を始める");
-                            k.Type("\n");
-                            Assert.Equal(expected, k.Host.Document, message + " Space → Enter");
-                        }
+                        k = new Keyboard(live: live);
+                        k.Type(typed + " ");
+                        Assert.True(k.Host.View?.Converting == true, message + " Space で変換を始める");
+                        k.Type("\n");
+                        Assert.Equal(expected, k.Host.Document, message + " Space → Enter");
                     }
                 }
             }
         }
         finally
         {
-            Detector.UseScoredSegmentation = segmentation;
             Detector.SpellChecker = spellChecker;
         }
     }
@@ -1722,46 +1704,41 @@ internal static class CompositionTests
     [Test]
     public static void Issue1132_ShortEnglishThenPendingJapanese()
     {
-        var segmentation = Detector.UseScoredSegmentation;
         var spellChecker = Detector.SpellChecker;
         try
         {
-            foreach (var scored in new[] { false, true })
+            foreach (var spell in new[] { false, true })
             {
-                foreach (var spell in new[] { false, true })
+                foreach (var live in new[] { false, true })
                 {
-                    foreach (var live in new[] { false, true })
+                    Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                    foreach (var (typed, showing, committed) in new[]
                     {
-                        Detector.UseScoredSegmentation = () => scored;
-                        Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
-                        foreach (var (typed, showing, committed) in new[]
-                        {
-                    ("usbtun", "usbつn", "usbつん"),
-                    ("usbtsukatt", "usbつかっt", "usbtsukatt"),
-                    ("prozac", "proざc", "prozac"),
-                    ("prozak", "proざk", "prozak"),
-                })
-                        {
-                            var message = $"{typed} (点数方式: {scored}, スペル: {spell}, ライブ変換: {live})";
-                            var k = new Keyboard(live: live);
-                            k.Type(typed);
-                            Assert.Equal(showing, k.Showing, message + " 入力途中");
-                            k.Type("\n");
-                            Assert.Equal(committed, k.Host.Document, message + " Enter");
+                ("usbtun", "usbつn", "usbつん"),
+                ("usbtsukatt", "usbつかっt", "usbtsukatt"),
+                ("prozac", "proざc", "prozac"),
+                ("prozak", "proざk", "prozak"),
+            })
+                    {
+                        var message = $"{typed} (スペル: {spell}, ライブ変換: {live})";
+                        var k = new Keyboard(live: live);
+                        k.Type(typed);
+                        Assert.Equal(showing, k.Showing, message + " 入力途中");
+                        k.Type("\n");
+                        Assert.Equal(committed, k.Host.Document, message + " Enter");
 
-                            k = new Keyboard(live: live);
-                            k.Type(typed + " ");
-                            if (committed.All(char.IsAsciiLetter))
-                            {
-                                Assert.True(k.Host.View?.Converting != true, message + " Space で英字を確定する");
-                                Assert.Equal(committed + " ", k.Host.Document, message + " Space");
-                            }
-                            else
-                            {
-                                Assert.True(k.Host.View?.Converting == true, message + " Space で日本語を変換する");
-                                k.Type("\n");
-                                Assert.Equal(committed, k.Host.Document, message + " Space → Enter");
-                            }
+                        k = new Keyboard(live: live);
+                        k.Type(typed + " ");
+                        if (committed.All(char.IsAsciiLetter))
+                        {
+                            Assert.True(k.Host.View?.Converting != true, message + " Space で英字を確定する");
+                            Assert.Equal(committed + " ", k.Host.Document, message + " Space");
+                        }
+                        else
+                        {
+                            Assert.True(k.Host.View?.Converting == true, message + " Space で日本語を変換する");
+                            k.Type("\n");
+                            Assert.Equal(committed, k.Host.Document, message + " Space → Enter");
                         }
                     }
                 }
@@ -1769,7 +1746,6 @@ internal static class CompositionTests
         }
         finally
         {
-            Detector.UseScoredSegmentation = segmentation;
             Detector.SpellChecker = spellChecker;
         }
     }
@@ -1778,27 +1754,21 @@ internal static class CompositionTests
     public static void Issue1132_KnownLimitation_ReadableEnglishAfterShortPrefix()
     {
         // 既知の問題: 本来は pronate のまま英字にしたいが、pro + なて と読めるため日本語との区別がつかない。
-        var segmentation = Detector.UseScoredSegmentation;
         var spellChecker = Detector.SpellChecker;
         try
         {
-            foreach (var scored in new[] { false, true })
+            foreach (var spell in new[] { false, true })
             {
-                foreach (var spell in new[] { false, true })
-                {
-                    Detector.UseScoredSegmentation = () => scored;
-                    Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
-                    var k = new Keyboard();
-                    k.Type("pronate");
-                    Assert.Equal("proなて", k.Showing, "既知の問題の現在の表示");
-                    k.Type("\n");
-                    Assert.Equal("proなて", k.Host.Document, "本来の期待は pronate。判定を改善したときに更新する");
-                }
+                Detector.SpellChecker = spell ? Detection.BuiltInWordChecker.Shared : null;
+                var k = new Keyboard();
+                k.Type("pronate");
+                Assert.Equal("proなて", k.Showing, "既知の問題の現在の表示");
+                k.Type("\n");
+                Assert.Equal("proなて", k.Host.Document, "本来の期待は pronate。判定を改善したときに更新する");
             }
         }
         finally
         {
-            Detector.UseScoredSegmentation = segmentation;
             Detector.SpellChecker = spellChecker;
         }
     }
@@ -2827,10 +2797,9 @@ internal static class CompositionTests
     public static void Punctuation_AfterEnglish_FollowsSetting()
     {
         // #416: 英字のすぐ後ろの , . も句読点にする設定。OFF なら今までどおり半角
-        string Type(string keys, bool on, bool scored = false, string? before = null, Meltype.Config.PunctuationStyle style = default)
+        string Type(string keys, bool on, string? before = null, Meltype.Config.PunctuationStyle style = default)
         {
             Detector.UseJapanesePunctuationAfterEnglish = () => on;
-            Detector.UseScoredSegmentation = () => scored;
             try
             {
                 var k = new Keyboard { Punctuation = style };
@@ -2841,20 +2810,15 @@ internal static class CompositionTests
             finally
             {
                 Detector.UseJapanesePunctuationAfterEnglish = null;
-                Detector.UseScoredSegmentation = null;
             }
         }
-        foreach (var scored in new[] { false, true })
-        {
-            var mode = scored ? " (点数で選ぶ)" : "";
-            Assert.Equal("IME。", Type("IME.\n", on: true, scored), "略語の後ろも句点" + mode);
-            Assert.Equal("Google.", Type("Google.\n", on: false, scored), "OFF は半角のまま" + mode);
-            Assert.Equal("Google。", Type("Google.\n", on: true, scored), "ON は句点" + mode);
-            Assert.Equal("Google、", Type("Google,\n", on: true, scored), "ON は読点" + mode);
-            Assert.Equal("Google．", Type("Google.\n", on: true, scored, style: Meltype.Config.PunctuationStyle.FullWidthCommaPeriod), "設定「句読点」の形" + mode);
-            Assert.Equal("world.", Type("world.\n", on: true, scored, before: "Hello "), "キャレットの前が英語 (Hello ) なら英文の続き" + mode);
-            Assert.Equal("tetr.io", Type("tetr.io\n", on: true, scored), "英単語の中の . は半角" + mode);
-        }
+        Assert.Equal("IME。", Type("IME.\n", on: true), "略語の後ろも句点");
+        Assert.Equal("Google.", Type("Google.\n", on: false), "OFF は半角のまま");
+        Assert.Equal("Google。", Type("Google.\n", on: true), "ON は句点");
+        Assert.Equal("Google、", Type("Google,\n", on: true), "ON は読点");
+        Assert.Equal("Google．", Type("Google.\n", on: true, style: Meltype.Config.PunctuationStyle.FullWidthCommaPeriod), "設定「句読点」の形");
+        Assert.Equal("world.", Type("world.\n", on: true, before: "Hello "), "キャレットの前が英語 (Hello ) なら英文の続き");
+        Assert.Equal("tetr.io", Type("tetr.io\n", on: true), "英単語の中の . は半角");
     }
 
     [Test]
