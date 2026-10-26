@@ -376,26 +376,25 @@ public sealed class CompositionText
     public bool IsAlphanumericAt(bool final) => Mode switch
     {
         DisplayMode.HalfWidthAlphanumeric or DisplayMode.FullWidthAlphanumeric => true,
-        DisplayMode.Auto => IsNumeric || Segments(final).All(s => s.IsEnglish),
+        DisplayMode.Auto => IsNumeric || Segments().All(s => s.IsEnglish),
         _ => false,
     };
 
     /// <summary>自動判定の区間分け (Mode が Auto のときに使う)。</summary>
-    /// <param name="final">打ち終わった (Space・Enter で確定・変換する) ときは true。英単語の打ちかけ (amaz → amazon) を英語の根拠にしない。</param>
-    public IReadOnlyList<CompositionSegment> Segments(bool final = false)
+    /// 入力中の表示と、Space・Enter で確定・変換するときで同じ区切りになる。
+    public IReadOnlyList<CompositionSegment> Segments()
     {
         // 1 キーごとに、表示・打ち間違いの直し・Space の扱いなどで何度も呼ばれる。区間分けは重い (打った文字のあらゆる区間を調べる) ので、
         // 打った内容と判定の条件が同じなら前の結果を使い回す。
-        var key = SegmentsKey(final);
-        var slot = final ? 1 : 0;
-        if (_segmentsCache[slot] is { } cached && cached.Key == key && ReferenceEquals(cached.Memory, _detector.Memory) && ReferenceEquals(cached.SpellChecker, _detector.SpellChecker))
+        var key = SegmentsKey();
+        if (_segmentsCache is { } cached && cached.Key == key && ReferenceEquals(cached.Memory, _detector.Memory) && ReferenceEquals(cached.SpellChecker, _detector.SpellChecker))
         {
             return cached.Segments;
         }
-        var result = ComputeSegments(final);
+        var result = ComputeSegments();
         if (FullWidthParentheses) result = [.. result.Select(s => s.IsEnglish && s.Raw is "(" or ")" ? new CompositionSegment(false, s.Raw == "(" ? "（" : "）", s.Raw) : s)];
         if (LaughterAfterKana) result = SplitLaughter(result);
-        _segmentsCache[slot] = (key, _detector.Memory, _detector.SpellChecker, result);
+        _segmentsCache = (key, _detector.Memory, _detector.SpellChecker, result);
         return result;
     }
 
@@ -423,23 +422,23 @@ public sealed class CompositionText
         return changed ?? segments;
     }
 
-    private readonly (string Key, LanguageMemory? Memory, Detection.IWordChecker? SpellChecker, IReadOnlyList<CompositionSegment> Segments)?[] _segmentsCache = new (string, LanguageMemory?, Detection.IWordChecker?, IReadOnlyList<CompositionSegment>)?[2];
+    private (string Key, LanguageMemory? Memory, Detection.IWordChecker? SpellChecker, IReadOnlyList<CompositionSegment> Segments)? _segmentsCache;
 
     /// <summary>区間分けの結果を決めるもの (打った単位・入力途中の子音・前後・判定の強さ・学習した語の版) をつないだもの。</summary>
-    private string SegmentsKey(bool final)
+    private string SegmentsKey()
     {
         var key = new StringBuilder();
         foreach (var unit in _units) key.Append(unit.Kana).Append('\u0001').Append(unit.Raw).Append('\u0002');
         key.Append('\u0003').Append(_pending).Append('\u0003')
             .Append(PrecedingEnglish switch { true => 'E', false => 'J', null => '-' })
             .Append(FollowingEnglish switch { true => 'E', false => 'J', null => '-' })
-            .Append(PrecedingEnglishSentence ? 'S' : '-').Append(KanaInput ? 'K' : '-').Append(final ? 'F' : '-')
+            .Append(PrecedingEnglishSentence ? 'S' : '-').Append(KanaInput ? 'K' : '-')
             .Append(PrecedingEnglishName ? 'N' : '-').Append(FullWidthParentheses ? 'W' : '-').Append(LaughterAfterKana ? 'L' : '-')
             .Append((int)EffectiveLevel).Append(':').Append(_detector.Memory?.Version ?? -1);
         return key.ToString();
     }
 
-    private IReadOnlyList<CompositionSegment> ComputeSegments(bool final)
+    private IReadOnlyList<CompositionSegment> ComputeSegments()
     {
         // 名前を紹介する英文では、辞書にないローマ字の名前も英字で残す。
         // 手動・かな入力・明示的な日本語学習・後ろの日本語は優先する。
@@ -447,17 +446,17 @@ public sealed class CompositionText
         if (!KanaInput && PrecedingEnglishName && FollowingEnglish != false && EffectiveLevel != DetectionLevel.Manual &&
             raw.Length > 0 && raw.All(char.IsAsciiLetter) && _detector.Memory?.Get(raw.ToLowerInvariant()) != false)
             return [new CompositionSegment(true, "", raw)];
-        var segments = SegmentWithProtection(_units, final);
+        var segments = SegmentWithProtection(_units);
         return HalfWidthOpeners(segments) is { } adjusted
-            ? SegmentWithProtection(adjusted, final)
+            ? SegmentWithProtection(adjusted)
             : segments;
     }
 
-    private IReadOnlyList<CompositionSegment> SegmentWithProtection(IReadOnlyList<CompositionUnit> units, bool final)
+    private IReadOnlyList<CompositionSegment> SegmentWithProtection(IReadOnlyList<CompositionUnit> units)
     {
         var spans = ProtectedSpans();
         if (spans.Count == 0)
-            return _detector.Segment(units, Pending, PrecedingEnglish, FollowingEnglish, EffectiveLevel, PrecedingEnglishSentence, KanaInput, final);
+            return _detector.Segment(units, Pending, PrecedingEnglish, FollowingEnglish, EffectiveLevel, PrecedingEnglishSentence, KanaInput);
         var raw = Raw;
         var result = new List<CompositionSegment>();
         var start = 0;
@@ -476,7 +475,7 @@ public sealed class CompositionText
             var gapUnits = UnitsInRawRange(units, from, to, out var pending);
             var segments = _detector.Segment(gapUnits, pending, from == 0 ? PrecedingEnglish : false,
                 to == raw.Length ? FollowingEnglish : false, EffectiveLevel,
-                from == 0 && PrecedingEnglishSentence, KanaInput, final);
+                from == 0 && PrecedingEnglishSentence, KanaInput);
             // 内部の区切りの子音は後の保護文字列とは結合しない。末尾の Pending は表示側が扱う。
             if (to < raw.Length && pending.Length > 0 && !segments[^1].IsEnglish)
                 segments = [.. segments.Take(segments.Count - 1), segments[^1] with
@@ -586,7 +585,7 @@ public sealed class CompositionText
     /// <summary>変換用の区間分け。末尾の入力途中の子音は確定扱い (n → ん) にして日本語区間の読みに含める。</summary>
     public IReadOnlyList<CompositionSegment> ConversionSegments()
     {
-        var segments = Segments(final: true).ToList();
+        var segments = Segments().ToList();
         if (segments.Count > 0 && !segments[^1].IsEnglish)
         {
             segments[^1] = segments[^1] with { Kana = segments[^1].Kana + PendingText(final: true) };
@@ -601,7 +600,7 @@ public sealed class CompositionText
     public string? RawForReading(int segmentIndex, int start, int length)
     {
         if (KanaInput) return null;
-        var segments = Segments(final: true);
+        var segments = Segments();
         if (segmentIndex < 0 || segmentIndex >= segments.Count) return null;
         var from = segments.Take(segmentIndex).Sum(s => s.Raw.Length);
         var units = UnitsInRawRange(_units, from, from + segments[segmentIndex].Raw.Length, out var pending);
@@ -661,7 +660,7 @@ public sealed class CompositionText
     /// </summary>
     public string? KanaForSegment(int segmentIndex)
     {
-        var segments = Segments(final: true);
+        var segments = Segments();
         if (segmentIndex < 0 || segmentIndex >= segments.Count) return null;
         var unit = 0;
         for (var s = 0; s < segmentIndex; s++)
@@ -745,7 +744,7 @@ public sealed class CompositionText
         // 保護範囲 (技術的な文字列) は、幅変換・かな化・漢字変換をせずに原文のまま出す (INV-01)。
         if (VerifyProtectedRaw()) return Raw;
         var builder = new StringBuilder();
-        var segments = Segments(final);
+        var segments = Segments();
         for (var i = 0; i < segments.Count; i++)
         {
             var segment = segments[i];
@@ -963,7 +962,7 @@ public sealed class CompositionText
     private List<bool> EnglishMask()
     {
         var mask = new List<bool>();
-        var segments = Segments(final: false);
+        var segments = Segments();
         for (var s = 0; s < segments.Count; s++)
         {
             var segment = segments[s];

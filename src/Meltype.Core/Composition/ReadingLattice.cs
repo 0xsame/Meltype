@@ -15,7 +15,6 @@ namespace Meltype.Composition;
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
 /// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 (english-readable.txt の語は 0.7) |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
-/// | 打っている途中の語の頭 (日本語・英語とも) | 1 |
 /// | 知らない英字 (ローマ字として読めない所と、大文字を含む所) | 1 文字 1.5 (大文字は 1) |
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
@@ -72,7 +71,7 @@ public sealed partial class CompositionDetector
     }
 
     private List<CompositionSegment> FindSpansByReading(IReadOnlyList<CompositionUnit> units, string pending, bool? precedingEnglish, bool? followingEnglish,
-        DetectionLevel level, bool englishSentence, bool kanaInput, bool final)
+        DetectionLevel level, bool englishSentence, bool kanaInput)
     {
         var text = _preparedRaw + pending;
         var length = text.Length;
@@ -91,12 +90,13 @@ public sealed partial class CompositionDetector
 
         // 知らない英字として英語にできる文字 (ローマ字として読めない英字・大文字・打ち終わって読めない入力途中の子音) の数の累積
         var unknown = new int[length + 1];
-        var finalPending = final ? _romaji.ConvertLenient(pending.ToLowerInvariant(), final: true) : "";
+        // 入力途中の子音は、入力中も Enter のときと同じ読みで重みを付ける (表示と確定の区切りを揃える)
+        var finalPending = _romaji.ConvertLenient(pending.ToLowerInvariant(), final: true);
         for (var p = 0; p < length; p++)
         {
             var c = text[p];
             var unreadable = char.IsAsciiLetterUpper(c) ||
-                (p < unitsEnd ? unitAt[p] is var k and >= 0 && _preparedUnreadable[k + 1] > _preparedUnreadable[k] : final && finalPending.Any(char.IsAsciiLetter));
+                (p < unitsEnd ? unitAt[p] is var k and >= 0 && _preparedUnreadable[k + 1] > _preparedUnreadable[k] : finalPending.Any(char.IsAsciiLetter));
             unknown[p + 1] = unknown[p] + (char.IsAsciiLetter(c) && unreadable ? 1 : 0);
         }
 
@@ -155,8 +155,8 @@ public sealed partial class CompositionDetector
         for (var p = 0; p < length; p++)
         {
             if (!IsBoundary(p)) continue;
-            var japanese = JapaneseEdges(units, text, p, unitOf, unitsEnd, pending, kanaInput, final);
-            var english = EnglishEdges(text, p, unknown, kanaInput, final, level, IsBoundary);
+            var japanese = JapaneseEdges(units, text, p, unitOf, unitsEnd, pending, kanaInput);
+            var english = EnglishEdges(text, p, unknown, kanaInput, level, IsBoundary);
             var unit = p < unitsEnd ? unitAt[p] : -1;
             // 記号・数字・空白・z の記号 (zh = ←) の単位: 言語を切り替えない
             LatticeEdge? neutral = unit >= 0 && !IsKanaUnit(units[unit]) && !IsLetterUnit(units[unit])
@@ -167,8 +167,8 @@ public sealed partial class CompositionDetector
             var forced = -1;
             if (unit >= 0 && !kanaInput)
             {
-                if (englishLevel) forced = ReadableStemDotSuffixEnd(units, unit, pending, final);
-                if (forced < 0) forced = LeadingDotfileEnd(units, unit, pending, final, level);
+                if (englishLevel) forced = ReadableStemDotSuffixEnd(units, unit, pending);
+                if (forced < 0) forced = LeadingDotfileEnd(units, unit, pending, level);
                 if (forced < 0) forced = UserNameEnd(units, unit, pending);
                 if (forced < 0 && englishLevel) forced = HyphenatedWordEnd(units, unit, pending);
                 if (forced < 0 && englishLevel) forced = NumeronymEnd(units, unit, pending);
@@ -180,7 +180,7 @@ public sealed partial class CompositionDetector
                 var state = LatticeState.FromKey(key);
                 var end = forced;
                 // ドメイン・拡張子の . の後ろ (tetr.io、MeltypeTip.dll)
-                if (end < 0 && unit > 0 && englishLevel && !kanaInput && units[unit - 1].Raw == "." && state.PreviousEnglish) end = DotSuffixEnd(units, unit, pending, final);
+                if (end < 0 && unit > 0 && englishLevel && !kanaInput && units[unit - 1].Raw == "." && state.PreviousEnglish) end = DotSuffixEnd(units, unit, pending);
                 if (end > unit)
                 {
                     var to = end == units.Count ? length : _preparedRawOffsets[end];
@@ -207,7 +207,7 @@ public sealed partial class CompositionDetector
             if (best[length, key] is not { } node) continue;
             var state = LatticeState.FromKey(key);
             var cost = node.Cost;
-            if (final && state.Sokuon) cost += DanglingSokuonCost;
+            if (state.Sokuon) cost += DanglingSokuonCost;
             if (followingEnglish == true && state.Side == Side.Japanese && !state.Particle) cost += switchCost;
             if (followingEnglish == false && state.IsEnglish && node.Edge.English) cost += switchCost;
             if (cost < chosenCost)
@@ -248,13 +248,11 @@ public sealed partial class CompositionDetector
         return count;
     }
 
-    private static (LatticeEdge Edge, double Cost) JapaneseEdge(int start, int end, string kana, bool growing)
+    private static (LatticeEdge Edge, double Cost) JapaneseEdge(int start, int end, string kana)
     {
         var particle = IsNounParticle(kana);
         if (RomajiTypoCorrector.CommonWordCost(kana) is { } cost) return (new LatticeEdge(start, end, false, kana, true, particle), cost);
         if (CommonReadings.Katakana.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), KatakanaWordCost);
-        // 打っている途中の語の頭 (たべ|ま の たべま)
-        if (growing && kana.Length >= 2 && CommonReadings.Words.HasPrefix(kana)) return (new LatticeEdge(start, end, false, kana, true, false), 1);
         return (new LatticeEdge(start, end, false, kana, true, false), double.NaN);
     }
 
@@ -264,7 +262,7 @@ public sealed partial class CompositionDetector
     /// 日本語の語は単位の途中で終わってもよい (単位の頭をローマ字として読み直す)。大文字を含む単位は日本語にしない (かな入力を除く)。
     /// </summary>
     private List<(LatticeEdge, double)> JapaneseEdges(IReadOnlyList<CompositionUnit> units, string text, int start, int[] unitOf, int unitsEnd, string pending,
-        bool kanaInput, bool final)
+        bool kanaInput)
     {
         var edges = new List<(LatticeEdge, double)>();
         var length = text.Length;
@@ -272,7 +270,7 @@ public sealed partial class CompositionDetector
 
         void Add(int end, string reading, bool wordOnly = false)
         {
-            var (edge, cost) = JapaneseEdge(start, end, reading, end == length && !final);
+            var (edge, cost) = JapaneseEdge(start, end, reading);
             if (first && !wordOnly)
             {
                 // 1 音目は、語にならなくても読める (打っている途中の子音だけなら重み 0)
@@ -295,8 +293,7 @@ public sealed partial class CompositionDetector
         {
             // Shift を押して打った子音 (W) は日本語にしない
             if (text[start..].Any(char.IsAsciiLetterUpper)) return edges;
-            if (!final) Add(length, "");
-            else if (_romaji.ConvertLenient(text[start..].ToLowerInvariant(), final: true) is var tail && tail.All(KanaChars.IsHiraganaOrLongMark)) Add(length, tail);
+            if (_romaji.ConvertLenient(text[start..].ToLowerInvariant(), final: true) is var tail && tail.All(KanaChars.IsHiraganaOrLongMark)) Add(length, tail);
             else LetterEdge(start);
             return edges;
         }
@@ -354,18 +351,17 @@ public sealed partial class CompositionDetector
             {
                 // 後ろの入力途中の子音 (pending) まで
                 if (pending.Any(char.IsAsciiLetterUpper)) break;
-                if (!final) Add(length, kana);
-                else if (_romaji.ConvertLenient(pending.ToLowerInvariant(), final: true) is var tail && tail.All(KanaChars.IsHiraganaOrLongMark)) Add(length, kana + tail);
+                if (_romaji.ConvertLenient(pending.ToLowerInvariant(), final: true) is var tail && tail.All(KanaChars.IsHiraganaOrLongMark)) Add(length, kana + tail);
             }
         }
         return edges;
     }
 
     /// <summary>
-    /// start から始まる、綴りで決まる候補: 英語 (知っている英単語・打っている途中の英単語の頭・知らない英字・短縮形) と、
+    /// start から始まる、綴りで決まる候補: 英語 (知っている英単語・知らない英字・短縮形) と、
     /// ユーザーがかなに直して覚えた語 (日本語の語として重み 1)。
     /// </summary>
-    private List<(LatticeEdge, double)> EnglishEdges(string text, int start, int[] unknown, bool kanaInput, bool final, DetectionLevel level, Func<int, bool> isBoundary)
+    private List<(LatticeEdge, double)> EnglishEdges(string text, int start, int[] unknown, bool kanaInput, DetectionLevel level, Func<int, bool> isBoundary)
     {
         var edges = new List<(LatticeEdge, double)>();
         if (!char.IsAsciiLetter(text[start])) return edges;
@@ -386,9 +382,6 @@ public sealed partial class CompositionDetector
             }
             else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)))
                 cost = ReadableEnglish.Value.ContainsWord(span.ToLowerInvariant()) ? ReadableEnglishCost : KnownEnglishCost;
-            else if (end == length && !final && span.Length >= 3 && IsWordCasing(span) &&
-                (_english.IsPrefix(span.ToLowerInvariant()) || _proper.HasPrefix(span.ToLowerInvariant())))
-                cost = KnownEnglishCost;
             else if (Memory?.Get(span.ToLowerInvariant()) == false)
             {
                 // かなに直して覚えた語 (google を ごおgぇ に) は、日本語の語として読む

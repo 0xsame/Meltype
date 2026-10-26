@@ -1358,7 +1358,8 @@ internal static class CompositionTests
             ["googlede"] = "googleで",
             ["kyouhagoogledekensaku"] = "きょうはgoogleでけんさく",
             ["githubnipush"] = "githubにpush",
-            ["repo"] = "れぽ", // ローマ字としても読める語は日本語のまま (F10 で英字)
+            ["repo"] = "repo",
+            ["who"] = "who",
             ["koreha"] = "これは",
         };
         foreach (var (typed, expected) in cases)
@@ -1500,7 +1501,7 @@ internal static class CompositionTests
         var cases = new Dictionary<string, string>
         {
             ["kaxnji"] = "かんじ", ["kannji"] = "かんじ", ["kanji"] = "かんじ", // ん: n / xn / nn
-            ["who"] = "うぉ", ["ulo"] = "うぉ", ["uxo"] = "うぉ",
+            ["whotto"] = "うぉっと", ["ulo"] = "うぉ", ["uxo"] = "うぉ",
             ["xtu"] = "っ", ["ltsu"] = "っ", ["vu"] = "ゔ", ["thi"] = "てぃ",
         };
         foreach (var (typed, expected) in cases)
@@ -2366,6 +2367,20 @@ internal static class CompositionTests
         var e = new Keyboard();
         e.Type("ext");
         Assert.Equal("ext", e.Showing, "ext は英字");
+    }
+
+    [Test]
+    public static void Enter_CommitsWhatIsShown()
+    {
+        // 入力途中の子音 (bookoff の ff) で、表示 (booこっf) と確定 (bookoff) の区切りが違っていた
+        foreach (var typed in new[] { "bookoff", "tabemas", "abacus", "tetr.i" })
+        {
+            var k = new Keyboard();
+            k.Type(typed);
+            var showing = k.Showing;
+            k.Type("\n");
+            Assert.Equal(showing, k.Host.Document, $"「{typed}」");
+        }
     }
 
     [Test]
@@ -5018,6 +5033,6 @@ internal static class CompositionTests
         }
         var text = new CompositionText(Detector);
         foreach (var c in "suityoku") text.Append(c);
-        Assert.Equal("JA:suityoku", string.Join(" | ", text.Segments(final: true).Select(s => (s.IsEnglish ? "EN:" : "JA:") + s.Raw)));
+        Assert.Equal("JA:suityoku", string.Join(" | ", text.Segments().Select(s => (s.IsEnglish ? "EN:" : "JA:") + s.Raw)));
     }
 }

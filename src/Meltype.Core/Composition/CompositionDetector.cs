@@ -115,7 +115,7 @@ public sealed partial class CompositionDetector
     /// <param name="englishSentence">キャレットの前が英文 (空白で区切った英単語が 2 語以上続いて空白で終わる: "I want ")。
     /// 日本語の文の中の英単語 (GitHub の) より強い英語の根拠として扱う。</param>
     public IReadOnlyList<CompositionSegment> Segment(IReadOnlyList<CompositionUnit> units, string pending, bool? precedingEnglish = null, bool? followingEnglish = null,
-        DetectionLevel level = DetectionLevel.Balanced, bool englishSentence = false, bool kanaInput = false, bool final = false)
+        DetectionLevel level = DetectionLevel.Balanced, bool englishSentence = false, bool kanaInput = false)
     {
         // 区間分けは units[i..j] の生文字列・かなを何度も作る。1 回の Segment 呼び出しの間だけ、
         // 連結した原文と各位置のオフセットを使い回す (内容・順序は同じで、文字列を毎回連結しない)。
@@ -125,7 +125,7 @@ public sealed partial class CompositionDetector
         if (!kanaInput && token.All(c => c is >= '!' and <= '~') &&
             (token.Contains('@') && token.Any(char.IsAsciiLetter) || token.Contains('_') || token.Contains("://", StringComparison.Ordinal) || IsStylizedName(token)))
             return [new CompositionSegment(true, "", token)];
-        return FindSpansByReading(units, pending, precedingEnglish, followingEnglish, level, englishSentence && precedingEnglish == true, kanaInput, final);
+        return FindSpansByReading(units, pending, precedingEnglish, followingEnglish, level, englishSentence && precedingEnglish == true, kanaInput);
     }
 
     /// <summary>
@@ -312,7 +312,7 @@ public sealed partial class CompositionDetector
     /// 語の先頭から拡張子までを 1 つの英語区間にする。大文字や知っている英単語 (Meltype.amr) は、拡張子を別区間のままにする。
     /// 数字の前 (3.14desu)・小数 (soudesu.1.5)・最後まで読める語 (Meltype.desu) は対象外。
     /// </summary>
-    private int ReadableStemDotSuffixEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, bool final)
+    private int ReadableStemDotSuffixEnd(IReadOnlyList<CompositionUnit> units, int start, string pending)
     {
         if (start > 0 && units[start - 1].Raw.Length > 0 && units[start - 1].Raw.All(char.IsAsciiLetter)) return -1;
         var dot = start;
@@ -322,7 +322,7 @@ public sealed partial class CompositionDetector
         if (dot >= units.Count || units[dot].Raw != ".") return -1;
         var stem = Raw(units, start, dot);
         if (IsKnownEnglishWord(stem)) return -1;
-        var suffix = DotSuffixEnd(units, dot + 1, pending, final);
+        var suffix = DotSuffixEnd(units, dot + 1, pending);
         if (suffix <= dot + 1) return -1;
         // 1.5 のような小数は拡張子ではない (soudesu.1.5 → そうです。1.5)。cpp のような英字の拡張子だけをまとめる。
         var suffixRaw = Raw(units, dot + 1, Math.Min(suffix, units.Count));
@@ -334,10 +334,10 @@ public sealed partial class CompositionDetector
     /// 入力先頭のドットファイル (.gitignore / .env / .dll) の終わり。無ければ -1 (issue #431)。
     /// 途中の 3.14desu や「です。」の . には使わない (start == 0 のときだけ)。
     /// </summary>
-    private int LeadingDotfileEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, bool final, DetectionLevel level)
+    private int LeadingDotfileEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, DetectionLevel level)
     {
         if (level == DetectionLevel.Manual || start != 0 || units.Count == 0 || units[0].Raw != ".") return -1;
-        var end = DotSuffixEnd(units, 1, pending, final);
+        var end = DotSuffixEnd(units, 1, pending);
         return end > 1 ? end : -1;
     }
 
@@ -347,7 +347,7 @@ public sealed partial class CompositionDetector
     /// 拡張子は、ローマ字として読めない (dll、aab)・数字や . / を含む (e57、go.mod)・よく使う拡張子 (ace、ini) なら英字のまま。
     /// 最後までローマ字として読める語 (Meltype.desu) は、今までどおり判定する。後ろの助詞からは日本語 (MeltypeTip.dll|wokesu)。
     /// </summary>
-    private int DotSuffixEnd(IReadOnlyList<CompositionUnit> units, int start, string pending, bool final)
+    private int DotSuffixEnd(IReadOnlyList<CompositionUnit> units, int start, string pending)
     {
         static bool IsPart(CompositionUnit unit) => unit.Raw.Length > 0 && unit.Raw.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '+');
         var n = units.Count;
@@ -362,12 +362,9 @@ public sealed partial class CompositionDetector
         var name = Raw(units, start, end) + (end == n ? pending : "");
         if (!name.Any(char.IsAsciiLetter)) return -1;
         var lower = name.ToLowerInvariant();
-        var growing = end == n && !final;
         static bool Known(string label) => DomainSuffixes.Contains(label) || FileExtensions.Contains(label);
         var lastLabel = lower[(lower.LastIndexOfAny(['.', '/']) + 1)..];
         if (Known(lower) || Known(lastLabel)) return end;
-        // ドメイン・拡張子の打ちかけ (tetr.i)
-        if (growing && DomainSuffixes.Concat(FileExtensions).Any(s => s.StartsWith(lastLabel, StringComparison.Ordinal))) return end;
         if (lower.Any(c => char.IsAsciiDigit(c) || c is '.' or '/' or '_' or '+')) return end;
         // 打っている途中も、最後の子音までかなになるときだけ読めるとみなす (Meltype.bas を ばs と表示すると、確定で打ち間違いとして ば に直される)
         bool Readable(string text) => _romaji.Analyze(text) is { IsValid: true, Partial: "" or "n" };

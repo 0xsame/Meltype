@@ -1053,7 +1053,7 @@ public sealed class CompositionController
             // 前の語が日本語でも「日本語の続き」とはしない (空白で区切って打った語なので、語の途中ではない)
             var typed = new CompositionText(_detector) { PrecedingEnglish = previousEnglish == true ? true : null, Punctuation = _options.Punctuation() };
             foreach (var c in word) typed.Append(c);
-            var segments = typed.Segments(final: true);
+            var segments = typed.Segments();
             foreach (var segment in segments)
             {
                 if (!segment.IsEnglish)
@@ -2701,7 +2701,7 @@ public sealed class CompositionController
         if (!_options.Learning() || _options.Languages is not { } memory || _escReverted) return;
         var raw = _text.Raw;
         if (raw.Length < 2 || !raw.All(char.IsAsciiLetter)) return;
-        var automatic = _text.Segments(final: true);
+        var automatic = _text.Segments();
         switch (_text.Mode)
         {
             case DisplayMode.HalfWidthAlphanumeric or DisplayMode.FullWidthAlphanumeric when !automatic.All(s => s.IsEnglish):
@@ -2974,7 +2974,7 @@ public sealed class CompositionController
 
     /// <summary>変換ボックスの最後が英語の区間か (Space を空白として扱うか)。</summary>
     private bool EndsWithEnglish(bool final = false) =>
-        _text.Mode == DisplayMode.Auto && _text.Segments(final) is { Count: > 0 } segments && segments[^1].IsEnglish;
+        _text.Mode == DisplayMode.Auto && _text.Segments() is { Count: > 0 } segments && segments[^1].IsEnglish;
 
     private void ReplayDown(KeyEvent e)
     {
