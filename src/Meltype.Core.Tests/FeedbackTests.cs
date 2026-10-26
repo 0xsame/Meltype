@@ -739,16 +739,16 @@ internal static class LanguageLearningTests
         try
         {
             var k = new CompositionTests.Keyboard(languages: memory);
-            k.Type("api");
-            Assert.Equal("あぴ", k.Showing, "最初は日本語");
+            k.Type("tao");
+            Assert.Equal("たお", k.Showing, "最初は日本語");
             k.Press(VirtualKeys.F10);
             k.Type("\n");
-            Assert.Equal("api", k.Host.Document);
-            Assert.Equal(true, memory.Get("api"), "F10 で英字にして確定したので覚える");
+            Assert.Equal("tao", k.Host.Document);
+            Assert.Equal(true, memory.Get("tao"), "F10 で英字にして確定したので覚える");
 
             var next = new CompositionTests.Keyboard(languages: memory);
-            next.Type("apinoerror\n");
-            Assert.Equal("apiのerror", next.Host.Document, "次からは文の中でも英字");
+            next.Type("taonoerror\n");
+            Assert.Equal("taoのerror", next.Host.Document, "次からは文の中でも英字");
         }
         finally
         {
@@ -1211,14 +1211,14 @@ internal static class RawCandidateTests
         try
         {
             var k = new CompositionTests.Keyboard(languages: memory);
-            k.Type("api ");
+            k.Type("tao ");
             var candidates = k.Host.View!.Candidates;
-            Assert.True(candidates.Contains("api") && candidates.Contains("ａｐｉ"), $"候補に打ったままの英字と全角の英字: {string.Join(" ", candidates)}");
+            Assert.True(candidates.Contains("tao") && candidates.Contains("ｔａｏ"), $"候補に打ったままの英字と全角の英字: {string.Join(" ", candidates)}");
             // Space を連打して英字まで送る
-            for (var i = 0; i < 10 && k.Host.View!.Candidates[k.Host.View.SelectedIndex] != "api"; i++) k.Press(VirtualKeys.Space);
+            for (var i = 0; i < 10 && k.Host.View!.Candidates[k.Host.View.SelectedIndex] != "tao"; i++) k.Press(VirtualKeys.Space);
             k.Type("\n");
-            Assert.Equal("api", k.Host.Document);
-            Assert.Equal(true, memory.Get("api"), "英字を選んで確定したので覚える");
+            Assert.Equal("tao", k.Host.Document);
+            Assert.Equal(true, memory.Get("tao"), "英字を選んで確定したので覚える");
         }
         finally
         {

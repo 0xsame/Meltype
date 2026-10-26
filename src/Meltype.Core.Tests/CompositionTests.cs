@@ -984,7 +984,7 @@ internal static class CompositionTests
     [Test]
     public static void F10_CaseKeepsDigitsAndSymbols()
     {
-        // 英字に数字・記号が混ざっていても、変わるのは英字だけ (api2.0 → API2.0 → Api2.0)
+        // 英字に数字・記号が混ざっていても、変わるのは英字だけ (api2.0 → API2.0 → Api2.0 → api2.0)
         var k = new Keyboard();
         k.Type("api2.0");
         var shown = new List<string?>();
@@ -993,7 +993,7 @@ internal static class CompositionTests
             k.Press(VirtualKeys.F10);
             shown.Add(k.Showing);
         }
-        Assert.Equal("api2.0,API2.0,Api2.0", string.Join(",", shown));
+        Assert.Equal("API2.0,Api2.0,api2.0", string.Join(",", shown));
     }
 
     [Test]
@@ -1002,7 +1002,6 @@ internal static class CompositionTests
         // F10 で大文字にした後に F9 (全角) にすると、打ったまま (小文字) から。F9 の大文字の後に F10 でも同じ
         var k = new Keyboard();
         k.Type("abc");
-        k.Press(VirtualKeys.F10);
         k.Press(VirtualKeys.F10);
         Assert.Equal("ABC", k.Showing);
         k.Press(VirtualKeys.F9);
@@ -3189,13 +3188,13 @@ internal static class CompositionTests
     [Test]
     public static void AutoCorrect_KeepsExplicitlyChosenLanguage()
     {
-        // #124: F10 で英字にして確定した語 (api) は、後ろに日本語が続いても かな に確定し直さない
+        // #124: F10 で英字にして確定した語 (sushi) は、後ろに日本語が続いても かな に確定し直さない
         var k = new Keyboard(languages: new LanguageMemory(null));
-        k.Type("api");
+        k.Type("sushi");
         k.Press(VirtualKeys.F10);
         k.Type("\n");
         k.Type("tte\n");
-        Assert.Equal("apiって", k.Host.Document, string.Join("|", k.Host.Events));
+        Assert.Equal("sushiって", k.Host.Document, string.Join("|", k.Host.Events));
     }
 
     [Test]

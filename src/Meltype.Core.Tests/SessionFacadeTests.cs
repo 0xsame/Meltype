@@ -502,7 +502,7 @@ internal static class SessionFacadeTests
     public static void Candidates_CanBeSelectedByIndex()
     {
         var session = Create();
-        Type(session, "api ");
+        Type(session, "sushi ");
         var view = session.SelectCandidate(2).View!;
         Assert.Equal(2, view.SelectedIndex);
         var commit = Type(session, "\n")[0];
