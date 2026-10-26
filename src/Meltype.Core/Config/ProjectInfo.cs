@@ -51,9 +51,10 @@ public static class ProjectInfo
 
     /// <summary>
     /// 自分で直した誤判定を、「変換・判定の間違い」のひな形 (2-misdetection.yml) に入れた状態で開く URL (issue #284)。
-    /// 欄の id (kind・typed・actual・expected・key・context) は、ひな形と合わせる。
+    /// 欄の id (kind・typed・actual・expected・key・zenzai・context) は、ひな形と合わせる。
+    /// zenzai は「Zenzai を使う」の設定 (分からなければ null で、欄は空のまま) (issue #1197)。
     /// </summary>
-    public static string MisdetectionReportUrl(Composition.Correction correction, string os, string version, string environment) =>
+    public static string MisdetectionReportUrl(Composition.Correction correction, string os, string version, string environment, bool? zenzai = null) =>
         GitHubReportUrl("2-misdetection.yml", os, version, environment) +
         $"&title={Uri.EscapeDataString("[誤判定] " + correction.Typed)}" +
         $"&kind={Uri.EscapeDataString(correction.Kind)}" +
@@ -61,6 +62,7 @@ public static class ProjectInfo
         $"&actual={Uri.EscapeDataString(correction.Shown)}" +
         $"&expected={Uri.EscapeDataString(correction.Corrected)}" +
         $"&key={Uri.EscapeDataString(correction.LastKey)}" +
+        (zenzai is { } on ? $"&zenzai={Uri.EscapeDataString(on ? "使っている" : "使っていない")}" : "") +
         $"&context={Uri.EscapeDataString(correction.Before)}";
 
     /// <summary>Mac 版・Linux 版の実行環境 (不具合報告に入れる。入力した文字は入れない)。</summary>

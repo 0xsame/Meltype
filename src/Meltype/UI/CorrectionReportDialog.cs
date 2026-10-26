@@ -20,6 +20,7 @@ internal sealed class CorrectionReportDialog : Form
     private readonly ComboBox _key = new() { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _before = new() { Dock = DockStyle.Fill };
     private readonly string _environment;
+    private readonly bool _zenzai;
     private readonly Label _status = new() { AutoSize = true, ForeColor = SystemColors.GrayText, Padding = new Padding(0, 8, 0, 0) };
 
     public CorrectionReportDialog(CorrectionLog log, Config.Settings settings)
@@ -33,6 +34,7 @@ internal sealed class CorrectionReportDialog : Form
         Size = new Size(640, 520);
         MinimumSize = new Size(480, 420);
         _environment = Diagnostics.ReportInfo.Environment(settings);
+        _zenzai = settings.UseZenzai;
 
         var intro = new Label
         {
@@ -107,7 +109,7 @@ internal sealed class CorrectionReportDialog : Form
     {
         try
         {
-            Process.Start(new ProcessStartInfo(AppInfo.MisdetectionReportUrl(Current(), _environment)) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(AppInfo.MisdetectionReportUrl(Current(), _environment, _zenzai)) { UseShellExecute = true });
             _status.Text = "報告の画面を開きました";
         }
         catch (Exception ex)
