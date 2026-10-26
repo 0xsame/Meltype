@@ -587,6 +587,8 @@ public sealed partial class CompositionDetector
 
     /// <summary>
     /// 母音で終わる語のすぐ後ろが ん の単位 (image|n|za|i) か。その ん は語の最後の音に付くので、語は日本語の途中 (いまげんざい)。
+    /// workaround (#1175): english-readable.txt の語の途中から始まる日本語の語 (image|nzai の げんざい) を判定で見ていないので、
+    /// すぐ後ろが ん のときだけ英語として確定しない。「英単語 + 日本語」と「すべて日本語」を、語の境目をまたぐ語も含めて比べる判定ができたら、この関数と呼び出し 2 か所を消す。
     /// </summary>
     private static bool NasalContinues(string lower, string? next) =>
         lower[^1] is 'a' or 'i' or 'u' or 'e' or 'o' && next is [var n, ..] && char.ToLowerInvariant(n) == 'n' &&
