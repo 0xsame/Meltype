@@ -39,6 +39,16 @@ if $use_ibus; then
     fi
 fi
 
+# fcitx5 に読み直させる dbus-send (Ubuntu の標準の画面なら、ふつうは入っている)
+if $use_fcitx5; then
+    missing=()
+    command -v dbus-send > /dev/null || missing+=(dbus)
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "必要な部品を入れます: ${missing[*]}"
+        sudo apt-get install -y "${missing[@]}"
+    fi
+fi
+
 echo "$target に入れます (管理者のパスワードを聞かれます)"
 sudo rm -rf "$target"
 sudo mkdir -p "$target"
@@ -63,19 +73,11 @@ fcitx5_has_meltype() {
 }
 
 # 動いている fcitx5 に、新しいアドオンと入力メソッドを読ませる (DBus の Refresh)
+# dbus-send は、Meltype を読めたかを確かめる fcitx5-remote と同じセッションバスにつながる。
+# dbus-send が無ければ install.sh が dbus を入れる (fcitx5 を使うときだけ)
 fcitx5_refresh() {
-    if command -v busctl > /dev/null 2>&1; then
-        busctl --user call org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1 Refresh > /dev/null 2>&1 && return 0
-    fi
-    if command -v gdbus > /dev/null 2>&1; then
-        gdbus call --session --dest org.fcitx.Fcitx5 --object-path /controller \
-            --method org.fcitx.Fcitx.Controller1.Refresh > /dev/null 2>&1 && return 0
-    fi
-    if command -v dbus-send > /dev/null 2>&1; then
-        dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller \
-            org.fcitx.Fcitx.Controller1.Refresh > /dev/null 2>&1 && return 0
-    fi
-    return 1
+    dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller \
+        org.fcitx.Fcitx.Controller1.Refresh > /dev/null 2>&1
 }
 
 # 動いている fcitx5 の PID (自分のユーザーのものだけ)。動いていなければ空。
@@ -125,7 +127,7 @@ fcitx5_reload() {
             sleep 0.2
         done
     fi
-    # Refresh では読めなかった。起動し直して読ませる
+    # Refresh を呼べても Meltype が見えないことがある。起動し直して読ませる
     fcitx5_restart || return 1
     return 0
 }
