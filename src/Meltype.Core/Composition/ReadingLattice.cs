@@ -20,6 +20,7 @@ namespace Meltype.Composition;
 /// | 大文字で始まる知らない語を小文字の途中で切って、付属語でない日本語を続ける (Ta\|なか) | 3 |
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
+/// | 英字 → 日本語 → 英字 と英字のあいだで区切りなしに戻る (付属語を含むときは除く) | 1 |
 /// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる | 1 |
 /// | 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) | 1 つ 0.5 |
 ///
@@ -50,6 +51,7 @@ public sealed partial class CompositionDetector
     // 大文字で始まる知らない語 (Tanaka・McKinsey) の小文字。小文字の途中で切って付属語でない日本語を続ける (Ta|なか) ときは NameSplitCost を足す
     private const double NameLetterCost = 0.5;
     private const double NameSplitCost = 3;
+    private const double SandwichCost = 1;
     private const double UnknownUpperCost = 1;
     private const double UnknownKanaCost = 3;
     private const double LightKanaCost = 0.5;
@@ -139,6 +141,14 @@ public sealed partial class CompositionDetector
             if (edge.English)
             {
                 step = cost + EnglishTieBreak + englishBias;
+                if (state.Side == Side.Japanese && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && char.IsAsciiLetter(text[edge.Start]))
+                {
+                    // 英字 → 日本語 → 英字 と、英字のあいだで区切りなしに戻る (procras|ち|cle)。あいだが付属語を含むとき (excel|と|ppt) は除く
+                    var run = from;
+                    var particle = run.Edge.Particle;
+                    while (run.Previous is { } previous && !run.Edge.English && !run.Edge.Neutral) { if (previous.Edge.English || previous.Edge.Neutral) break; run = previous; particle |= run.Edge.Particle; }
+                    if (!particle && run.Previous is { Edge.English: true } before && before.Edge.End == run.Edge.Start && run.Edge.Start > 0 && char.IsAsciiLetter(text[run.Edge.Start - 1])) step += SandwichCost;
+                }
                 if (state.Side == Side.Japanese && !state.Particle) step += SwitchCost;
                 if (state.IsEnglish && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && char.IsAsciiLetter(text[edge.Start])) step += AdjacentEnglishCost;
                 // 英文の続きの強さは、最初の英語の語までで使い終わる (英文の中の記号では使い終わらない)
