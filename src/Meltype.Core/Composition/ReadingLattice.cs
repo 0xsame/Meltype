@@ -12,7 +12,7 @@ namespace Meltype.Composition;
 /// |---|---|
 /// | 日本語の語 (readings.txt と活用した形) | 1 (1 文字の語 1.5、付属語 0.8) |
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
-/// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 |
+/// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 (english-readable.txt の語は 0.7) |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
 /// | 打っている途中の語の頭 (日本語・英語とも) | 1 |
 /// | 知らない英字 (ローマ字として読めない所と、大文字を含む所) | 1 文字 1.5 (大文字は 1) |
@@ -31,6 +31,7 @@ public sealed partial class CompositionDetector
     private const double SwitchCost = 1;
     private const double AdjacentEnglishCost = 1;
     private const double KnownEnglishCost = 1;
+    private const double ReadableEnglishCost = 0.7;
     private const double UnknownLetterCost = 1.5;
     private const double UnknownUpperCost = 1;
     private const double UnknownKanaCost = 3;
@@ -351,7 +352,7 @@ public sealed partial class CompositionDetector
                 cost = KnownEnglishCost;
             }
             else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)))
-                cost = KnownEnglishCost;
+                cost = ReadableEnglish.Value.ContainsWord(span.ToLowerInvariant()) ? ReadableEnglishCost : KnownEnglishCost;
             else if (end == length && !final && span.Length >= 3 && IsWordCasing(span) &&
                 (_english.IsPrefix(span.ToLowerInvariant()) || _proper.HasPrefix(span.ToLowerInvariant())))
                 cost = KnownEnglishCost;
