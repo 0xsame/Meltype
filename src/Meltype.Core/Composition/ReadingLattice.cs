@@ -16,7 +16,8 @@ namespace Meltype.Composition;
 /// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 (english-readable.txt の語は 0.7) |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
 /// | english.txt の日本語由来の語 (suzuki・sushi) のローマ字で読んだかな | 日本語の語として 1 |
-/// | 知らない英字 (ローマ字として読めない所と、大文字を含む所) | 1 文字 1.5 (大文字は 1) |
+/// | 知らない英字 (ローマ字として読めない所と、大文字を含む所) | 1 文字 1.5 (大文字は 1。大文字で始まり 2 文字目が小文字の 3 文字以上の語 Tanaka の小文字は 0.5) |
+/// | 大文字で始まる知らない語を小文字の途中で切って、付属語でない日本語を続ける (Ta\|なか) | 3 |
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
 /// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる | 1 |
@@ -46,6 +47,9 @@ public sealed partial class CompositionDetector
     private const double KnownEnglishCost = 1;
     private const double ReadableEnglishCost = 0.7;
     private const double UnknownLetterCost = 1.5;
+    // 大文字で始まる知らない語 (Tanaka・McKinsey) の小文字。小文字の途中で切って付属語でない日本語を続ける (Ta|なか) ときは NameSplitCost を足す
+    private const double NameLetterCost = 0.5;
+    private const double NameSplitCost = 3;
     private const double UnknownUpperCost = 1;
     private const double UnknownKanaCost = 3;
     private const double LightKanaCost = 0.5;
@@ -59,7 +63,7 @@ public sealed partial class CompositionDetector
     private enum Side : byte { None, Japanese, English, Sentence }
 
     /// <summary>区切りの 1 つの候補。Kana は日本語の候補の読み。Letters は英字を含む日本語の候補か。Neutral は記号・数字・空白 (言語を切り替えない)。</summary>
-    private readonly record struct LatticeEdge(int Start, int End, bool English, string Kana, bool Letters, bool Particle, bool Neutral = false);
+    private readonly record struct LatticeEdge(int Start, int End, bool English, string Kana, bool Letters, bool Particle, bool Neutral = false, bool Name = false);
 
     private sealed record LatticeNode(double Cost, LatticeNode? Previous, LatticeEdge Edge);
 
@@ -128,7 +132,9 @@ public sealed partial class CompositionDetector
             var japanese = !edge.English && !edge.Neutral;
             // 子音を重ねて打った っ は、前後をかなに挟まれているときだけ軽い (excelとっpt・cwっで にしない。ltu・xtu で打った っ と、Goって の って は除く)
             var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
-            var sokuon = vowel + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
+            // 大文字で始まる知らない語 (Tanaka) を小文字の途中で切って、付属語でない日本語を続ける (Ta|なか)
+            var nameSplit = japanese && !edge.Particle && from.Edge.Name && from.Edge.End == edge.Start && edge.Start < length && char.IsAsciiLetterLower(text[edge.Start]) ? NameSplitCost : 0;
+            var sokuon = vowel + nameSplit + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
                 (japanese && edge.Kana == "っ" && DoubledAt(edge.Start) && state.Side != Side.Japanese ? DanglingSokuonCost : 0);
             if (edge.English)
             {
@@ -400,7 +406,12 @@ public sealed partial class CompositionDetector
                 continue;
             }
             else if (!kanaInput && unknown[end] > unknown[start])
-                cost = span.Sum(ch => char.IsAsciiLetterUpper(ch) ? UnknownUpperCost : UnknownLetterCost);
+            {
+                var name = span.Length >= 3 && char.IsAsciiLetterUpper(span[0]) && char.IsAsciiLetterLower(span[1]);
+                cost = span.Sum(ch => char.IsAsciiLetterUpper(ch) ? UnknownUpperCost : name ? NameLetterCost : UnknownLetterCost);
+                edges.Add((new LatticeEdge(start, end, true, "", false, false, Name: name), cost));
+                continue;
+            }
             else continue;
             edges.Add((new LatticeEdge(start, end, true, "", false, false), cost));
         }
