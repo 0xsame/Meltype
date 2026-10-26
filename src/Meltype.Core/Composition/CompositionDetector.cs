@@ -585,6 +585,13 @@ public sealed partial class CompositionDetector
             _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } && !IsKnownEnglishWord(head);
     }
 
+    /// <summary>
+    /// 母音で終わる語のすぐ後ろが ん の単位 (image|n|za|i) か。その ん は語の最後の音に付くので、語は日本語の途中 (いまげんざい)。
+    /// </summary>
+    private static bool NasalContinues(string lower, string? next) =>
+        lower[^1] is 'a' or 'i' or 'u' or 'e' or 'o' && next is [var n, ..] && char.ToLowerInvariant(n) == 'n' &&
+        (next.Length == 1 || char.ToLowerInvariant(next[1]) is not ('a' or 'i' or 'u' or 'e' or 'o' or 'y'));
+
     /// <summary>english-readable.txt の語か (ローマ字として最後まで読めても、日本語の語にならない英単語: open、feature)。</summary>
     public static bool IsReadableEnglishWord(string lower) => ReadableEnglish.Value.ContainsWord(lower);
 
@@ -731,7 +738,8 @@ public sealed partial class CompositionDetector
         if (char.IsAsciiLetterUpper(span[0]) && (exact || prefix || atEnd || (spellWord && next is [var symbol, ..] && !char.IsAsciiLetterOrDigit(symbol)))) return true;
         if (level == DetectionLevel.Manual) return false;
         // ローマ字として最後まで読めても日本語の語にならない英単語 (english-readable.txt)。Manual の後・助詞誤分割除外の後で確定する。
-        if (readableEnglish) return true;
+        // ただし、すぐ後ろが ん (image|n|za|i) なら、語の最後の音の続き: 日本語の途中 (いまげんざい = 今現在、issue #1175)。
+        if (readableEnglish && !NasalContinues(lower, next)) return true;
         // ユーザーが英字 / かなに直して覚えた語。ただし短くてローマ字として読める語 (go、no) は、日本語のすぐ後ろ
         // (nihon|go) では使わない (一度 go を英字で確定しただけで、日本語 が にほんgo になっていた)。
         if (Memory?.Get(lower) is { } learned && !(learned && before < 0 && lower.Length <= 3 && Fragment() is { IsValid: true, Partial: "" })) return learned;
@@ -750,7 +758,7 @@ public sealed partial class CompositionDetector
         }
         // ローマ字として最後まで読めても、日本語の語にならない英単語 (feature = ふぇあつれ、remote = れもて。dictionaries/english-readable.txt、#12)。
         // 日本語の語の始まりにもならない語だけを入れているので、後ろに日本語が続いても (feature|wo) 英語。
-        if (lower.Length >= 3 && ReadableEnglish.Value.ContainsWord(lower)) return true;
+        if (lower.Length >= 3 && ReadableEnglish.Value.ContainsWord(lower) && !NasalContinues(lower, next)) return true;
         // -pedia (pedia / protopedia …)。ローマ字だと ぺぢあ になり、途中の to が助詞「と」に割れる (pro|to|pedia)。
         // wikipedia はスペルチェッカーで足りるが、pedia 単体や未登録の複合はここですくう。
         // CanBeEnglishSpan / 上の早期 return でも同じ IsPediaEnglishWord を通す (通さないとここへ届かない)。
