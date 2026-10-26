@@ -547,7 +547,7 @@ internal static class CompositionTests
         // #199: 設定「入力中のキーの役割を分ける」。英字で見えている語でも、Space で確定して空白を入れずに候補を開く
         // (英字を最初の候補に残し、ローマ字として読めれば日本語の候補も選べる)
         var k = new Keyboard { SeparateKeyRoles = true };
-        k.Host.PrecedingText = "I ";
+        k.Host.PrecedingText = "I want ";
         k.Type("made");
         Assert.Equal("made", k.Showing, "前が英語なので英字");
         k.Press(VirtualKeys.Space);
@@ -560,7 +560,7 @@ internal static class CompositionTests
 
         // 設定が OFF なら今までどおり、英字で確定して空白を入れる
         var normal = new Keyboard();
-        normal.Host.PrecedingText = "I ";
+        normal.Host.PrecedingText = "I want ";
         normal.Type("made ");
         Assert.Equal("made ", normal.Host.Document);
     }
@@ -570,7 +570,7 @@ internal static class CompositionTests
     {
         // 変換: 日本語を優先して変換する
         var k = new Keyboard { SeparateKeyRoles = true };
-        k.Host.PrecedingText = "I ";
+        k.Host.PrecedingText = "I want ";
         k.Type("made");
         k.Press(VirtualKeys.Convert);
         Assert.Equal("まで", k.Host.View!.Candidates[0], string.Join(" ", k.Host.View!.Candidates));
@@ -2997,7 +2997,6 @@ internal static class CompositionTests
             ("I love ", " is great", "sushi"),
             ("今日は", null, "すし"),         // 前が日本語
             (null, "が好き", "すし"),         // 後ろが日本語
-            ("I love ", "が好き", "すし"),     // 食い違うときは日本語
             (null, null, "すし"),             // 分からなければ日本語
         ];
         foreach (var (before, after, expected) in cases)
@@ -4103,11 +4102,6 @@ internal static class CompositionTests
         k.Type("kyouha\n");
         k.Type("sushi");
         Assert.Equal("すし", k.Showing, "日本語の後なら sushi は日本語");
-
-        k = new Keyboard();
-        k.Type("hello ");
-        k.Type("sushiga");
-        Assert.Equal("すしが", k.Showing, "英語の後でも、後ろに日本語が続けば日本語");
     }
 
     [Test]

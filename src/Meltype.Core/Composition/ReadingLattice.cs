@@ -24,13 +24,15 @@ namespace Meltype.Composition;
 /// 同じ重みなら日本語にする。大文字を含む区間は日本語にしない。綴りを名指しする条件は持たない。
 /// 知っている英単語は、英単語の書き方の大文字・小文字 (its・Its・ITS・GitHub) のときだけ (iTs は its にしない)。
 /// 1 文字の英単語 (a・i・u・r) は、前後を英字以外で区切ったときだけ。
-/// 判定の強さは切り替えの重みで決める (積極的 0.5・標準 1・慎重 1.5)。手動では Shift を押して打った大文字で始まる語だけを英語の候補にする。
+/// 判定の強さは英語の候補の重みに足す (積極的 −0.5・標準 0・慎重 +1)。手動では Shift を押して打った大文字で始まる語だけを英語の候補にする。
 /// 記号・数字の決まり (ドメイン・拡張子・ユーザー名・- の入った語・数字を挟んだ略語・英文の中の記号) は、重みで比べずにその区間を英語にする。
 /// ローマ字入力では 1 文字ずつを区切りの位置にする (単位の途中で区切れる: get|Element、medal|s|ha)。かな入力では打った単位の境目だけ。
 /// </summary>
 public sealed partial class CompositionDetector
 {
     private const double SwitchCost = 1;
+    private const double AggressiveEnglishBias = -0.5;
+    private const double ConservativeEnglishBias = 1;
     private const double AdjacentEnglishCost = 1;
     // 英単語のすぐ後ろが あ行のかな (thing|う・rate|ぃす): 英単語の最後の子音と次の母音の切り間違い
     private const double VowelAfterEnglishCost = 1;
@@ -100,8 +102,8 @@ public sealed partial class CompositionDetector
             unknown[p + 1] = unknown[p] + (char.IsAsciiLetter(c) && unreadable ? 1 : 0);
         }
 
-        // 判定の強さ: 積極的なら切り替えを軽く、慎重なら重くする
-        var switchCost = level switch { DetectionLevel.Aggressive => SwitchCost / 2, DetectionLevel.Conservative => SwitchCost * 1.5, _ => SwitchCost };
+        // 判定の強さ: 英語の候補の重みに足す
+        var englishBias = level switch { DetectionLevel.Aggressive => AggressiveEnglishBias, DetectionLevel.Conservative => ConservativeEnglishBias, _ => 0 };
         var best = new LatticeNode?[length + 1, LatticeState.Count];
         var start = new LatticeState(precedingEnglish switch { true => englishSentence ? Side.Sentence : Side.English, false => Side.Japanese, null => Side.None },
             false, true, precedingEnglish == true);
@@ -127,8 +129,8 @@ public sealed partial class CompositionDetector
                 (japanese && edge.Kana == "っ" && DoubledAt(edge.Start) && state.Side != Side.Japanese ? DanglingSokuonCost : 0);
             if (edge.English)
             {
-                step = cost + EnglishTieBreak;
-                if (state.Side == Side.Japanese && !state.Particle) step += switchCost;
+                step = cost + EnglishTieBreak + englishBias;
+                if (state.Side == Side.Japanese && !state.Particle) step += SwitchCost;
                 if (state.IsEnglish && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && char.IsAsciiLetter(text[edge.Start])) step += AdjacentEnglishCost;
                 // 英文の続きの強さは、最初の英語の語までで使い終わる (英文の中の記号では使い終わらない)
                 var sentence = state.Side == Side.Sentence && !char.IsAsciiLetter(text[edge.Start]);
@@ -143,8 +145,8 @@ public sealed partial class CompositionDetector
             {
                 step = cost;
                 // 英文の続き ("I want ") からは、付属語でも切り替えの重みを 2 倍にする
-                if (state.Side == Side.Sentence) step += 2 * switchCost;
-                else if (state.IsEnglish && !edge.Particle) step += switchCost;
+                if (state.Side == Side.Sentence) step += 2 * SwitchCost;
+                else if (state.IsEnglish && !edge.Particle) step += SwitchCost;
                 next = new LatticeState(Side.Japanese, edge.Particle, state.AllEnglish && !edge.Letters, false);
             }
             next = next with { Sokuon = japanese && edge.Kana.EndsWith('っ') && DoubledAt(edge.End - 1) };
@@ -208,8 +210,8 @@ public sealed partial class CompositionDetector
             var state = LatticeState.FromKey(key);
             var cost = node.Cost;
             if (state.Sokuon) cost += DanglingSokuonCost;
-            if (followingEnglish == true && state.Side == Side.Japanese && !state.Particle) cost += switchCost;
-            if (followingEnglish == false && state.IsEnglish && node.Edge.English) cost += switchCost;
+            if (followingEnglish == true && state.Side == Side.Japanese && !state.Particle) cost += SwitchCost;
+            if (followingEnglish == false && state.IsEnglish && node.Edge.English) cost += SwitchCost;
             if (cost < chosenCost)
             {
                 chosen = node;

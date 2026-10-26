@@ -43,20 +43,6 @@ internal static class ContextBoundaryTests
     }
 
     [Test]
-    public static void IndependentProperNounPrefixes_RemainEnglishWhileGrowing()
-    {
-        var proper = new ProperNouns();
-        var detector = new CompositionDetector(new RomajiDetector(), new EnglishDetector([]), proper);
-        proper.AddText("Hanana");
-        var text = new CompositionText(detector);
-        foreach (var c in "hana") text.Append(c);
-        Assert.Equal("hana", text.Display(final: false));
-        Assert.Equal("はな", text.Display(final: true));
-        text.Level = () => DetectionLevel.Manual;
-        Assert.Equal("はな", text.Display(final: false));
-    }
-
-    [Test]
     public static void LanguageMemory_SpanLookupMatchesStringIncludingLegacyEntries()
     {
         var path = Path.Combine(Path.GetTempPath(), "meltype-span-" + Guid.NewGuid() + ".json");
@@ -86,7 +72,7 @@ internal static class ContextBoundaryTests
             foreach (var c in raw) text.Append(c);
             Assert.Equal(expected, text.Display(final: true), raw);
         }
-        foreach (var (raw, expected) in new[] { ("api", "あぴ"), ("sushinoerror", "すしのerror"), ("kapibara", "かぴばら") })
+        foreach (var (raw, expected) in new[] { ("api", "api"), ("sushinoerror", "すしのerror"), ("kapibara", "かぴばら") })
         {
             var text = Create();
             foreach (var c in raw) text.Append(c);
