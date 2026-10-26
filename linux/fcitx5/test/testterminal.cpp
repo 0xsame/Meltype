@@ -107,20 +107,40 @@ bool protectedAfterNavigation(Instance *instance, AddonInstance *frontend) {
     return true;
 }
 
-bool resetProtection(Instance *instance, AddonInstance *frontend) {
+bool resetKeepsJapanese(Instance *instance, AddonInstance *frontend) {
     ICUUID uuid;
     auto *ic = terminal(instance, frontend, uuid);
     if (!expect(ic != nullptr, "reset input context exists")) return false;
     press(frontend, uuid, "Henkan");
+    type(frontend, uuid, "nihongo");
+    if (!expect(ic->inputPanel().preedit().toString() == "にほんご", "Japanese is selected before reset")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("にほんご");
     ic->reset();
-    if (!expect(!press(frontend, uuid, "j"), "client reset clears Japanese override")) return false;
+    if (!expect(ic->inputPanel().preedit().empty(), "client reset still commits pending composition")) return false;
+    type(frontend, uuid, "kyouha");
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "client reset keeps explicit Japanese without reselecting it")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
     press(frontend, uuid, "Return");
-    press(frontend, uuid, "Henkan");
+    ic->reset();
+    type(frontend, uuid, "nihongo");
+    if (!expect(ic->inputPanel().preedit().toString() == "にほんご", "an empty reset after commit also keeps Japanese")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("にほんご");
     ic->focusOut();
     ic->focusIn();
-    if (!expect(!press(frontend, uuid, "k"), "focus change clears Japanese override")) return false;
+    for (char c : std::string("kyouha")) {
+        if (!expect(!press(frontend, uuid, std::string(1, c)), "focus change restores protected code keys")) return false;
+    }
+    if (!expect(ic->inputPanel().preedit().empty(), "focus change clears Japanese override")) return false;
+    press(frontend, uuid, "Return");
+    type(frontend, uuid, "echo \"");
+    ic->reset();
+    type(frontend, uuid, "kyouha");
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "client reset preserves an open quote without a Japanese override")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
+    if (!expect(!press(frontend, uuid, "quotedbl"), "closing quote after reset reaches the terminal")) return false;
+    if (!expect(!press(frontend, uuid, "j"), "code protection resumes after the quote")) return false;
     frontend->call<ITestFrontend::destroyInputContext>(uuid);
-    std::cout << "PASS: client reset and focus changes restore terminal protection\n";
+    std::cout << "PASS: client reset keeps Japanese and code tracking, focus changes restore protection\n";
     return true;
 }
 
@@ -148,25 +168,59 @@ bool triggerKeepsProtection(Instance *instance, AddonInstance *frontend) {
     return true;
 }
 
-bool toggleJapanese(Instance *instance, AddonInstance *frontend) {
+bool toggleJapanese(Instance *instance, AddonInstance *frontend, const std::string &japaneseKey) {
     ICUUID uuid;
     auto *ic = terminal(instance, frontend, uuid);
     if (!expect(ic != nullptr, "toggle input context exists")) return false;
-    if (!expect(press(frontend, uuid, "Hankaku"), "addon mode toggle is consumed")) return false;
+    if (!expect(press(frontend, uuid, japaneseKey), "Japanese mode key is consumed")) return false;
     type(frontend, uuid, "kyouha");
-    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "toggle follows effective code/English mode, not only Direct flag")) return false;
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "mode key selects Japanese in a protected terminal")) return false;
     frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
     press(frontend, uuid, "Return");
-    press(frontend, uuid, "Hankaku");
-    if (!expect(!press(frontend, uuid, "j"), "toggle returns to direct English")) return false;
+    if (!expect(press(frontend, uuid, "Hankaku"), "toggle clears explicit Japanese")) return false;
+    for (char c : std::string("kyouha")) {
+        if (!expect(!press(frontend, uuid, std::string(1, c)), "toggle restores protected code keys")) return false;
+    }
+    if (!expect(ic->inputPanel().preedit().empty(), "protected code does not start composition")) return false;
+    press(frontend, uuid, "Return");
+    type(frontend, uuid, "echo \"kyouha");
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "toggle restores code protection, not Direct: quoted Japanese still composes")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
+    if (!expect(!press(frontend, uuid, "quotedbl"), "closing quote still reaches the terminal")) return false;
+    if (!expect(!press(frontend, uuid, "j"), "protection resumes after the quote")) return false;
     press(frontend, uuid, "Return");
     press(frontend, uuid, "Hankaku");
     type(frontend, uuid, "kyouha");
-    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "toggle returns from direct English to Japanese")) return false;
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "toggle returns from protected English to Japanese")) return false;
     frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
     press(frontend, uuid, "Return");
     frontend->call<ITestFrontend::destroyInputContext>(uuid);
-    std::cout << "PASS: addon toggles use the effective terminal input mode\n";
+    std::cout << "PASS: " << japaneseKey << " and half/full toggles preserve terminal code protection\n";
+    return true;
+}
+
+bool directEnglish(Instance *instance, AddonInstance *frontend, const std::string &englishKey, bool terminalInput) {
+    ICUUID uuid;
+    auto *ic = terminal(instance, frontend, uuid);
+    if (!expect(ic != nullptr, "direct English input context exists")) return false;
+    if (!terminalInput) ic->setCapabilityFlags(CapabilityFlag::ClientUnfocusCommit);
+    press(frontend, uuid, "Henkan");
+    type(frontend, uuid, "kyouha");
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "Japanese is selected before direct English")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
+    press(frontend, uuid, "Return");
+    if (!expect(press(frontend, uuid, englishKey), "explicit English mode key is consumed")) return false;
+    for (char c : std::string("echo \"kyouha")) {
+        if (!expect(!press(frontend, uuid, c == ' ' ? "space" : c == '"' ? "quotedbl" : std::string(1, c)), "direct English also passes quoted text unchanged")) return false;
+    }
+    if (!expect(ic->inputPanel().preedit().empty(), "direct English does not compose quoted Japanese")) return false;
+    press(frontend, uuid, "Henkan");
+    type(frontend, uuid, "kyouha");
+    if (!expect(ic->inputPanel().preedit().toString() == "きょうは", "explicit Japanese still exits direct English")) return false;
+    frontend->call<ITestFrontend::pushCommitExpectation>("きょうは");
+    press(frontend, uuid, "Return");
+    frontend->call<ITestFrontend::destroyInputContext>(uuid);
+    std::cout << "PASS: " << englishKey << " retains direct English " << (terminalInput ? "in a terminal" : "outside a terminal") << '\n';
     return true;
 }
 
@@ -211,9 +265,13 @@ int main() {
             bool ok = quotedJapanese(&instance, frontend);
             if (ok) ok = explicitJapanese(&instance, frontend);
             if (ok) ok = protectedAfterNavigation(&instance, frontend);
-            if (ok) ok = resetProtection(&instance, frontend);
+            if (ok) ok = resetKeepsJapanese(&instance, frontend);
             if (ok) ok = triggerKeepsProtection(&instance, frontend);
-            if (ok) ok = toggleJapanese(&instance, frontend);
+            if (ok) ok = toggleJapanese(&instance, frontend, "Hankaku");
+            if (ok) ok = toggleJapanese(&instance, frontend, "Henkan");
+            if (ok) ok = directEnglish(&instance, frontend, "Eisu_toggle", true);
+            if (ok) ok = directEnglish(&instance, frontend, "Muhenkan", true);
+            if (ok) ok = directEnglish(&instance, frontend, "Hankaku", false);
             if (ok) ok = quotedEscapeProtection(&instance, frontend);
             testResult = ok ? 0 : 1;
         } else {

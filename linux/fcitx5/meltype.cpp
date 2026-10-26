@@ -396,7 +396,8 @@ public:
                 return;
             }
         }
-        // 半角/全角: 英数 (直接入力) ⇔ 日本語。英数・ひらがなのキーでも切り替える (JIS キーボード)。
+        // 半角/全角: 英数 ⇔ 日本語。コードの日本語指定を解除するときは、直接入力ではなくコード保護へ戻す。
+        // 英数・ひらがなのキーでも切り替える (JIS キーボード)。
         if (sym == FcitxKey_Zenkaku_Hankaku || sym == FcitxKey_Hankaku || sym == FcitxKey_Zenkaku || sym == FcitxKey_Eisu_toggle ||
             sym == FcitxKey_Hiragana_Katakana || sym == FcitxKey_Muhenkan || sym == FcitxKey_Henkan) {
             bool codeEnglish = false;
@@ -407,10 +408,10 @@ public:
                     ? native_.codeEnglishAt(state->session(), surrounding ? before.c_str() : nullptr) != 0
                     : state->codeInput && !state->legacyJapanese;
             }
+            bool toggle = sym == FcitxKey_Zenkaku_Hankaku || sym == FcitxKey_Hankaku || sym == FcitxKey_Zenkaku;
             bool toDirect = sym == FcitxKey_Eisu_toggle || sym == FcitxKey_Muhenkan ||
-                            ((sym == FcitxKey_Zenkaku_Hankaku || sym == FcitxKey_Hankaku || sym == FcitxKey_Zenkaku) &&
-                             !state->direct && !codeEnglish);
-            switchMode(ic, state, toDirect);
+                            (toggle && !state->direct && !codeEnglish);
+            switchMode(ic, state, toDirect, toggle);
             event.filterAndAccept();
             return;
         }
@@ -449,9 +450,18 @@ public:
         }
     }
 
-    // 別の入力欄・アプリに移るとき、入力欄が変わったときは、未確定の内容をそのまま確定する。
+    // Reset では未確定の内容を確定するが、日本語指定とコード行の追跡は消さない。
     void reset(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override { commitPending(event.inputContext()); }
-    void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override { commitPending(event.inputContext()); }
+    void deactivate(const fcitx::InputMethodEntry &, fcitx::InputContextEvent &event) override {
+        auto *ic = event.inputContext();
+        auto *state = ic->propertyFor(&factory_);
+        if (!state->session()) return;
+        commitPending(ic);
+        // フォーカス移動・入力メソッドの無効化ではコード保護へ戻す。
+        if (state->codeInput && native_.setCodeInput) native_.setCodeInput(state->session(), 0);
+        state->codeInput = false;
+        state->legacyJapanese = false;
+    }
 
     void selectCandidate(fcitx::InputContext *ic, int index) {
         auto *state = ic->propertyFor(&factory_);
@@ -466,23 +476,26 @@ private:
     bool loaded_ = false;
     fcitx::FactoryFor<MeltypeState> factory_;
 
-    void switchMode(fcitx::InputContext *ic, MeltypeState *state, bool toDirect) {
+    void switchMode(fcitx::InputContext *ic, MeltypeState *state, bool toDirect, bool toggle) {
         apply(ic, native_.take(native_.commit(state->session())));
         // CodeLine は Direct 中には切り替えられないので、先に直接入力を解除する。
         native_.setDirect(state->session(), 0);
+        bool codeLineHandled = false;
         if (ic->capabilityFlags().test(fcitx::CapabilityFlag::Terminal)) {
             std::string before, after;
             bool surrounding = readSurrounding(ic, before, after);
             if (native_.setCodeLine) {
-                native_.setCodeLine(state->session(), toDirect ? 0 : 1, surrounding ? before.c_str() : nullptr);
+                codeLineHandled = native_.setCodeLine(state->session(), toDirect ? 0 : 1, surrounding ? before.c_str() : nullptr) != 0;
             } else {
-                // 旧版との組み合わせでも、明示的な日本語切り替えだけは使えるようにする。
+                // 旧版では CodeInput の切替で日本語指定と解除を代用する。
+                codeLineHandled = state->legacyJapanese;
                 state->legacyJapanese = !toDirect;
                 syncCanDelete(ic, state);
             }
         }
-        state->direct = toDirect;
-        native_.setDirect(state->session(), toDirect ? 1 : 0);
+        // 半角/全角で日本語指定を解除したら IME は開いたまま。英数・無変換は従来どおり直接入力にする。
+        state->direct = toDirect && !(toggle && codeLineHandled);
+        native_.setDirect(state->session(), state->direct ? 1 : 0);
         ic->inputPanel().setAuxUp(fcitx::Text(toDirect ? "A" : "あ"));
         ic->updateUserInterface(fcitx::UserInterfaceComponent::InputPanel);
     }
@@ -492,10 +505,6 @@ private:
         if (!state->session()) return;
         syncCanDelete(ic, state);
         apply(ic, native_.take(native_.commit(state->session())));
-        // フォーカス移動・リセットは、同じ CodeInput 値の再送ではなく明示的な境界として扱う。
-        if (state->codeInput && native_.setCodeInput) native_.setCodeInput(state->session(), 0);
-        state->codeInput = false;
-        state->legacyJapanese = false;
     }
 
     // 入力欄のキャレットの前後の文字列 (それぞれ 20 文字まで)。入力欄が対応していなければ false。
