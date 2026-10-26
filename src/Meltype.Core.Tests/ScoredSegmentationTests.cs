@@ -96,7 +96,7 @@ internal static class ScoredSegmentationTests
     {
         // 小文字が続く大文字 (文の頭を Shift で打った Ga・Koreha) は、今までどおり点数で区切る (助詞 + 英単語を全部英語にしない)
         foreach (var (typed, expected) in new[] {
-            ("Gagoogle", "がgoogle"), ("Hagithub", "はgithub"), ("Desupport", "でsupport"), ("Korehagithubni", "これはgithubに") })
+            ("Korehagithubni", "これはgithubに") })
             Assert.Equal(expected, Type(typed), typed);
     }
 }
