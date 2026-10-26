@@ -152,6 +152,8 @@ internal static class Quality
         // 似た綴りの日本語は今までどおり
         new("日本語", "imeeji", "いめえじ"),
         new("日本語", "gare-ji", "がれーじ"),
+        // 語のすぐ後ろが ん なら、語の最後の音の続き (いまげんざい = 今現在。issue #1175)
+        new("日本語", "imagenzai", "いまげんざい"),
         new("混在", "foo_bar@example.com", "foo_bar@example.com"),
         new("混在", "taro+news@example.com", "taro+news@example.com"),
         new("混在", "yamada-taro@example.com", "yamada-taro@example.com"),
