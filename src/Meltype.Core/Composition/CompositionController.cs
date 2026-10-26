@@ -1688,6 +1688,17 @@ public sealed class CompositionController
         clause.Candidates.AddRange(words);
     }
 
+    /// <summary>打った英字を英語寄りに区切り直して、英語と日本語が混ざる形 (midiか) になれば返す。</summary>
+    private string? EnglishSplit(string raw)
+    {
+        var typed = new CompositionText(_detector);
+        foreach (var c in raw) typed.Append(c);
+        if (typed.Pending.Length > 0) return null;
+        var segments = _detector.SegmentLeaningEnglish(typed.Units);
+        if (!segments.Any(s => s.IsEnglish) || segments.All(s => s.IsEnglish)) return null;
+        return string.Concat(segments.Select(s => s.IsEnglish ? s.Raw : s.Kana));
+    }
+
     private void AddRawCandidates(Clause clause)
     {
         // 子音の略入力 (ast → 明日): 打った英字を読みとする候補 (candidates.txt の英字の読み) を足す (issue #62)
@@ -1705,6 +1716,8 @@ public sealed class CompositionController
             clause.Candidates.Add(half);
         }
         if (clause.Raw is not { } raw || !raw.Any(c => c is >= '!' and <= '~')) return;
+        // 英語を含む区切り (midika → 身近 の候補に midiか)
+        if (raw.All(char.IsAsciiLetter) && EnglishSplit(raw) is { } split && !clause.Candidates.Contains(split)) clause.Candidates.Add(split);
         foreach (var candidate in new[] { raw, CompositionText.ToFullWidth(raw) })
         {
             if (!clause.Candidates.Contains(candidate)) clause.Candidates.Add(candidate);

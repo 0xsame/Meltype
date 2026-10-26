@@ -34,6 +34,8 @@ public sealed partial class CompositionDetector
     private const double SwitchCost = 1;
     private const double AggressiveEnglishBias = -0.5;
     private const double ConservativeEnglishBias = 1;
+    // 変換の候補に出す英語寄りの区切り: 英単語 + 切り替え + 付属語 (midi + か = 2.8) が日本語の語 1 つ (みぢか = 1) より軽くなる
+    private const double LeaningEnglishBias = -2;
     private const double AdjacentEnglishCost = 1;
     // 英単語のすぐ後ろが あ行のかな (thing|う・rate|ぃす): 英単語の最後の子音と次の母音の切り間違い
     private const double VowelAfterEnglishCost = 1;
@@ -74,7 +76,7 @@ public sealed partial class CompositionDetector
     }
 
     private List<CompositionSegment> FindSpansByReading(IReadOnlyList<CompositionUnit> units, string pending, bool? precedingEnglish, bool? followingEnglish,
-        DetectionLevel level, bool englishSentence, bool kanaInput)
+        DetectionLevel level, bool englishSentence, bool kanaInput, double extraEnglishBias = 0)
     {
         var text = _preparedRaw + pending;
         var length = text.Length;
@@ -104,7 +106,7 @@ public sealed partial class CompositionDetector
         }
 
         // 判定の強さ: 英語の候補の重みに足す
-        var englishBias = level switch { DetectionLevel.Aggressive => AggressiveEnglishBias, DetectionLevel.Conservative => ConservativeEnglishBias, _ => 0 };
+        var englishBias = extraEnglishBias + level switch { DetectionLevel.Aggressive => AggressiveEnglishBias, DetectionLevel.Conservative => ConservativeEnglishBias, _ => 0 };
         var best = new LatticeNode?[length + 1, LatticeState.Count];
         var start = new LatticeState(precedingEnglish switch { true => englishSentence ? Side.Sentence : Side.English, false => Side.Japanese, null => Side.None },
             false, true, precedingEnglish == true);

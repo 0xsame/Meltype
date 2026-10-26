@@ -129,6 +129,15 @@ public sealed partial class CompositionDetector
     }
 
     /// <summary>
+    /// 英語の候補を軽くして区切り直した結果 (変換の候補に、日本語にした語の英語を含む区切り midika → midiか を出すのに使う)。
+    /// </summary>
+    public IReadOnlyList<CompositionSegment> SegmentLeaningEnglish(IReadOnlyList<CompositionUnit> units)
+    {
+        Prepare(units);
+        return FindSpansByReading(units, "", null, null, DetectionLevel.Balanced, false, false, LeaningEnglishBias);
+    }
+
+    /// <summary>
     /// 記号を混ぜて書く名前・略語か (#303)。英字 1 文字ずつを . で区切った大文字を含む略語 (B.o.B、U.S.A.) と、
     /// 大文字で始まり、英字のすぐ後ろに $ が入った名前 (Chri$tian、Ke$ha、A$AP)。日本語の打ちかけではない。
     /// </summary>
