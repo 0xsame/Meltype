@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Yukishiro
 
+using System.Globalization;
 using Meltype.Input;
 
 namespace Meltype.UI;
@@ -13,6 +14,7 @@ internal sealed class KeyCountForm : Form
 {
     private readonly KeyCounter _counter;
     private readonly Label _summary = new() { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8), Font = new Font("Yu Gothic UI", 12F) };
+    private readonly CheckBox _enable = new() { Text = "打鍵を数える (OFF の間は数えません。一時停止中・パスワード欄でも数えません)", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(8, 0, 8, 0) };
     private readonly DataGridView _keyGrid = FormControls.ReadOnlyGrid();
     private readonly DataGridView _dayGrid = FormControls.ReadOnlyGrid();
     private readonly TextBox _analysis = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Font = new Font("BIZ UDGothic", 10F), BorderStyle = BorderStyle.None };
@@ -54,9 +56,17 @@ internal sealed class KeyCountForm : Form
         buttons.Controls.AddRange([close, reset, import]);
 
         Controls.Add(tabs);
+        Controls.Add(_enable);
         Controls.Add(_summary);
         Controls.Add(buttons);
         CancelButton = close;
+
+        _enable.Checked = counter.Enabled;
+        _enable.CheckedChanged += (_, _) =>
+        {
+            _counter.Enabled = _enable.Checked;
+            _counter.Save();
+        };
 
         _refresh.Tick += (_, _) => UpdateSummary();
         _refresh.Start();
@@ -73,10 +83,10 @@ internal sealed class KeyCountForm : Form
         var total = Math.Max(1, _counter.TopKeys().Sum(p => p.Value));
         _keyGrid.Rows.Clear();
         foreach (var (key, count) in _counter.TopKeys())
-            _keyGrid.Rows.Add(key, count.ToString("N0"), $"{100.0 * count / total:0.0}%");
+            _keyGrid.Rows.Add(key, count.ToString("N0", CultureInfo.CurrentCulture), $"{100.0 * count / total:0.0}%");
         _dayGrid.Rows.Clear();
         foreach (var (day, count) in _counter.RecentDays())
-            _dayGrid.Rows.Add(day, count.ToString("N0"));
+            _dayGrid.Rows.Add(day, count.ToString("N0", CultureInfo.CurrentCulture));
         _analysis.Text = AnalysisText(_counter.Analyze(DateTime.Today));
     }
 
@@ -134,6 +144,11 @@ internal sealed class KeyCountForm : Form
         var result = _counter.Import(text);
         _counter.Save();
         Reload();
+        if (result.Duplicate)
+        {
+            MessageBox.Show(this, "この内容は取り込み済みです。二重に足さないよう、何もしませんでした。", "typect から引き継ぐ", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         MessageBox.Show(this,
             result.Total > 0 ? $"{result.Total:N0} 打を引き継ぎました (キー {result.Keys} 種類・{result.Days} 日分)。" : "打鍵数を読み取れませんでした。「キー名, 回数」の形か確かめてください。",
             "typect から引き継ぐ", MessageBoxButtons.OK, result.Total > 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);

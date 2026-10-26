@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Yukishiro
 
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Meltype.Config;
@@ -24,6 +26,10 @@ internal sealed partial class KeyCounter
         public long[] Hours { get; set; } = new long[24];
         /// <summary>キーの名前 (A・Space・Enter など) ごとの打鍵数。</summary>
         public Dictionary<string, long> Keys { get; set; } = [];
+        /// <summary>数えるかどうか。既定は OFF (打った時刻を残すので、使う人が自分で ON にする)。</summary>
+        public bool Enabled { get; set; }
+        /// <summary>取り込んだテキストの SHA-256 (取り込んだ順)。同じものを 2 回取り込んで 2 倍にしないため。</summary>
+        public List<string> ImportedHashes { get; set; } = [];
     }
 
     private readonly string? _path;
@@ -40,6 +46,7 @@ internal sealed partial class KeyCounter
             var data = JsonSerializer.Deserialize(json, KeyCountJsonContext.Default.Data) ?? new Data();
             data.Days ??= [];
             data.Keys ??= [];
+            data.ImportedHashes ??= [];
             if (data.Hours is not { Length: 24 }) data.Hours = new long[24];
             _data = data;
         });
@@ -47,8 +54,25 @@ internal sealed partial class KeyCounter
 
     public static string DayKey(DateTime day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>1 打鍵を数える。押しっぱなしの繰り返しは数えない (離すまで 1 回)。</summary>
-    public void Count(KeyEvent e, DateTime now)
+    /// <summary>数えるかどうか (OFF の間は何も数えない)。</summary>
+    public bool Enabled
+    {
+        get { lock (_lock) return _data.Enabled; }
+        set
+        {
+            lock (_lock)
+            {
+                _data.Enabled = value;
+                _dirty = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 1 打鍵を数える。押しっぱなしの繰り返しは数えない (離すまで 1 回)。
+    /// allowed が false (一時停止中・アプリ別に OFF・パスワード欄など) のときは数えないが、離したことは覚えておく。
+    /// </summary>
+    public void Count(KeyEvent e, DateTime now, bool allowed)
     {
         lock (_lock)
         {
@@ -57,7 +81,7 @@ internal sealed partial class KeyCounter
                 _held.Remove(e.Vk);
                 return;
             }
-            if (!_held.Add(e.Vk)) return;
+            if (!_held.Add(e.Vk) || !allowed || !_data.Enabled) return;
             Add(KeyName(e.Vk), DayKey(now), 1);
             _data.Hours[now.Hour]++;
         }
@@ -124,11 +148,12 @@ internal sealed partial class KeyCounter
         }
     }
 
+    /// <summary>数えた分をすべて 0 に戻す。数えるかどうかの設定は残す。</summary>
     public void Reset()
     {
         lock (_lock)
         {
-            _data = new Data();
+            _data = new Data { Enabled = _data.Enabled };
             _dirty = true;
         }
     }
@@ -152,7 +177,8 @@ internal sealed partial class KeyCounter
         }
     }
 
-    public readonly record struct ImportResult(long Total, int Keys, int Days);
+    /// <summary>取り込みの結果。Duplicate は、前に取り込んだものと同じテキストだったため何も足さなかったこと。</summary>
+    public readonly record struct ImportResult(long Total, int Keys, int Days, bool Duplicate = false);
 
     /// <summary>
     /// typect (タイプ数カウンター) などで数えた打鍵数を足す。typect の一覧をコピーしたものや CSV / TSV を読む。
@@ -190,12 +216,18 @@ internal sealed partial class KeyCounter
         }
         var sum = Math.Max(keys.Values.Sum(), days.Values.Sum());
         var added = Math.Max(total ?? 0, sum);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
         lock (_lock)
         {
+            if (added > 0 && _data.ImportedHashes.Contains(hash)) return new ImportResult(0, 0, 0, Duplicate: true);
             _data.Total += added;
             foreach (var (k, v) in keys) _data.Keys[k] = _data.Keys.GetValueOrDefault(k) + v;
             foreach (var (d, v) in days) _data.Days[d] = _data.Days.GetValueOrDefault(d) + v;
-            if (added > 0) _dirty = true;
+            if (added > 0)
+            {
+                _data.ImportedHashes.Add(hash);
+                _dirty = true;
+            }
         }
         return new ImportResult(added, keys.Count, days.Count);
     }
@@ -236,17 +268,53 @@ internal sealed partial class KeyCounter
 
     private static readonly Dictionary<string, string> Aliases = new(StringComparer.Ordinal)
     {
-        ["space"] = "Space", ["スペース"] = "Space", ["spacebar"] = "Space",
-        ["enter"] = "Enter", ["return"] = "Enter", ["エンター"] = "Enter",
-        ["backspace"] = "BackSpace", ["back"] = "BackSpace", ["bs"] = "BackSpace", ["バックスペース"] = "BackSpace",
-        ["delete"] = "Delete", ["del"] = "Delete", ["tab"] = "Tab", ["escape"] = "Esc", ["esc"] = "Esc",
-        ["shift"] = "Shift", ["lshift"] = "Shift", ["rshift"] = "Shift", ["leftshift"] = "Shift", ["rightshift"] = "Shift",
-        ["ctrl"] = "Ctrl", ["control"] = "Ctrl", ["lctrl"] = "Ctrl", ["rctrl"] = "Ctrl", ["lcontrol"] = "Ctrl", ["rcontrol"] = "Ctrl",
-        ["alt"] = "Alt", ["menu"] = "Alt", ["lalt"] = "Alt", ["ralt"] = "Alt", ["lmenu"] = "Alt", ["rmenu"] = "Alt",
-        ["win"] = "Win", ["lwin"] = "Win", ["rwin"] = "Win", ["windows"] = "Win",
-        ["半角/全角"] = "半角/全角", ["半角全角"] = "半角/全角", ["変換"] = "変換", ["無変換"] = "無変換",
-        ["capslock"] = "CapsLock", ["caps"] = "CapsLock", ["英数"] = "CapsLock",
-        ["left"] = "←", ["right"] = "→", ["up"] = "↑", ["down"] = "↓",
+        ["space"] = "Space",
+        ["スペース"] = "Space",
+        ["spacebar"] = "Space",
+        ["enter"] = "Enter",
+        ["return"] = "Enter",
+        ["エンター"] = "Enter",
+        ["backspace"] = "BackSpace",
+        ["back"] = "BackSpace",
+        ["bs"] = "BackSpace",
+        ["バックスペース"] = "BackSpace",
+        ["delete"] = "Delete",
+        ["del"] = "Delete",
+        ["tab"] = "Tab",
+        ["escape"] = "Esc",
+        ["esc"] = "Esc",
+        ["shift"] = "Shift",
+        ["lshift"] = "Shift",
+        ["rshift"] = "Shift",
+        ["leftshift"] = "Shift",
+        ["rightshift"] = "Shift",
+        ["ctrl"] = "Ctrl",
+        ["control"] = "Ctrl",
+        ["lctrl"] = "Ctrl",
+        ["rctrl"] = "Ctrl",
+        ["lcontrol"] = "Ctrl",
+        ["rcontrol"] = "Ctrl",
+        ["alt"] = "Alt",
+        ["menu"] = "Alt",
+        ["lalt"] = "Alt",
+        ["ralt"] = "Alt",
+        ["lmenu"] = "Alt",
+        ["rmenu"] = "Alt",
+        ["win"] = "Win",
+        ["lwin"] = "Win",
+        ["rwin"] = "Win",
+        ["windows"] = "Win",
+        ["半角/全角"] = "半角/全角",
+        ["半角全角"] = "半角/全角",
+        ["変換"] = "変換",
+        ["無変換"] = "無変換",
+        ["capslock"] = "CapsLock",
+        ["caps"] = "CapsLock",
+        ["英数"] = "CapsLock",
+        ["left"] = "←",
+        ["right"] = "→",
+        ["up"] = "↑",
+        ["down"] = "↓",
     };
 
     /// <summary>仮想キーコードの名前。左右のある修飾キーは 1 つにまとめる。</summary>

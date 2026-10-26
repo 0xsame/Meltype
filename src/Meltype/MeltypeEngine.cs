@@ -269,7 +269,7 @@ internal sealed class MeltypeEngine : IDisposable
             _injectedHintLogged = true;
             Log.Info("ほかのソフトが送ったキーを、変換せずにそのままアプリに通しました。ULE4JIS などキー配列を変えるソフトや遠隔操作で打っているなら、設定「遠隔操作などの入力も処理する」を ON にしてください。");
         }
-        if (!e.Injected) KeyCounter.Count(e, DateTime.Now);
+        if (!e.Injected) KeyCounter.Count(e, DateTime.Now, KeyCountAllowed(settings));
         if (_shortcutDetector.ReleaseConsumed(e)) return true;
         // 飲み込んだ切替キーの解放は、入力言語が変わっても対にして処理する。
         if (e.IsUp && !e.Injected)
@@ -535,6 +535,10 @@ internal sealed class MeltypeEngine : IDisposable
     }
 
     private bool IsCodeApp(Settings settings) => CurrentCodeFocus(settings) != CodeFocus.None;
+
+    /// <summary>打鍵数に数えてよいか。Meltype を一時停止しているとき・アプリ別に OFF のとき・パスワード欄では数えない。</summary>
+    private bool KeyCountAllowed(Settings settings) =>
+        settings.Enabled && settings.IsAppEnabled(_foreground.Current.ProcessName) && _composition?.Focus.Current.IsPassword != true;
 
     /// <summary>
     /// 前面のアプリが「コード」で、キャレットがコード (コメント・文字列・AI の入力行の外) にあるか。フックのスレッドで呼ばれる。
