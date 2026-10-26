@@ -11,6 +11,7 @@ namespace Meltype.Composition;
 /// | 候補・つながり | 重み |
 /// |---|---|
 /// | 日本語の語 (readings.txt と活用した形) | 1 (1 文字の語 1.5、付属語 0.8) |
+/// | カタカナ語 (katakana.txt) | 1.1 |
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
 /// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 (english-readable.txt の語は 0.7) |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
@@ -36,6 +37,8 @@ public sealed partial class CompositionDetector
     private const double VowelAfterEnglishCost = 1;
     // 日本語を c 行の綴り (ca・cu・co) で読む: 日本語を打つときは k を使う
     private const double CRowCost = 0.5;
+    // katakana.txt の語 (よく使う語の印の無いカタカナ語)。英単語をカタカナにした語 (アマゾン) が多いので、同じ綴りの英単語 (amazon) に譲る
+    private const double KatakanaWordCost = 1.1;
     private const double KnownEnglishCost = 1;
     private const double ReadableEnglishCost = 0.7;
     private const double UnknownLetterCost = 1.5;
@@ -249,6 +252,7 @@ public sealed partial class CompositionDetector
     {
         var particle = IsNounParticle(kana);
         if (RomajiTypoCorrector.CommonWordCost(kana) is { } cost) return (new LatticeEdge(start, end, false, kana, true, particle), cost);
+        if (CommonReadings.Katakana.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), KatakanaWordCost);
         // 打っている途中の語の頭 (たべ|ま の たべま)
         if (growing && kana.Length >= 2 && CommonReadings.Words.HasPrefix(kana)) return (new LatticeEdge(start, end, false, kana, true, false), 1);
         return (new LatticeEdge(start, end, false, kana, true, false), double.NaN);
@@ -337,7 +341,7 @@ public sealed partial class CompositionDetector
         for (var k = u; k < units.Count; k++)
         {
             // 語の頭でなくなったら、それより長い語は無い (1 音目は語にならなくても読む)
-            if (!first && !RomajiTypoCorrector.CommonHasPrefix(kana)) break;
+            if (!first && !RomajiTypoCorrector.CommonHasPrefix(kana) && !CommonReadings.Katakana.HasPrefix(kana)) break;
             var unit = units[k];
             if (!IsKanaUnit(unit) || !kanaInput && unit.Raw.Any(char.IsAsciiLetterUpper)) break;
             var from = _preparedRawOffsets[k];

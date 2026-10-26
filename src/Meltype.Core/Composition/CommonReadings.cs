@@ -16,6 +16,11 @@ internal static class CommonReadings
     /// <summary>読みの集合 (最初に使うときに読む)。</summary>
     public static PackedWordSet Words => SharedWords.Value;
 
+    private static readonly Lazy<PackedWordSet> SharedKatakana = new(() => PackedWordSet.FromLines(DictionarySource.ReadEmbedded("katakana.txt")));
+
+    /// <summary>カタカナで書く語の読み (dictionaries/katakana.txt)。よく使う語の印が無い語も含む。</summary>
+    public static PackedWordSet Katakana => SharedKatakana.Value;
+
     /// <summary>活用形の生成に使う本文を読み直す。共有するのは読みの集合だけで、本文は保持しない。</summary>
     public static string ReadText() => DictionarySource.ReadEmbedded("readings.txt");
 }
