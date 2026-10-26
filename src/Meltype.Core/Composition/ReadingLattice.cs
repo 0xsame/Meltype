@@ -19,6 +19,7 @@ namespace Meltype.Composition;
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
 /// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる | 1 |
+/// | 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) | 1 つ 0.5 |
 ///
 /// 同じ重みなら日本語にする。大文字を含む区間は日本語にしない。綴りを名指しする条件は持たない。
 /// 知っている英単語は、英単語の書き方の大文字・小文字 (its・Its・ITS・GitHub) のときだけ (iTs は its にしない)。
@@ -33,6 +34,8 @@ public sealed partial class CompositionDetector
     private const double AdjacentEnglishCost = 1;
     // 英単語のすぐ後ろが あ行のかな (thing|う・rate|ぃす): 英単語の最後の子音と次の母音の切り間違い
     private const double VowelAfterEnglishCost = 1;
+    // 日本語を c 行の綴り (ca・cu・co) で読む: 日本語を打つときは k を使う
+    private const double CRowCost = 0.5;
     private const double KnownEnglishCost = 1;
     private const double ReadableEnglishCost = 0.7;
     private const double UnknownLetterCost = 1.5;
@@ -233,6 +236,15 @@ public sealed partial class CompositionDetector
     /// <summary>ローマ字として読めなかった英字の単位か (zoom の m)。</summary>
     private static bool IsLetterUnit(CompositionUnit unit) => unit.Kana == unit.Raw && unit.Raw.Length > 0 && unit.Raw.All(char.IsAsciiLetter);
 
+    /// <summary>[start, end) の中の、c 行の綴り (ca・ci・cu・ce・co。ch は除く) の数。</summary>
+    private static int CRowSpellings(string text, int start, int end)
+    {
+        var count = 0;
+        for (var i = start; i < end; i++)
+            if (text[i] == 'c' && (i + 1 >= text.Length || text[i + 1] != 'h')) count++;
+        return count;
+    }
+
     private static (LatticeEdge Edge, double Cost) JapaneseEdge(int start, int end, string kana, bool growing)
     {
         var particle = IsNounParticle(kana);
@@ -264,7 +276,7 @@ public sealed partial class CompositionDetector
                 cost = double.IsNaN(cost) ? unknownCost : Math.Min(cost, unknownCost);
                 first = false;
             }
-            if (!double.IsNaN(cost)) edges.Add((edge, cost));
+            if (!double.IsNaN(cost)) edges.Add((edge, cost + CRowCost * CRowSpellings(text, start, end)));
         }
 
         bool LetterEdge(int at)
