@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Yukishiro
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { linkedIssues, mismatched, runAssigneeCheck } from './assignee.mjs';
+
+const bot = { login: 'github-actions[bot]', type: 'Bot' };
+const issue = (number, assignees = []) => ({ number, assignees: assignees.map(login => ({ login })) });
+
+/** インメモリの GitHub API。Draft にしたか・コメントを書いたかを記録する。 */
+function fixture(issues, pr = {}) {
+  const records = new Map(issues.map(i => [i.number, structuredClone(i)]));
+  const comments = [];
+  const writes = [];
+  const pull = {
+    number: 50, state: 'open', draft: false, node_id: 'PR_50', author_association: 'CONTRIBUTOR',
+    user: { login: 'bob', type: 'User' }, body: 'Fixes #1', ...pr,
+  };
+  const api = {
+    async request(method, path, body) {
+      if (method !== 'GET') writes.push({ method, path, body });
+      if (method === 'GET' && path.startsWith('/issues/50/comments')) return structuredClone(comments);
+      const issueMatch = path.match(/^\/issues\/(\d+)$/);
+      if (method === 'GET' && issueMatch) return structuredClone(records.get(+issueMatch[1]) ?? null);
+      if (method === 'POST' && path === '/issues/50/comments') { comments.push({ id: comments.length + 1, user: bot, body: body.body }); return {}; }
+      const edit = path.match(/^\/issues\/comments\/(\d+)$/);
+      if (method === 'PATCH' && edit) { comments.find(c => c.id === +edit[1]).body = body.body; return {}; }
+      throw new Error(`未対応: ${method} ${path}`);
+    },
+    async graphql(query, variables) {
+      assert.match(query, /convertPullRequestToDraft/);
+      assert.equal(variables.id, 'PR_50');
+      writes.push({ method: 'GRAPHQL' });
+      pull.draft = true;
+      return {};
+    },
+  };
+  return {
+    api, comments, writes, pull,
+    run: (action = 'opened', extra = {}) => runAssigneeCheck(api, { action, pull_request: structuredClone(pull), ...extra }),
+  };
+}
+
+test('本文の Fixes / Closes / Resolves から閉じる Issue を集め、テンプレートの説明の中は読まない', () => {
+  assert.deepEqual(linkedIssues('Fixes #1\nfixed #2, closes: #3\nResolves #1\n#4 も見た\n<!-- 「Fixes #123」と書いてください -->'), [1, 2, 3]);
+  assert.deepEqual(linkedIssues(''), []);
+});
+
+test('担当のいる Issue で、作者が担当に入っていないものだけを返す (大文字・小文字は区別しない)', () => {
+  const issues = [issue(1, ['alice']), issue(2, ['Bob']), issue(3)];
+  assert.deepEqual(mismatched('bob', issues).map(i => i.number), [1]);
+});
+
+test('担当でない人の PR は Draft にして、理由と担当をコメントする', async () => {
+  const f = fixture([issue(1, ['alice'])]);
+  assert.equal(await f.run(), 'draft');
+  assert.equal(f.pull.draft, true);
+  assert.equal(f.comments.length, 1);
+  assert.match(f.comments[0].body, /#1 の担当: `alice`/);
+  assert.match(f.comments[0].body, /Ready for review/);
+});
+
+for (const [name, issues, body] of [
+  ['担当の PR', [issue(1, ['alice', 'bob'])], 'Fixes #1'],
+  ['担当のいない Issue', [issue(1)], 'Fixes #1'],
+  ['関連 Issue が書かれていない PR', [issue(1, ['alice'])], '直しました (#1 を参照)'],
+  ['無い Issue を指す PR', [], 'Fixes #9'],
+]) {
+  test(`${name}は、そのままにする`, async () => {
+    const f = fixture(issues, { body });
+    assert.equal(await f.run(), 'ok');
+    assert.equal(f.pull.draft, false);
+    assert.equal(f.writes.length, 0);
+  });
+}
+
+test('関連 Issue が複数あれば、どれか 1 つでも担当でなければ Draft にする', async () => {
+  const f = fixture([issue(1, ['bob']), issue(2, ['alice'])], { body: 'Fixes #1\nFixes #2' });
+  assert.equal(await f.run(), 'draft');
+  assert.doesNotMatch(f.comments[0].body, /#1 の担当/);
+  assert.match(f.comments[0].body, /#2 の担当/);
+});
+
+test('メンテナー・bot の PR と、Draft の PR は対象にしない', async () => {
+  for (const pr of [{ author_association: 'OWNER' }, { author_association: 'COLLABORATOR' }, { user: { login: 'dependabot[bot]', type: 'Bot' } }, { draft: true }]) {
+    const f = fixture([issue(1, ['alice'])], pr);
+    assert.equal(await f.run(), 'skip');
+    assert.equal(f.writes.length, 0);
+  }
+});
+
+test('Ready for review に戻しても担当でなければ、また Draft にし、コメントは書き換えて増やさない', async () => {
+  const f = fixture([issue(1, ['alice'])]);
+  await f.run();
+  f.pull.draft = false;
+  assert.equal(await f.run('ready_for_review'), 'draft');
+  assert.equal(f.comments.length, 1);
+  assert.equal(f.writes.filter(w => w.method === 'GRAPHQL').length, 2);
+});
+
+test('本文を書き換えたときだけ確かめ直す (タイトルだけの変更・同期では何もしない)', async () => {
+  const f = fixture([issue(1, ['alice'])]);
+  assert.equal(await f.run('edited', { changes: { title: { from: '前' } } }), 'skip');
+  assert.equal(await f.run('synchronize'), 'skip');
+  assert.equal(await f.run('edited', { changes: { body: { from: '' } } }), 'draft');
+});
