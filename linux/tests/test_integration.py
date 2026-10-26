@@ -17,6 +17,7 @@ import selectors
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import gi
@@ -27,6 +28,13 @@ from gi.repository import IBus  # noqa: E402
 
 class IntegrationTests(unittest.TestCase):
     package = None
+
+    def test_component_version_matches_native(self):
+        version = ET.parse(self.package / "meltype.xml").getroot().findtext("version")
+        self.assertRegex(version, r"^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$")
+        result = subprocess.run([str(self.package / "ibus-engine-meltype"), "--version"],
+                                check=True, capture_output=True, text=True)
+        self.assertEqual(result.stdout.strip(), f"Meltype {version}")
 
     @classmethod
     def setUpClass(cls):
