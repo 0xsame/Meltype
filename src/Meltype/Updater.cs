@@ -39,20 +39,17 @@ internal sealed class Updater : IDisposable
     }
 
     /// <summary>
-    /// プレリリース版も更新の対象にするか (設定の「プレリリース版も自動で更新する」)。
-    /// OFF にしたら、ON の間にダウンロードしておいたプレリリース版には更新しない。
+    /// ダウンロード済みで、今より新しい版 (無ければ null)。
+    /// allowPrerelease は設定の「プレリリース版も自動で更新する」。OFF なら、ON の間にダウンロードしておいたプレリリース版は使わない。
     /// </summary>
-    public static Func<bool> AllowPrerelease { get; set; } = () => false;
-
-    /// <summary>ダウンロード済みで、今より新しい版 (無ければ null)。</summary>
-    public static (string Version, string Folder)? Staged()
+    public static (string Version, string Folder)? Staged(bool allowPrerelease)
     {
         try
         {
             if (!File.Exists(ReadyFile)) return null;
             var parts = File.ReadAllText(ReadyFile).Trim().Split('\t');
             if (parts.Length != 2 || !IsNewer(parts[0]) || !File.Exists(Path.Combine(parts[1], "install.ps1"))) return null;
-            if (Config.ProjectInfo.IsPrerelease(parts[0]) && !AllowPrerelease()) return null;
+            if (Config.ProjectInfo.IsPrerelease(parts[0]) && !allowPrerelease) return null;
             return (parts[0], parts[1]);
         }
         catch (Exception ex)
@@ -66,7 +63,7 @@ internal sealed class Updater : IDisposable
     /// 起動時: ダウンロード済みの新しい版があればインストールを始める (true なら Meltype はそのまま終了する。install.ps1 が新しい版を起動する)。
     /// 前回インストールに失敗していた (同じ版のまま起動した) ときは、繰り返さない。
     /// </summary>
-    public static bool ApplyStagedAtStartup(Func<bool> enabled, Func<string, bool>? confirm = null)
+    public static bool ApplyStagedAtStartup(Func<bool> enabled, bool allowPrerelease, Func<string, bool>? confirm = null)
     {
         try
         {
@@ -87,13 +84,13 @@ internal sealed class Updater : IDisposable
             Log.Warn($"更新の状態を読めませんでした: {ex.Message}");
         }
         // 更新の前に、あなたの打ち方で変わる語があれば見せる (issue #285。「あとで」なら今回は更新しない)
-        return enabled() && Staged() is { } staged && (confirm?.Invoke(staged.Version) ?? true) && Apply();
+        return enabled() && Staged(allowPrerelease) is { } staged && (confirm?.Invoke(staged.Version) ?? true) && Apply(allowPrerelease);
     }
 
     /// <summary>ダウンロード済みの新しい版のインストールを始める。install.ps1 が動いている Meltype を終了させてから入れ替え、起動する。</summary>
-    public static bool Apply()
+    public static bool Apply(bool allowPrerelease)
     {
-        if (Staged() is not { } staged) return false;
+        if (Staged(allowPrerelease) is not { } staged) return false;
         try
         {
             File.WriteAllText(ApplyingFile, staged.Version);
@@ -122,9 +119,9 @@ internal sealed class Updater : IDisposable
     /// 今の版とダウンロードした新しい版 (Meltype.exe --judge-words) の両方で判定し、見え方が変わる語を返す。
     /// 調べられなければ (新しい版がこの仕組みを持たない・時間切れ) null。この PC の中だけで動かし、何も送らない。
     /// </summary>
-    public static IReadOnlyList<Composition.WordChange>? PreviewChanges(IEnumerable<string> words)
+    public static IReadOnlyList<Composition.WordChange>? PreviewChanges(IEnumerable<string> words, bool allowPrerelease)
     {
-        if (Staged() is not { } staged) return null;
+        if (Staged(allowPrerelease) is not { } staged) return null;
         var list = words.Where(Composition.WordJudge.IsWord).Distinct(StringComparer.Ordinal).ToList();
         if (list.Count == 0) return [];
         var exe = Path.Combine(staged.Folder, "app", "Meltype.exe");
