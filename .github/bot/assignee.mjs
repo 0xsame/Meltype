@@ -13,7 +13,13 @@ const BotLogins = new Set(['github-actions[bot]', 'meltype-helper[bot]']);
 
 /** 本文で閉じる Issue の番号 (Fixes / Closes / Resolves #123。重複なし)。テンプレートの説明の <!-- --> の中は読まない。 */
 export function linkedIssues(body) {
-  const numbers = [...(body ?? '').replace(/<!--[\s\S]*?-->/g, '').matchAll(/\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+#(\d+)\b/gi)].map(m => Number(m[1]));
+  // <!-- を入れ子にした本文でも残らないよう、変わらなくなるまで取り除く
+  let text = body ?? '', previous;
+  do {
+    previous = text;
+    text = text.replace(/<!--[\s\S]*?-->/g, '');
+  } while (text !== previous);
+  const numbers = [...text.matchAll(/\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+#(\d+)\b/gi)].map(m => Number(m[1]));
   return [...new Set(numbers)];
 }
 

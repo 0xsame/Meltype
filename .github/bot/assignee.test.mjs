@@ -44,6 +44,7 @@ function fixture(issues, pr = {}) {
 test('本文の Fixes / Closes / Resolves から閉じる Issue を集め、テンプレートの説明の中は読まない', () => {
   assert.deepEqual(linkedIssues('Fixes #1\nfixed #2, closes: #3\nResolves #1\n#4 も見た\n<!-- 「Fixes #123」と書いてください -->'), [1, 2, 3]);
   assert.deepEqual(linkedIssues(''), []);
+  assert.deepEqual(linkedIssues('<!-<!-- x -->- Fixes #5 -->Fixes #6'), [6], '入れ子のコメントの中も読まない');
 });
 
 test('担当のいる Issue で、作者が担当に入っていないものだけを返す (大文字・小文字は区別しない)', () => {
