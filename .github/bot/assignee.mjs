@@ -60,7 +60,18 @@ export function githubApi({ token, repository, api = 'https://api.github.com', f
     if (result.errors?.length) throw new Error(`GraphQL: ${result.errors.map(e => e.message).join(', ')}`);
     return result.data;
   };
-  return { request, graphql };
+  // 一覧の全ページを読む (1 ページは 100 件まで)。上限に達したら、欠けた一覧で判断せずに止める
+  const list = async path => {
+    const result = [];
+    for (let page = 1; page <= 100; page++) {
+      const batch = await request('GET', `${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+      if (!Array.isArray(batch)) throw new Error(`一覧ではありません: ${path}`);
+      result.push(...batch);
+      if (batch.length < 100) return result;
+    }
+    throw new Error(`一覧が大きすぎるため中止: ${path}`);
+  };
+  return { request, graphql, list };
 }
 
 /**
@@ -94,7 +105,7 @@ async function checkPull(api, pr, repository) {
 export async function runAssigneeCheck(api, event, eventName, repository = '') {
   const results = {};
   if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
-    const pulls = await api.request('GET', '/pulls?state=open&per_page=100') ?? [];
+    const pulls = await api.list('/pulls?state=open');
     for (const pr of pulls) results[pr.number] = await checkPull(api, pr, repository);
     return results;
   }

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Yukishiro
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { linkedIssues, mismatched, runAssigneeCheck } from './assignee.mjs';
+import { githubApi, linkedIssues, mismatched, runAssigneeCheck } from './assignee.mjs';
 
 const bot = { login: 'github-actions[bot]', type: 'Bot' };
 const repository = 'yksr-melt/Meltype';
@@ -22,13 +22,16 @@ function fixture(issues, pr = {}) {
       if (method !== 'GET') writes.push({ method, path, body });
       if (method === 'GET' && path.startsWith('/issues/50/comments')) return structuredClone(comments);
       if (method === 'GET' && path === '/pulls/50') return structuredClone(pull);
-      if (method === 'GET' && path.startsWith('/pulls?state=open')) return pull.state === 'open' ? [structuredClone(pull)] : [];
       const issueMatch = path.match(/^\/issues\/(\d+)$/);
       if (method === 'GET' && issueMatch) return structuredClone(records.get(+issueMatch[1]) ?? null);
       if (method === 'POST' && path === '/issues/50/comments') { comments.push({ id: comments.length + 1, user: bot, body: body.body }); return {}; }
       const edit = path.match(/^\/issues\/comments\/(\d+)$/);
       if (method === 'PATCH' && edit) { comments.find(c => c.id === +edit[1]).body = body.body; return {}; }
       throw new Error(`未対応: ${method} ${path}`);
+    },
+    async list(path) {
+      if (path === '/pulls?state=open') return pull.state === 'open' ? [structuredClone(pull)] : [];
+      throw new Error(`未対応の一覧: ${path}`);
     },
     async graphql(query, variables) {
       assert.match(query, /convertPullRequestToDraft/);
@@ -135,4 +138,17 @@ test('定期実行では、開いているすべての PR を確かめる (イ�
   assert.equal(f.pull.draft, true);
   assert.deepEqual(await runAssigneeCheck(f.api, {}, 'schedule', repository), { 50: 'skip' }, 'Draft になった PR はもう見ない');
   assert.equal(f.comments.length, 1);
+});
+
+test('PR の一覧は 2 ページ目以降も読む。API エラーなら欠けた一覧で続けない', async () => {
+  const calls = [];
+  const api = githubApi({ token: 'test', repository, fetcher: async url => {
+    calls.push(url);
+    const page = Number(new URL(url).searchParams.get('page'));
+    return { ok: true, status: 200, json: async () => page === 1 ? Array.from({ length: 100 }, (_, i) => ({ number: i })) : [{ number: 100 }] };
+  } });
+  assert.equal((await api.list('/pulls?state=open')).length, 101);
+  assert.equal(calls.length, 2);
+  const failing = githubApi({ token: 'test', repository, fetcher: async () => ({ ok: false, status: 403 }) });
+  await assert.rejects(failing.list('/pulls?state=open'), /403/);
 });
