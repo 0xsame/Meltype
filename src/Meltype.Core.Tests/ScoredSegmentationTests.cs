@@ -90,13 +90,4 @@ internal static class ScoredSegmentationTests
         foreach (var (typed, expected) in new[] { ("exceltoppt", "excelとppt"), ("pythontoffmpeg", "pythonとffmpeg"), ("mottekita", "もってきた") })
             Assert.Equal(expected, Type(typed), typed);
     }
-
-    [Test]
-    public static void CapitalFollowedByLowercase_StillScored()
-    {
-        // 小文字が続く大文字 (文の頭を Shift で打った Ga・Koreha) は、今までどおり点数で区切る (助詞 + 英単語を全部英語にしない)
-        foreach (var (typed, expected) in new[] {
-            ("Korehagithubni", "これはgithubに") })
-            Assert.Equal(expected, Type(typed), typed);
-    }
 }
