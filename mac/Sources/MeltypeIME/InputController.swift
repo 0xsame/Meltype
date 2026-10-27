@@ -425,7 +425,12 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
             // 一覧を作り直すと選択が先頭に戻るので、中身が変わったとき (別の文節に移ったときなど) だけ作り直す。
             if candidateList != view.candidates || !window.isVisible() {
                 candidateList = view.candidates
+                // IMK が入力位置を取り直すよう、更新前にいったん非表示にする。
+                window.hide()
                 window.update()
+                window.show(kIMKLocateCandidatesBelowHint)
+                // macOS 26 の IMK は入力位置の更新前に画面を選ぶため、画面移動直後は以前の画面に収まる。
+                // 更新された入力位置で画面を選び直し、その後で選択位置を本体とそろえる。
                 window.show(kIMKLocateCandidatesBelowHint)
                 windowIndex = 0
             }
