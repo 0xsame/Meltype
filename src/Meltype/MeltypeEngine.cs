@@ -19,7 +19,6 @@ internal sealed class MeltypeEngine : IDisposable
     private readonly string? _configPath;
     private readonly ScoreEngine _scoreEngine;
     private readonly ForegroundTracker _foreground = new();
-    private readonly Imm32ImeController _imm32 = new();
     private readonly KeyInjector _injector = new();
     private readonly KeyboardMonitor _monitor;
     private readonly System.Threading.Timer _pollTimer;
@@ -208,9 +207,9 @@ internal sealed class MeltypeEngine : IDisposable
     private static bool IsQt(IntPtr window)
     {
         if (window == IntPtr.Zero) return false;
-        var className = new System.Text.StringBuilder(64);
-        Native.GetClassName(window, className, className.Capacity);
-        return PastePolicy.IsQtWindowClass(className.ToString());
+        var className = new char[64];
+        var length = Native.GetClassName(window, className, className.Length);
+        return length > 0 && PastePolicy.IsQtWindowClass(new string(className, 0, length));
     }
 
     public bool KeyboardDirect
@@ -452,7 +451,7 @@ internal sealed class MeltypeEngine : IDisposable
             {
                 // 日本語のキーボードでなければ IME は無い
                 if (ImeTarget.FromForeground() is not { } target || (Native.GetKeyboardLayout(target.ThreadId).ToInt64() & 0xFFFF) != 0x0411) return;
-                if (_imm32.TrySetOpen(target, japanese, null, _settings.ImeTimeoutMs))
+                if (IME.Imm32ImeController.TrySetOpen(target, japanese, null, _settings.ImeTimeoutMs))
                     Log.Info(japanese ? "左右の Alt: 日本語入力にしました (右 Alt)" : "左右の Alt: 英数にしました (左 Alt)");
                 else
                     Log.Warn($"左右の Alt: {(japanese ? "日本語入力" : "英数")}にできませんでした。");
@@ -812,9 +811,9 @@ internal sealed class MeltypeEngine : IDisposable
                     !KeyboardLayoutPolicy.AllowsInput(_settings, target)) return;
                 // アプリ別設定で OFF にしたアプリ (・ゲーム) では、Microsoft IME をそのまま使ってもらう (OFF に戻さない: issue #233)
                 if (!_foreground.Check(_settings).Allowed) return;
-                var state = _imm32.GetState(target);
+                var state = IME.Imm32ImeController.GetState(target);
                 if (!KeyboardLayoutPolicy.AllowsInput(_settings, state.KeyboardLayout)) return;
-                if (state.Mode == IME.ImeMode.Open && _imm32.TrySetOpen(target, false, null, _settings.ImeTimeoutMs))
+                if (state.Mode == IME.ImeMode.Open && IME.Imm32ImeController.TrySetOpen(target, false, null, _settings.ImeTimeoutMs))
                 {
                     Log.Info("Meltype キーボードを使うため Microsoft IME を OFF にしました。");
                 }
@@ -944,7 +943,7 @@ internal sealed class MeltypeEngine : IDisposable
                 SuspendForInputLanguage();
                 return;
             }
-            var state = _imm32.GetState(target);
+            var state = IME.Imm32ImeController.GetState(target);
             _imeSnapshot = new ImeSnapshot(state);
             if (TakeoverPending)
             {
@@ -1000,7 +999,7 @@ internal sealed class MeltypeEngine : IDisposable
         if (_forcedCloses >= 3) return;
         _forcedCloses++;
         _lastForcedClose = now;
-        var closed = _imm32.TrySetOpen(target, false, null, _settings.ImeTimeoutMs);
+        var closed = IME.Imm32ImeController.TrySetOpen(target, false, null, _settings.ImeTimeoutMs);
         Log.Warn($"Meltype キーボードの使用中に Windows の IME が ON になっていました ({state}) → {(closed ? "OFF にしました" : "OFF にできませんでした")}。" +
                  (_forcedCloses == 3 ? " (続けて ON になるため、しばらく自動で OFF にしません。IME を使うときは Ctrl+半角/全角 で Meltype を一時停止してください)" : ""));
     }

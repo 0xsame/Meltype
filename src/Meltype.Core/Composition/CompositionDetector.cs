@@ -143,7 +143,7 @@ public sealed partial class CompositionDetector
         // Structured Latin tokens are opaque; their components are not Japanese readings.
         if (!kanaInput && token.All(c => c is >= '!' and <= '~') &&
             (token.Contains('@') && token.Any(char.IsAsciiLetter) || token.Contains('_') || token.Contains("://", StringComparison.Ordinal) ||
-             System.Text.RegularExpressions.Regex.Matches(token, "[a-z][A-Z][a-z]").Count >= 2 && !StartsWithJapaneseReading(token) || IsStylizedName(token)))
+             System.Text.RegularExpressions.Regex.Count(token, "[a-z][A-Z][a-z]") >= 2 && !StartsWithJapaneseReading(token) || IsStylizedName(token)))
             return [new CompositionSegment(true, "", token)];
         // A romaji token can cross an English boundary (reflect + sa becomes tsa).
         // Recognize an unambiguous English verb before parsing its Japanese conjugation.
@@ -202,7 +202,7 @@ public sealed partial class CompositionDetector
             {
                 var word = raw[..end];
                 var rest = raw[end..].ToLowerInvariant();
-                if (!rest.StartsWith("s", StringComparison.Ordinal)) continue;
+                if (!rest.StartsWith('s')) continue;
                 var analysis = _romaji.AnalyzeFragment(rest);
                 if (analysis.IsValid && IsSuruForm(analysis.Kana) && word.All(char.IsAsciiLetter) &&
                     !_romaji.AnalyzeFragment(word.ToLowerInvariant()).IsValid && IsKnownEnglishWord(word))
@@ -250,7 +250,7 @@ public sealed partial class CompositionDetector
         }
         // 辞書の短い英語 (pro) だけが先頭で英語になり、残りの英字がかな化される (procrasticle: issue #537)。
         if (level != DetectionLevel.Manual && whole.All(char.IsAsciiLetter) && Memory?.Get(whole.ToLowerInvariant()) != false &&
-            !IsKnownEnglishWord(whole.ToLowerInvariant()) && HasListedEnglishPrefixSplit(whole, segments))
+            !IsKnownEnglishWord(whole.ToLowerInvariant()) && HasListedEnglishPrefixSplit(whole, segments, pending, final))
             return [new CompositionSegment(true, "", whole)];
         return segments;
     }
@@ -292,8 +292,8 @@ public sealed partial class CompositionDetector
         return -1;
     }
 
-    /// <summary>先頭が辞書の短い英語 (pro) で、残りがまだ英字なのに日本語区間になっている (procrasticle)。</summary>
-    private bool HasListedEnglishPrefixSplit(string whole, List<CompositionSegment> segments)
+    /// <summary>先頭が辞書の短い英語 (pro) で、後続の読みにかなにならない英字が残るか (procrasticle)。</summary>
+    private bool HasListedEnglishPrefixSplit(string whole, List<CompositionSegment> segments, string pending, bool final)
     {
         if (segments.Count < 2 || !segments[0].IsEnglish || segments[1].IsEnglish) return false;
         var head = segments[0].Raw;
@@ -306,7 +306,11 @@ public sealed partial class CompositionDetector
         var lowerWhole = whole.ToLowerInvariant();
         for (var len = head.Length + 1; len <= lowerWhole.Length; len++)
             if (IsKnownEnglishWord(lowerWhole[..len])) return false;
-        return segments.Skip(1).All(s => !s.IsEnglish && s.Raw.All(char.IsAsciiLetter));
+        // 読めない英字が残るときだけ補正する。usb + つないで のように、かなになった日本語は区切りを保つ。
+        // 確定時は pending も数える (prozac の c)。n は確定すると「ん」になるので英字には数えない。
+        return segments.Skip(1).All(s => !s.IsEnglish && s.Raw.All(char.IsAsciiLetter)) &&
+            (segments.Skip(1).Any(s => s.Kana.Any(char.IsAsciiLetter)) ||
+             final && _romaji.ConvertLenient(pending.ToLowerInvariant(), final: true).Any(char.IsAsciiLetter));
     }
 
     /// <summary>
@@ -581,6 +585,15 @@ public sealed partial class CompositionDetector
             _romaji.AnalyzeFragment(head) is { IsValid: true, Partial: "" } && !IsKnownEnglishWord(head);
     }
 
+    /// <summary>
+    /// 母音で終わる語のすぐ後ろが ん の単位 (image|n|za|i) か。その ん は語の最後の音に付くので、語は日本語の途中 (いまげんざい)。
+    /// workaround (#1175): english-readable.txt の語の途中から始まる日本語の語 (image|nzai の げんざい) を判定で見ていないので、
+    /// すぐ後ろが ん のときだけ英語として確定しない。「英単語 + 日本語」と「すべて日本語」を、語の境目をまたぐ語も含めて比べる判定ができたら、この関数と呼び出し 2 か所を消す。
+    /// </summary>
+    private static bool NasalContinues(string lower, string? next) =>
+        lower[^1] is 'a' or 'i' or 'u' or 'e' or 'o' && next is [var n, ..] && char.ToLowerInvariant(n) == 'n' &&
+        (next.Length == 1 || char.ToLowerInvariant(next[1]) is not ('a' or 'i' or 'u' or 'e' or 'o' or 'y'));
+
     /// <summary>english-readable.txt の語か (ローマ字として最後まで読めても、日本語の語にならない英単語: open、feature)。</summary>
     public static bool IsReadableEnglishWord(string lower) => ReadableEnglish.Value.ContainsWord(lower);
 
@@ -727,7 +740,8 @@ public sealed partial class CompositionDetector
         if (char.IsAsciiLetterUpper(span[0]) && (exact || prefix || atEnd || (spellWord && next is [var symbol, ..] && !char.IsAsciiLetterOrDigit(symbol)))) return true;
         if (level == DetectionLevel.Manual) return false;
         // ローマ字として最後まで読めても日本語の語にならない英単語 (english-readable.txt)。Manual の後・助詞誤分割除外の後で確定する。
-        if (readableEnglish) return true;
+        // ただし、すぐ後ろが ん (image|n|za|i) なら、語の最後の音の続き: 日本語の途中 (いまげんざい = 今現在、issue #1175)。
+        if (readableEnglish && !NasalContinues(lower, next)) return true;
         // ユーザーが英字 / かなに直して覚えた語。ただし短くてローマ字として読める語 (go、no) は、日本語のすぐ後ろ
         // (nihon|go) では使わない (一度 go を英字で確定しただけで、日本語 が にほんgo になっていた)。
         if (Memory?.Get(lower) is { } learned && !(learned && before < 0 && lower.Length <= 3 && Fragment() is { IsValid: true, Partial: "" })) return learned;
@@ -746,7 +760,7 @@ public sealed partial class CompositionDetector
         }
         // ローマ字として最後まで読めても、日本語の語にならない英単語 (feature = ふぇあつれ、remote = れもて。dictionaries/english-readable.txt、#12)。
         // 日本語の語の始まりにもならない語だけを入れているので、後ろに日本語が続いても (feature|wo) 英語。
-        if (lower.Length >= 3 && ReadableEnglish.Value.ContainsWord(lower)) return true;
+        if (lower.Length >= 3 && ReadableEnglish.Value.ContainsWord(lower) && !NasalContinues(lower, next)) return true;
         // -pedia (pedia / protopedia …)。ローマ字だと ぺぢあ になり、途中の to が助詞「と」に割れる (pro|to|pedia)。
         // wikipedia はスペルチェッカーで足りるが、pedia 単体や未登録の複合はここですくう。
         // CanBeEnglishSpan / 上の早期 return でも同じ IsPediaEnglishWord を通す (通さないとここへ届かない)。
