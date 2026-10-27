@@ -922,7 +922,12 @@ public sealed class CompositionController
         {
             if (_host.GetReconversionSelection() is not { } selection || string.IsNullOrWhiteSpace(selection.Reading)) return;
             _correctable.Clear();
-            if (IsRomajiText(selection.Text) && StartRomajiReconversion(selection)) return;
+            // ローマ字のまま入った文は、日本語にする所が無ければ何もしない (英字をローマ字として読んだ候補を出さない)
+            if (IsRomajiText(selection.Text))
+            {
+                StartRomajiReconversion(selection);
+                return;
+            }
             BeginComposition();
             _reconversion = selection;
             foreach (var kana in selection.Reading) _text.AppendKana(kana, kana);
@@ -1024,15 +1029,15 @@ public sealed class CompositionController
     /// <summary>
     /// ローマ字のまま入った文を選んで変換キーを押したとき (Meltype が止まっていた・ターミナルで打った: issue #288)。
     /// Meltype の判定で日本語の所だけを日本語にした文を候補として見せ、Enter で選んだ文字と置き換える。
-    /// 候補は 日本語にした文 → 選んだままの文。日本語にする所が無ければ false (今までの再変換に任せる)。
+    /// 候補は 日本語にした文 → 選んだままの文。日本語にする所が無ければ何もしない。
     /// </summary>
-    private bool StartRomajiReconversion(ReconversionSelection selection)
+    private void StartRomajiReconversion(ReconversionSelection selection)
     {
         var converted = ConvertRomajiText(selection.Text);
         if (converted == selection.Text)
         {
             Diagnostics.Log.Info("再変換: 選んだ文字に、日本語にする所がありませんでした。");
-            return false;
+            return;
         }
         BeginComposition();
         _reconversion = selection;
@@ -1041,7 +1046,6 @@ public sealed class CompositionController
         _clauses = [new Clause(converted, false, [converted, selection.Text])];
         _selectedClause = 0;
         _converting = true;
-        return true;
     }
 
     /// <summary>
@@ -1053,11 +1057,15 @@ public sealed class CompositionController
     {
         var output = new StringBuilder();
         var kana = new StringBuilder();
-        bool? previousEnglish = null;
+        var englishWords = 0;
         foreach (var word in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
-            // 前の語が日本語でも「日本語の続き」とはしない (空白で区切って打った語なので、語の途中ではない)
-            var typed = new CompositionText(_detector) { PrecedingEnglish = previousEnglish == true ? true : null, Punctuation = _options.Punctuation() };
+            // 前の語が日本語でも「日本語の続き」とはしない (空白で区切って打った語なので、語の途中ではない)。
+            // 英語の語が 2 語以上続いた後は、打つときと同じく英文の続き (this is + a)
+            var typed = new CompositionText(_detector)
+            {
+                PrecedingEnglish = englishWords > 0 ? true : null, PrecedingEnglishSentence = englishWords >= 2, Punctuation = _options.Punctuation(),
+            };
             foreach (var c in word) typed.Append(c);
             var segments = typed.Segments();
             foreach (var segment in segments)
@@ -1073,7 +1081,7 @@ public sealed class CompositionController
                 if (output.Length > 0 && output[^1] != ' ') output.Append(' ');
                 output.Append(segment.Raw).Append(' ');
             }
-            previousEnglish = segments.Count > 0 && segments[^1].IsEnglish;
+            englishWords = segments.Count > 0 && segments[^1].IsEnglish ? (segments.Count == 1 ? englishWords + 1 : 1) : 0;
         }
         if (kana.Length > 0) output.Append(Convert(kana.ToString()));
         return output.ToString().TrimEnd();
