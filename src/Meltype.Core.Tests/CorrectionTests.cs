@@ -63,11 +63,11 @@ internal static class CorrectionTests
         foreach (var part in new[] { "template=2-misdetection.yml", "typed=mata", $"actual={Uri.EscapeDataString("また")}", "expected=mata", $"context={Uri.EscapeDataString("hello ")}" })
             Assert.True(url.Contains(part), part + ": " + url);
         Assert.True(correction.ToReportText().Contains("打ったもの (キーをそのまま): mata"), correction.ToReportText());
-        // Zenzai を使っているかも入れる。分からなければ欄を空のままにする (issue #1197)
+        // 直したときに Zenzai を使っていたかも入れる。分からなければ欄を空のままにする (issue #1197)
         Assert.True(!url.Contains("zenzai="), url);
         foreach (var (on, text) in new[] { (true, "使っている"), (false, "使っていない") })
         {
-            var withZenzai = Config.ProjectInfo.MisdetectionReportUrl(correction, "Windows", "1.2.0", "env", on);
+            var withZenzai = Config.ProjectInfo.MisdetectionReportUrl(correction with { Zenzai = on }, "Windows", "1.2.0", "env");
             Assert.True(withZenzai.Contains($"zenzai={Uri.EscapeDataString(text)}"), withZenzai);
         }
 
