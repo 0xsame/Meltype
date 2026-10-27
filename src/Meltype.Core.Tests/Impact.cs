@@ -23,7 +23,8 @@ internal static class Impact
         // 学習を付けない判定 (WordJudge と同じ)。スペルチェッカーは品質テスト・報告の再現と同じく組み込みの一覧
         var detector = CompositionDetector.CreateDefault();
         detector.SpellChecker ??= BuiltInWordChecker.Shared;
-        var extra = extraLists.Where(File.Exists).SelectMany(File.ReadLines).Select(line => line.Split('\t')[0].Trim());
+        // 渡した一覧を読めなければ、その語を比べられないので止める (File.ReadAllLines が例外を出す)
+        var extra = extraLists.SelectMany(File.ReadAllLines).Select(line => line.Split('\t')[0].Trim());
         var words = Readings().Select(ToRomaji).OfType<string>().Concat(EnglishWords()).Concat(extra).ToList();
         File.WriteAllText(output, WordJudge.JudgeAll(detector, words), new UTF8Encoding(false));
         Console.WriteLine($"判定した語: {words.Distinct(StringComparer.Ordinal).Count()} 語");
