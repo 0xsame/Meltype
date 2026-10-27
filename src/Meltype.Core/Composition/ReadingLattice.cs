@@ -32,6 +32,7 @@ namespace Meltype.Composition;
 /// 判定の強さは英語の候補の重みに足す (積極的 −0.5・標準 0・慎重 +1)。手動では Shift を押して打った大文字で始まる語だけを英語の候補にする。
 /// 記号・数字の決まり (ドメイン・拡張子・ユーザー名・- の入った語・数字を挟んだ略語・英文の中の記号) は、重みで比べずにその区間を英語にする。
 /// ローマ字入力では 1 文字ずつを区切りの位置にする (単位の途中で区切れる: get|Element、medal|s|ha)。かな入力では打った単位の境目だけ。
+/// かな入力では、4 文字以上の知っている英単語の重みを −1 する。
 /// </summary>
 public sealed partial class CompositionDetector
 {
@@ -40,6 +41,9 @@ public sealed partial class CompositionDetector
     private const double ConservativeEnglishBias = 1;
     // 変換の候補に出す英語寄りの区切り: 英単語 + 切り替え + 付属語 (midi + か = 2.8) が日本語の語 1 つ (みぢか = 1) より軽くなる
     private const double LeaningEnglishBias = -2;
+    // かな入力の 4 文字以上の英単語: 英字のキーで打ったかな (さっき + かく|ちか = that) が日本語の語に読める分を打ち消す。
+    // 3 文字以下 (eh・at・id) は日本語の文の一部が英単語になりやすいので付けない
+    private const double KanaInputEnglishBias = -1;
     private const double AdjacentEnglishCost = 1;
     // 英単語のすぐ後ろが あ行のかな (thing|う・rate|ぃす): 英単語の最後の子音と次の母音の切り間違い
     private const double VowelAfterEnglishCost = 1;
@@ -428,6 +432,7 @@ public sealed partial class CompositionDetector
             else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)))
             {
                 cost = ReadableEnglish.Value.ContainsWord(span.ToLowerInvariant()) ? ReadableEnglishCost : KnownEnglishCost;
+                if (kanaInput && span.Length >= 4) cost += KanaInputEnglishBias;
                 // 日本語由来の語 (suzuki・sushi) は、ローマ字で読んだかなも日本語の語として並べる
                 if (span.All(char.IsAsciiLetterLower) && IsJapaneseOriginWord(span) &&
                     _romaji.ConvertLenient(span, final: true) is var reading && reading.All(KanaChars.IsHiraganaOrLongMark))
