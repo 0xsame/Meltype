@@ -11,8 +11,8 @@ const issue = (number, labels = [], author = 'alice') => ({
   number, state: 'open', user: user(author), body: '報告', labels: labels.map(name => ({ name })),
   created_at: new Date(start - WaitMs * 2 + number * 1000).toISOString(),
 });
-const pull = (number, draft = false, author = 'alice') => ({
-  ...issue(number, [], author), draft, head: { sha: 'original' }, pull_request: {},
+const pull = (number, draft = false, author = 'alice', association = 'NONE') => ({
+  ...issue(number, [], author), author_association: association, draft, head: { sha: 'original' }, pull_request: {},
 });
 
 /** インメモリの GitHub API。API の書き込みまで通して、閉じる対象とタイミングを確かめる。 */
@@ -82,6 +82,62 @@ function fixture(items) {
 
 test('Draft は上限に含めず、作者ごとの古い 2 件を残す', () => {
   assert.deepEqual([...excessPulls([pull(4), pull(1, true), pull(3), pull(2), pull(5, false, 'bob')])], [4]);
+});
+
+for (const association of ['OWNER', 'MEMBER', 'COLLABORATOR']) {
+  test(`${association}: メンテナーには上限の通知・自動クローズを行わず、一般投稿者の 3 件目だけを閉じる`, async () => {
+    const f = fixture([
+      ...[1, 2, 3].map(n => pull(n, false, 'alice', association)),
+      ...[4, 5, 6].map(n => pull(n, false, 'bob')),
+    ]);
+    await f.run();
+    for (const n of [1, 2, 3]) {
+      assert.deepEqual(f.records.get(n).labels, []);
+      assert.deepEqual(f.comments.get(n), []);
+    }
+    assert.equal(f.comments.get(6).length, 1);
+    await f.run(start + WaitMs);
+    for (const n of [1, 2, 3, 4, 5]) assert.equal(f.records.get(n).state, 'open');
+    assert.equal(f.records.get(6).state, 'closed');
+  });
+}
+
+for (const association of ['CONTRIBUTOR', 'FIRST_TIME_CONTRIBUTOR', 'FIRST_TIMER', 'MANNEQUIN', 'NONE']) {
+  test(`${association}: 一般投稿者は上限の対象にする`, () => {
+    assert.deepEqual([...excessPulls([1, 2, 3].map(n => pull(n, false, 'alice', association)))], [3]);
+  });
+}
+
+test('メンテナーになった投稿者の上限超過ラベルと通知を解除する', async () => {
+  const f = fixture([pull(1), pull(2), pull(3)]);
+  await f.run();
+  for (const pr of f.records.values()) pr.author_association = 'COLLABORATOR';
+  await f.run(start + WaitMs);
+  assert.deepEqual(f.records.get(3).labels, []);
+  assert.equal(f.records.get(3).state, 'open');
+  assert.equal(f.comments.get(3).length, 1);
+  assert.match(f.comments.get(3)[0].body, /対象ではなく/);
+});
+
+test('メンテナーの PR も PR要対応ラベルによる期限管理の対象にする', async () => {
+  const pr = pull(1, false, 'alice', 'OWNER'); pr.labels = [{ name: Labels.rule }];
+  const f = fixture([pr]);
+  await f.run();
+  await f.run(start + WaitMs);
+  assert.equal(f.records.get(1).state, 'closed');
+});
+
+test('閉じる直前に投稿者がメンテナーになった場合も、上限超過で閉じない', async () => {
+  const f = fixture([pull(1), pull(2), pull(3)]); await f.run();
+  const original = f.api.list; let reads = 0;
+  f.api.list = async path => {
+    if (path === '/pulls?state=open' && ++reads === 2) {
+      for (const pr of f.records.values()) pr.author_association = 'COLLABORATOR';
+    }
+    return original(path);
+  };
+  await f.run(start + WaitMs);
+  assert.equal(f.records.get(3).state, 'open');
 });
 
 test('3 件目だけに通知し、通知後 14 日でその PR だけを閉じる', async () => {

@@ -14,10 +14,11 @@ const names = item => new Set((item?.labels ?? []).map(l => l.name ?? l));
 const hash = body => createHash('sha256').update(body ?? '').digest('hex');
 const trusted = comment => comment.user?.type === 'Bot' && BotLogins.has(comment.user.login);
 
-/** Draft を除き、作者ごとに作成が古い 2 件を残す。同時刻なら番号順。 */
+/** Draft とメンテナーの PR を除き、作者ごとに作成が古い 2 件を残す。同時刻なら番号順。 */
 export function excessPulls(pulls) {
   const counts = new Map();
-  return new Set(pulls.filter(p => p.state === 'open' && !p.draft)
+  return new Set(pulls.filter(p => p.state === 'open' && !p.draft
+    && !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(p.author_association))
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.number - b.number)
     .filter(p => {
       const author = p.user.login.toLowerCase();
