@@ -2190,36 +2190,36 @@ internal static class CompositionTests
     public static void Issue678_FunctionKeysStillAffectOnlyTheSelectedClauseAfterExtending()
     {
         // 文節の長さを変えると、その文節の打った英字が分からなくなり、F9 / F10 が文全体に効いていた
-        foreach (var (vk, expected) in new[] { (VirtualKeys.F10, "m3e4"), (VirtualKeys.F9, "ｍ３ｅ４") })
+        foreach (var (vk, expected) in new[] { (VirtualKeys.F10, "3e4wotuka"), (VirtualKeys.F9, "３ｅ４ｗｏｔｕｋａ") })
         {
             var k = new Keyboard { FunctionKeysAffectSelectedClause = true };
             k.Type("m3e4wotukau ");
-            ShiftArrow(k, VirtualKeys.Right);
+            k.Press(VirtualKeys.Right);
+            ShiftArrow(k, VirtualKeys.Left);
+            ShiftArrow(k, VirtualKeys.Left);
             ShiftArrow(k, VirtualKeys.Right);
             var before = k.Host.View!.Clauses!;
-            Assert.Equal("m3え4", before[0], "先頭の文節が伸びる");
+            Assert.Equal("m|3え4をつか|う", string.Join("|", before), "縮めた文節を伸ばす");
             k.Press(vk);
             Assert.True(k.Host.View!.Converting, "変換は続く");
-            var clauses = k.Host.View!.Clauses!;
-            Assert.Equal(expected, clauses[0], "選んだ文節だけが英字になる");
-            Assert.Equal(string.Concat(before.Skip(1)), string.Concat(clauses.Skip(1)), "ほかの文節はそのまま");
+            Assert.Equal($"m|{expected}|う", string.Join("|", k.Host.View!.Clauses!), "選んだ文節だけが英字になる");
         }
     }
 
     [Test]
     public static void Issue678_FunctionKeysStillAffectOnlyTheSelectedClauseAfterShrinking()
     {
-        foreach (var (vk, expected) in new[] { (VirtualKeys.F10, "e4wotuka"), (VirtualKeys.F9, "ｅ４ｗｏｔｕｋａ") })
+        foreach (var (vk, expected) in new[] { (VirtualKeys.F10, "3e4wotuka"), (VirtualKeys.F9, "３ｅ４ｗｏｔｕｋａ") })
         {
             var k = new Keyboard { FunctionKeysAffectSelectedClause = true };
             k.Type("m3e4wotukau ");
             k.Press(VirtualKeys.Right);
             ShiftArrow(k, VirtualKeys.Left);
             var before = k.Host.View!.Clauses!;
-            Assert.Equal("m3|え4をつか|う", string.Join("|", before), "後ろの文節が縮む");
+            Assert.Equal("m|3え4をつか|う", string.Join("|", before), "後ろの文節が縮む");
             k.Press(vk);
             Assert.True(k.Host.View!.Converting, "変換は続く");
-            Assert.Equal($"m3|{expected}|う", string.Join("|", k.Host.View!.Clauses!), "選んだ文節だけが英字になる");
+            Assert.Equal($"m|{expected}|う", string.Join("|", k.Host.View!.Clauses!), "選んだ文節だけが英字になる");
         }
     }
 
