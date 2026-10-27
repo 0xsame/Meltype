@@ -183,7 +183,7 @@ jobs:
             $env:MELTYPE_MOZC = $env:MELTYPE_MOZC  # 同じヘルパーを共有
             dotnet run --project ../release/src/Meltype.Tests -c Release -- --repro "$env:KEYS" "$env:LAST" | Out-File "results/repro-$tag.json" -Encoding utf8
           }
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bot-results
           path: results/
@@ -254,13 +254,13 @@ jobs:
             dotnet run --project src/Meltype.Tests -c Release -- --repro "$env:KEYS" "$env:LAST" | Out-File results/repro-pr.json -Encoding utf8
           }
       - if: needs.parse.outputs.action != 'pack'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bot-results
           path: results/
           retention-days: 7
       - if: needs.parse.outputs.action == 'pack'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: meltype-pr-${{ needs.parse.outputs.issue }}
           path: dist/Meltype-test-*.zip

@@ -95,7 +95,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then name="Meltype-${GITHUB_REF_NAME#v}-mac.zip"; else name="Meltype-mac-test-$(date +%Y%m%d-%H%M).zip"; fi
           bash mac/package.sh "$name"
           ls -la dist
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: meltype-mac
           path: dist/Meltype-*.zip
@@ -152,7 +152,7 @@ jobs:
               --body "Updates the Homebrew cask and SHA-256 for the $version release."
           fi
       - if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: homebrew-cask
           path: dist/manifests/homebrew/Casks/meltype.rb

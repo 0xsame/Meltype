@@ -164,7 +164,7 @@ jobs:
         shell: powershell
         run: .\native\mozc\Build-MozcHelper.ps1 -MozcSource C:\mozc -Python python -Bazelisk C:\tools\bazelisk.exe -DiskCache C:\bazel-cache
       - if: steps.check.outputs.build == 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mozc-helper
           path: native/mozc/bin/
@@ -259,7 +259,7 @@ jobs:
           $setups = @(Get-ChildItem -LiteralPath dist -Filter 'Meltype-*-setup.exe' -File)
           if ($setups.Count -ne 1) { throw 'Expected one Meltype-*-setup.exe file but found ' + $setups.Count }
           .\tools\Scan-WindowsPackage.ps1 -Path @('.\dist\Meltype', '.\dist\Meltype-portable', $packages[0].FullName, $packages[1].FullName, $setups[0].FullName)
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: meltype-package
           path: |
