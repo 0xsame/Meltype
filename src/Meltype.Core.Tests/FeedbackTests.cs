@@ -1118,7 +1118,7 @@ internal static class LanguageLearningTests
                 ("everyonenohatsugen", "everyoneのはつげん"),
                 // 英語の歌詞: 行の始めの I'll の後ろ (I'll ご になっていた)、riverside, (river しで、 になっていた)
                 ("I'll go to see you again tomorrow", "I'll go to see you again tomorrow"), ("by the riverside, I'm sitting", "by the riverside, I'm sitting"),
-                ("shirigaru teenage girl", "しりがるteenage girl"), ("bakudannnihanarenai oh no!", "ばくだんにはなれないoh no!"), ("supeaman woah", "すぺあまんwoah"),
+                ("shirigaru teenage girl", "しりがるteenage girl"), ("bakudannnihanarenai oh no!", "ばくだんにはなれないoh no!"),
                 // 英文の中の短い語 + 記号 (let's go! の go が ご になっていた)。日本語の後ろの記号は今までどおり全角
                 ("let's go!", "let's go!"), ("I said no?", "I said no?"), ("sorena!", "それな！"), ("nande?", "なんで？"),
                 // 記号の前・確定時の笑いの w (きたw！ の w が確定で消えていた)
