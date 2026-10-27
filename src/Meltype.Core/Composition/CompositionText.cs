@@ -16,7 +16,11 @@ public enum LetterCase { AsTyped, Upper, Capitalized }
 /// 変換ボックス内の 1 単位。ローマ字 1 音 (きょ, っ, ん …)・ローマ字として読めなかった英字 1 文字・記号 1 文字のいずれか。
 /// Raw は実際に打った文字 (英語として表示するときに使う)。
 /// </summary>
-public readonly record struct CompositionUnit(string Kana, string Raw);
+public readonly record struct CompositionUnit(string Kana, string Raw)
+{
+    /// <summary>括弧専用の変換で選び、未確定のまま保持する形。読みと打鍵は候補順・英字表示のために残す。</summary>
+    internal string? BracketChoice { get; init; }
+}
 
 /// <summary>表示上のひとまとまり。英語と判定した区間は英字のまま、それ以外は日本語 (かな/漢字)。</summary>
 public readonly record struct CompositionSegment(bool IsEnglish, string Kana, string Raw)
@@ -40,6 +44,14 @@ public sealed class CompositionText
     public IReadOnlyList<CompositionUnit> Units => _units;
     public string Pending => _pending.ToString();
     public bool IsEmpty => _units.Count == 0 && _pending.Length == 0;
+
+    /// <summary>括弧単独の変換で選んだ形を、続けて入力する間も使う。</summary>
+    internal void KeepBracketChoice(string text)
+    {
+        for (var i = 0; i < _units.Count; i++)
+            _units[i] = _units[i] with { BracketChoice = text[i].ToString() };
+    }
+
     public DisplayMode Mode { get; set; } = DisplayMode.Auto;
 
     /// <summary>英字 (F9 / F10) で見せるときの大文字・小文字。確定・取り消しで戻る。</summary>
@@ -237,9 +249,13 @@ public sealed class CompositionText
             if (raw.Length > 0)
             {
                 var truncated = raw[..^1];
+                var choices = _units.TakeWhile(u => u.BracketChoice is not null).ToArray();
                 _units.Clear();
                 _pending.Clear();
                 foreach (var c in truncated) Append(c);
+                // 保護範囲の打鍵を読み直しても、手前で選んだ括弧の形は保つ。
+                for (var i = 0; i < Math.Min(choices.Length, _units.Count); i++)
+                    _units[i] = _units[i] with { BracketChoice = choices[i].BracketChoice };
                 if (IsEmpty)
                 {
                     Mode = DisplayMode.Auto;
@@ -404,6 +420,7 @@ public sealed class CompositionText
         }
         var result = ComputeSegments();
         if (FullWidthParentheses) result = [.. result.Select(s => s.IsEnglish && s.Raw is "(" or ")" ? new CompositionSegment(false, s.Raw == "(" ? "（" : "）", s.Raw) : s)];
+        result = ApplyBracketChoices(result);
         if (LaughterAfterKana) result = SplitLaughter(result);
         _segmentsCache = (key, _detector.Memory, _detector.SpellChecker, result);
         return result;
@@ -439,7 +456,7 @@ public sealed class CompositionText
     private string SegmentsKey()
     {
         var key = new StringBuilder();
-        foreach (var unit in _units) key.Append(unit.Kana).Append('\u0001').Append(unit.Raw).Append('\u0002');
+        foreach (var unit in _units) key.Append(unit.Kana).Append('\u0001').Append(unit.Raw).Append('\u0001').Append(unit.BracketChoice).Append('\u0002');
         key.Append('\u0003').Append(_pending).Append('\u0003')
             .Append(PrecedingEnglish switch { true => 'E', false => 'J', null => '-' })
             .Append(FollowingEnglish switch { true => 'E', false => 'J', null => '-' })
@@ -447,6 +464,31 @@ public sealed class CompositionText
             .Append(PrecedingEnglishName ? 'N' : '-').Append(FullWidthParentheses ? 'W' : '-').Append(LaughterAfterKana ? 'L' : '-')
             .Append((int)EffectiveLevel).Append(':').Append(_detector.Memory?.Version ?? -1);
         return key.ToString();
+    }
+
+    /// <summary>選んだ括弧を先頭の独立した区間にし、続く語の判定・ライブ変換で形を変えない。</summary>
+    private IReadOnlyList<CompositionSegment> ApplyBracketChoices(IReadOnlyList<CompositionSegment> segments)
+    {
+        if (_units is not [{ BracketChoice: not null }, ..]) return segments;
+        var choices = _units.TakeWhile(u => u.BracketChoice is not null).ToArray();
+        var result = new List<CompositionSegment>();
+        var unit = 0;
+        foreach (var segment in segments)
+        {
+            var rawLength = 0;
+            var kanaLength = 0;
+            var text = new StringBuilder();
+            while (unit < choices.Length && rawLength < segment.Raw.Length)
+            {
+                rawLength += choices[unit].Raw.Length;
+                kanaLength += choices[unit].Kana.Length;
+                text.Append(choices[unit++].BracketChoice);
+            }
+            if (rawLength > 0) result.Add(new CompositionSegment(false, text.ToString(), segment.Raw[..rawLength]));
+            if (rawLength < segment.Raw.Length)
+                result.Add(segment with { Raw = segment.Raw[rawLength..], Kana = segment.IsEnglish ? "" : segment.Kana[kanaLength..] });
+        }
+        return result;
     }
 
     private IReadOnlyList<CompositionSegment> ComputeSegments()
@@ -795,7 +837,7 @@ public sealed class CompositionText
     }
 
     /// <summary>英語判定を無視してすべてかなにしたもの (F6)。</summary>
-    public string AllKana(bool final) => string.Concat(_units.Select(u => u.Kana)) + PendingText(final);
+    public string AllKana(bool final) => string.Concat(_units.Select(u => u.BracketChoice ?? u.Kana)) + PendingText(final);
 
     /// <summary>
     /// 日本語の部分の読みに書き間違い (ブレスレッド) があれば、その位置 (単位の範囲) と正しい読みを返す。
