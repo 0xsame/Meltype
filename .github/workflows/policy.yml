@@ -14,7 +14,8 @@ on:
   issue_comment:
     types: [created, edited]
   schedule:
-    - cron: '17 3 * * *'
+    # 件数の超過は警告から 24 時間で Draft にするので、期限の確認は 1 時間ごとにする
+    - cron: '17 * * * *'
   workflow_dispatch:
 
 permissions: {}
