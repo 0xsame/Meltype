@@ -22,7 +22,7 @@ namespace Meltype.Composition;
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
 /// | 英字 → 日本語 → 英字 と英字のあいだで区切りなしに戻る (付属語を含むときは除く) | 1 |
-/// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる | 1 |
+/// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる (英語の最後が小文字のとき。USBいれた は除く) | 1 |
 /// | 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) | 1 つ 0.5 |
 ///
 /// 同じ重みなら日本語にする。大文字を含む区間は日本語にしない。綴りを名指しする条件は持たない。
@@ -134,7 +134,7 @@ public sealed partial class CompositionDetector
             LatticeState next;
             var japanese = !edge.English && !edge.Neutral;
             // 子音を重ねて打った っ は、前後をかなに挟まれているときだけ軽い (excelとっpt・cwっで にしない。ltu・xtu で打った っ と、Goって の って は除く)
-            var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
+            var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetterLower(text[edge.Start - 1]) && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
             // 大文字で始まる知らない語 (Tanaka) を小文字の途中で切って、付属語でない日本語を続ける (Ta|なか)
             var nameSplit = japanese && !edge.Particle && from.Edge.Name && from.Edge.End == edge.Start && edge.Start < length && char.IsAsciiLetterLower(text[edge.Start]) ? NameSplitCost : 0;
             var sokuon = vowel + nameSplit + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
@@ -296,7 +296,8 @@ public sealed partial class CompositionDetector
             if (first && !wordOnly)
             {
                 // 1 音目は、語にならなくても読める (打っている途中の子音だけなら重み 0)
-                var unknownCost = reading.Length == 0 ? 0 : UnknownKana(reading);
+                // x で打った小書きの母音 (だめ|xe = ぇ) は伸ばす音なので ー と同じ
+                var unknownCost = reading.Length == 0 ? 0 : reading is "ぁ" or "ぃ" or "ぅ" or "ぇ" or "ぉ" && text[start] == 'x' ? LightKanaCost : UnknownKana(reading);
                 cost = double.IsNaN(cost) ? unknownCost : Math.Min(cost, unknownCost);
                 first = false;
             }
