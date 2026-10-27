@@ -12,16 +12,19 @@ namespace Meltype.Tests;
 /// よく使う語の読み (readings.txt) をローマ字にしたものと、よく使う英単語 (english-words.txt) を 1 語ずつ打って確定し、見え方を書き出す。
 /// Pull Request のチェックで main と Pull Request の両方で書き出して比べ、判定が変わった語を一覧にする (.github/bot/pr-checks.mjs impact)。
 /// 変わった語は必ずしも間違いではない (直したい語が変わるのは当然) ので、失敗にはせず、意図しない変化に気づくための参考にする。
-///   dotnet run --project src/Meltype.Core.Tests -- --judge-corpus 出力ファイル
+///   dotnet run --project src/Meltype.Core.Tests -- --judge-corpus 出力ファイル [ほかの一覧 …]
+/// ほかの一覧 (前に書き出した「語[Tab]見え方」) を渡すと、その語も判定する。main と Pull Request の両方で、
+/// 互いの一覧の語も判定して同じ語を比べるため (辞書から消した語・足した語も比べられるように)。
 /// </summary>
 internal static class Impact
 {
-    public static void JudgeCorpus(string output)
+    public static void JudgeCorpus(string output, IEnumerable<string> extraLists)
     {
         // 学習を付けない判定 (WordJudge と同じ)。スペルチェッカーは品質テスト・報告の再現と同じく組み込みの一覧
         var detector = CompositionDetector.CreateDefault();
         detector.SpellChecker ??= BuiltInWordChecker.Shared;
-        var words = Readings().Select(ToRomaji).OfType<string>().Concat(EnglishWords()).ToList();
+        var extra = extraLists.Where(File.Exists).SelectMany(File.ReadLines).Select(line => line.Split('\t')[0].Trim());
+        var words = Readings().Select(ToRomaji).OfType<string>().Concat(EnglishWords()).Concat(extra).ToList();
         File.WriteAllText(output, WordJudge.JudgeAll(detector, words), new UTF8Encoding(false));
         Console.WriteLine($"判定した語: {words.Distinct(StringComparer.Ordinal).Count()} 語");
     }

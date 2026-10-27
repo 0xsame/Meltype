@@ -43,8 +43,8 @@ internal static class Program
                 Checks.EvalJson(args[1]);
                 return 0;
             case "--judge-corpus":
-                // --judge-corpus 出力ファイル: よく使う語の判定の一覧 (Pull Request のチェックで main と比べる。issue #1196)
-                Impact.JudgeCorpus(args[1]);
+                // --judge-corpus 出力ファイル [ほかの一覧 …]: よく使う語の判定の一覧 (Pull Request のチェックで main と比べる。issue #1196)
+                Impact.JudgeCorpus(args[1], args.Skip(2));
                 return 0;
             case "--mixed-bench":
                 // --mixed-bench 出力ファイル: 日本語の文の中に英単語を入れて打ち、英単語と日本語に正しく分かれるかを数える (区切りの点数化の試作の比較用)

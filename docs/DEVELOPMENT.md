@@ -119,12 +119,13 @@ Windows のアプリ本体は GUI アプリ (WinExe) なので、cmd では版�
 **よく使う語の判定の変化 (影響範囲の確認)**: 品質テストの例は数百個なので、そこに無い語が変わっても気づけません。
 「精度の比較」のチェックは、よく使う語の読み (`dictionaries/readings.txt` をローマ字にしたもの) と英単語 (`dictionaries/english-words.txt`) を 1 語ずつ打って確定し、main と見え方が変わった語を Summary に一覧にします。
 変わった語が間違いとは限らない (直したかった語は変わって当然) ので失敗にはせず、意図しない語が変わっていないかを人が確かめるための参考にします。
-手元では次のように 2 回書き出して比べられます。
+辞書から消した語・足した語も比べられるように、変えたあとは変える前の一覧も渡して、その語も判定します (チェックでは main の側にも Pull Request の一覧を渡します)。
+Summary には 200 語まで出し、全件はログと、成果物 `judged-words` の `changes.tsv` に出します。手元では次のように比べられます。
 
 ```
-dotnet run --project src/Meltype.Core.Tests -c Release -- --judge-corpus before.tsv   # 変える前
-dotnet run --project src/Meltype.Core.Tests -c Release -- --judge-corpus after.tsv    # 変えたあと
-node .github/bot/pr-checks.mjs impact before.tsv after.tsv
+dotnet run --project src/Meltype.Core.Tests -c Release -- --judge-corpus before.tsv              # 変える前
+dotnet run --project src/Meltype.Core.Tests -c Release -- --judge-corpus after.tsv before.tsv    # 変えたあと (変える前の語も判定する)
+node .github/bot/pr-checks.mjs impact before.tsv after.tsv changes.tsv
 ```
 
 <br>

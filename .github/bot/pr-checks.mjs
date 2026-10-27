@@ -5,7 +5,7 @@
 //   node pr-checks.mjs cases <出力ファイル>        … Pull Request の「確かめること」と「Fixes #12」の誤判定の報告から、確かめる例を集める
 //   node pr-checks.mjs expect <結果の JSON>        … 例の結果を表にし、外れがあれば失敗
 //   node pr-checks.mjs compare <main の JSON> <Pull Request の JSON>  … 品質テストを比べ、新しく外れた例があれば失敗
-//   node pr-checks.mjs impact <main の一覧> <Pull Request の一覧>    … よく使う語の判定 (--judge-corpus) を比べ、変わった語を出す (失敗にはしない)
+//   node pr-checks.mjs impact <main の一覧> <Pull Request の一覧> [全件の出力]  … よく使う語の判定 (--judge-corpus) を比べ、変わった語を出す (失敗にはしない)
 // Pull Request の本文・Issue の本文は値として扱うだけ (コマンドとして実行しない)。
 import fs from 'node:fs';
 
@@ -130,7 +130,7 @@ function judgedChanges(base, pr) {
   return changes.sort((x, y) => x.word.localeCompare(y.word));
 }
 
-function impact(baseFile, prFile) {
+function impact(baseFile, prFile, allFile) {
   const pr = readJudged(prFile), base = readJudged(baseFile);
   summary('## よく使う語の判定の変化 (参考)\n');
   if (!pr || !base) {
@@ -147,12 +147,15 @@ function impact(baseFile, prFile) {
   summary(`### 判定が変わった語 (${changes.length})\n`);
   summary('| 打った英字 | main | Pull Request |\n|---|---|---|');
   for (const c of changes.slice(0, 200)) summary(`| ${code(c.word)} | ${cell(c.before)} | ${cell(c.now)} |`);
-  if (changes.length > 200) summary(`\n…ほか ${changes.length - 200} 語`);
-  console.log(`判定が変わった語: ${changes.length} 語`);
+  if (changes.length > 200) summary(`\n…ほか ${changes.length - 200} 語 (全件はログと、成果物の judged-words の changes.tsv にあります)`);
+  // Summary に出しきれない分も見られるように、全件をログと TSV に出す
+  const lines = changes.map(c => `${c.word}\t${c.before}\t${c.now}`);
+  if (allFile) fs.writeFileSync(allFile, ['打った英字\tmain\tPull Request', ...lines].join('\n') + '\n');
+  console.log(`判定が変わった語: ${changes.length} 語\n${lines.join('\n')}`);
 }
 
 const [mode, a, b] = process.argv.slice(2);
 if (mode === 'cases') await cases(a);
 else if (mode === 'expect') expect(a);
 else if (mode === 'compare') compare(a, b);
-else if (mode === 'impact') impact(a, b);
+else if (mode === 'impact') impact(a, b, process.argv[5]);

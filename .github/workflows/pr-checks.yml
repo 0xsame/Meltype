@@ -84,10 +84,23 @@ jobs:
           fi
           # main にまだ --judge-corpus が無ければ比べない
           if grep -q -- '--judge-corpus' "$RUNNER_TEMP/base/src/Meltype.Core.Tests/Program.cs"; then
-            dotnet run --project "$RUNNER_TEMP/base/src/Meltype.Core.Tests" -c Release -- --judge-corpus "$RUNNER_TEMP/base-words.tsv"
+            # Pull Request の一覧の語も判定する (Pull Request で辞書に足した語も比べる)
+            dotnet run --project "$RUNNER_TEMP/base/src/Meltype.Core.Tests" -c Release -- --judge-corpus "$RUNNER_TEMP/base-words.tsv" "$RUNNER_TEMP/pr-words.tsv"
           fi
       - name: よく使う語の判定の変化 (参考)
-        run: node .github/bot/pr-checks.mjs impact "$RUNNER_TEMP/base-words.tsv" "$RUNNER_TEMP/pr-words.tsv"
+        run: |
+          # main の一覧の語も Pull Request で判定し直す (Pull Request で辞書から消した語も比べる)
+          if [ -f "$RUNNER_TEMP/base-words.tsv" ]; then
+            dotnet run --project src/Meltype.Core.Tests -c Release -- --judge-corpus "$RUNNER_TEMP/pr-words.tsv" "$RUNNER_TEMP/base-words.tsv"
+          fi
+          mkdir -p "$RUNNER_TEMP/judged-words"
+          cp "$RUNNER_TEMP"/*-words.tsv "$RUNNER_TEMP/judged-words/" 2>/dev/null || true
+          node .github/bot/pr-checks.mjs impact "$RUNNER_TEMP/base-words.tsv" "$RUNNER_TEMP/pr-words.tsv" "$RUNNER_TEMP/judged-words/changes.tsv"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: judged-words
+          path: ${{ runner.temp }}/judged-words
+          if-no-files-found: ignore
       - name: 比べる
         run: node .github/bot/pr-checks.mjs compare "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/pr.json"
 
