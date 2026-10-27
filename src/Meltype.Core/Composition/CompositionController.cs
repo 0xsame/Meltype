@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Yukishiro
 
+using System.Globalization;
 using System.Text;
 using Meltype.Config;
 using Meltype.Detection;
@@ -1595,7 +1596,7 @@ public sealed class CompositionController
         {
             var repository = GitHubIssueTitles.Normalize(_options.GitHubRepository());
             var hashCandidates = new List<string> { _text.Raw };
-            if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits)) is { Length: > 0 } title)
+            if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits, CultureInfo.InvariantCulture)) is { Length: > 0 } title)
                 hashCandidates.AddRange([$"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"]);
             hashCandidates.Add(CompositionText.ToFullWidth(_text.Raw));
             _clauses = [new Clause(_text.Raw, true, Distinct([.. hashCandidates])) { Raw = _text.Raw }];
@@ -2043,7 +2044,7 @@ public sealed class CompositionController
     {
         var text = _precedingText;
         if (string.IsNullOrEmpty(text) || LanguageOf(text) != false) return null;
-        var start = text.LastIndexOfAny(SentenceEnds);
+        var start = text.AsSpan().LastIndexOfAny(SentenceEndSearch);
         text = text[(start + 1)..].Trim();
         return text.Length == 0 ? null : text.Length > 10 ? text[^10..] : text;
     }
@@ -2056,7 +2057,7 @@ public sealed class CompositionController
         wide.WideContext = string.IsNullOrEmpty(text) || LanguageOf(text) != false ? null : text.Length > 100 ? text[^100..] : text;
     }
 
-    private static readonly char[] SentenceEnds = ['。', '．', '！', '？', '\n', '\r'];
+    private static readonly System.Buffers.SearchValues<char> SentenceEndSearch = System.Buffers.SearchValues.Create("。．！？\n\r");
 
     private static bool IsSymbolOnly(string text) => text.Length > 0 && !text.Any(char.IsLetterOrDigit);
 
@@ -2173,7 +2174,7 @@ public sealed class CompositionController
     {
         if (EraReading.Match(reading) is not { Success: true } match) return null;
         var number = match.Groups["n"].Value;
-        var n = number == "がん" ? 1 : int.Parse(new string(number.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()));
+        var n = number == "がん" ? 1 : int.Parse(new string(number.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()), CultureInfo.InvariantCulture);
         (int Start, int Last) range = match.Groups["e"].Value switch
         {
             "れいわ" => (2019, 2100),
@@ -2184,7 +2185,7 @@ public sealed class CompositionController
         };
         var year = range.Start + n - 1;
         if (n < 1 || year > range.Last) return null;
-        return [$"{year}年", year.ToString()];
+        return [$"{year}年", year.ToString(CultureInfo.InvariantCulture)];
     }
 
     /// <summary>尺貫法の単位 (読み → 単位の字、メートル法での大きさ、メートル法の単位)。</summary>
@@ -2207,11 +2208,11 @@ public sealed class CompositionController
     {
         if (UnitReading.Match(reading) is not { Success: true } match) return null;
         var digits = new string(match.Groups["n"].Value.Select(c => c switch { >= '０' and <= '９' => (char)(c - '０' + '0'), '．' => '.', _ => c }).ToArray());
-        if (!double.TryParse(digits, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)) return null;
+        if (!double.TryParse(digits, System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) return null;
         var unit = TraditionalUnits.First(u => u.Reading == match.Groups["u"].Value);
         var size = value * unit.Size;
-        var text = size >= 100 ? Math.Round(size).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
-            : Math.Round(size, 2).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var text = size >= 100 ? Math.Round(size).ToString("0", CultureInfo.InvariantCulture)
+            : Math.Round(size, 2).ToString("0.##", CultureInfo.InvariantCulture);
         return [$"{digits}{unit.Unit}", $"約{text}{unit.Metric}"];
     }
 
@@ -2238,7 +2239,7 @@ public sealed class CompositionController
     /// </summary>
     private IEnumerable<string>? TypedDateCandidates(string reading)
     {
-        static int Number(string digits) => int.Parse(new string(digits.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()));
+        static int Number(string digits) => int.Parse(new string(digits.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()), CultureInfo.InvariantCulture);
         if (DateReading.Match(reading) is { Success: true } date)
         {
             var (month, day) = (Number(date.Groups["m"].Value), Number(date.Groups["d"].Value));

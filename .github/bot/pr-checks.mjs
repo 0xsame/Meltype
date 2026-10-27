@@ -8,12 +8,11 @@
 //   node pr-checks.mjs impact <main の一覧> <Pull Request の一覧> [全件の出力]  … よく使う語の判定 (--judge-corpus) を比べ、変わった語を出す (失敗にはしない)
 // Pull Request の本文・Issue の本文は値として扱うだけ (コマンドとして実行しない)。
 import fs from 'node:fs';
+import { cell, codeCell as code } from './markdown.mjs';
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
 const summary = text => fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY ?? '/dev/stdout', text + '\n');
-const code = text => '`' + String(text ?? '').replace(/`/g, 'ˋ').replace(/\|/g, '\\|') + '`';
-const cell = text => String(text ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 async function gh(url) {
   const response = await fetch(`${api}/repos/${repo}${url}`, {

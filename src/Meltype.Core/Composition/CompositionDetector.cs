@@ -143,7 +143,7 @@ public sealed partial class CompositionDetector
         // Structured Latin tokens are opaque; their components are not Japanese readings.
         if (!kanaInput && token.All(c => c is >= '!' and <= '~') &&
             (token.Contains('@') && token.Any(char.IsAsciiLetter) || token.Contains('_') || token.Contains("://", StringComparison.Ordinal) ||
-             System.Text.RegularExpressions.Regex.Matches(token, "[a-z][A-Z][a-z]").Count >= 2 && !StartsWithJapaneseReading(token) || IsStylizedName(token)))
+             System.Text.RegularExpressions.Regex.Count(token, "[a-z][A-Z][a-z]") >= 2 && !StartsWithJapaneseReading(token) || IsStylizedName(token)))
             return [new CompositionSegment(true, "", token)];
         // A romaji token can cross an English boundary (reflect + sa becomes tsa).
         // Recognize an unambiguous English verb before parsing its Japanese conjugation.
@@ -202,7 +202,7 @@ public sealed partial class CompositionDetector
             {
                 var word = raw[..end];
                 var rest = raw[end..].ToLowerInvariant();
-                if (!rest.StartsWith("s", StringComparison.Ordinal)) continue;
+                if (!rest.StartsWith('s')) continue;
                 var analysis = _romaji.AnalyzeFragment(rest);
                 if (analysis.IsValid && IsSuruForm(analysis.Kana) && word.All(char.IsAsciiLetter) &&
                     !_romaji.AnalyzeFragment(word.ToLowerInvariant()).IsValid && IsKnownEnglishWord(word))
