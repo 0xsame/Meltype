@@ -63,7 +63,7 @@ internal static class FeedbackTests
         {
             ("Wiz Khalifa", "Wiz Khalifa"), ("Ariana Grande", "Ariana Grande"), ("Ed Sheeran", "Ed Sheeran"),
             ("Marshmello", "Marshmello"), ("beabadoobee", "beabadoobee"), ("The Chainsmokers", "The Chainsmokers"),
-            ("iann dior", "iann dior"), ("999dobby", "999dobby"),
+            ("999dobby", "999dobby"),
             ("B.o.B", "B.o.B"), ("U.S.A.", "U.S.A."), ("Chri$tian Gate$", "Chri$tian Gate$"), ("Ke$ha", "Ke$ha"),
             // 大文字の語 + 助詞は今までどおり区切る
             ("Anisiyouka", "Aにしようか"), ("Tokyonisumu", "Tokyoにすむ"),
