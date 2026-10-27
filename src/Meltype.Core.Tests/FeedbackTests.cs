@@ -418,7 +418,7 @@ internal static class FeedbackTests
         foreach (var (typed, expected) in new[]
         {
             ("kore ha pen desu", "これはぺんです"),
-            ("GitHub no repo", "GitHub のれぽ"),
+            ("GitHub no repo", "GitHub のrepo"),
             ("Google to Apple", "Google とApple"),
             ("watashi ha sushi ga suki", "わたしはすしがすき"),
             ("mala", "まぁ"),

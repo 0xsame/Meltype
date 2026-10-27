@@ -15,7 +15,8 @@ namespace Meltype.Composition;
 /// | カタカナ語 (katakana.txt) と社名・サービス名の読み (brands.txt の ぎっとはぶ) | 1.1 |
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
 /// | かなか ? ! の後ろで語の終わりまで続く w (笑い) | 1.5 |
-/// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 (english-readable.txt の語は 0.7) |
+/// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー) | 1 (english-readable.txt の語は 0.7) |
+/// | ユーザーが英字に直して覚えた語 | 0.7 |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
 /// | english.txt の日本語由来の語 (suzuki・sushi) のローマ字で読んだかな | 日本語の語として 1 |
 /// | 知らない英字 (ローマ字として読めない所と、大文字を含む所) | 1 文字 1.5 (大文字は 1。大文字で始まり 2 文字目が小文字の 3 文字以上の語 Tanaka の小文字は 0.5) |
@@ -54,6 +55,8 @@ public sealed partial class CompositionDetector
     private const double KatakanaWordCost = 1.1;
     private const double KnownEnglishCost = 1;
     private const double ReadableEnglishCost = 0.7;
+    // ユーザーが英字に直して覚えた語。同じ読みの日本語の語 (sushi = すし、重み 1) より軽くする
+    private const double LearnedEnglishCost = 0.7;
     private const double UnknownLetterCost = 1.5;
     // 大文字で始まる知らない語 (Tanaka・McKinsey) の小文字。小文字の途中で切って付属語でない日本語を続ける (Ta|なか) ときは NameSplitCost を足す
     private const double NameLetterCost = 0.5;
@@ -435,7 +438,8 @@ public sealed partial class CompositionDetector
             }
             else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)))
             {
-                cost = ReadableEnglish.Value.ContainsWord(span.ToLowerInvariant()) ? ReadableEnglishCost : KnownEnglishCost;
+                cost = Memory?.Get(span.ToLowerInvariant()) == true ? LearnedEnglishCost
+                    : ReadableEnglish.Value.ContainsWord(span.ToLowerInvariant()) ? ReadableEnglishCost : KnownEnglishCost;
                 if (kanaInput && span.Length >= 4) cost += KanaInputEnglishBias;
                 // 日本語由来の語 (suzuki・sushi) は、ローマ字で読んだかなも日本語の語として並べる
                 if (span.All(char.IsAsciiLetterLower) && IsJapaneseOriginWord(span) &&
@@ -477,9 +481,17 @@ public sealed partial class CompositionDetector
     {
         if (Memory?.Get(lower) is { } learned) return learned;
         if (lower.Length == 1) return lower is "a" or "i" or "u" or "r";
-        return _english.Words.ContainsWord(lower) || _proper.Contains(lower) || IsSpellWord(lower) || ReadableEnglish.Value.ContainsWord(lower) ||
+        return _english.Words.ContainsWord(lower) || _proper.Contains(lower) || IsLatticeSpellWord(lower) || ReadableEnglish.Value.ContainsWord(lower) ||
             IsPediaEnglishWord(lower) || EnglishPhraseSpacing.IsPhrase(lower);
     }
+
+    /// <summary>
+    /// スペルチェッカーが知っている語。OS のスペルチェッカー (Windows) は kore・cyii も語にするので、
+    /// 同梱のよく使う英単語 (english-words.txt) に無く、ローマ字として最後まで読める語は数えない。
+    /// </summary>
+    private bool IsLatticeSpellWord(string lower) =>
+        IsSpellWord(lower) && (SpellChecker is Detection.BuiltInWordChecker || Detection.BuiltInWordChecker.Shared.IsWord(lower) ||
+            !_romaji.ConvertLenient(lower, final: true).All(KanaChars.IsHiraganaOrLongMark));
 
     /// <summary>選んだ候補の並びを、英語・日本語の区間の並びにする (続いた日本語の候補は 1 つの区間にする。英語の候補は 1 つずつの区間)。</summary>
     private List<CompositionSegment> ToSegments(IReadOnlyList<CompositionUnit> units, string text, int[] unitAt, int unitsEnd, List<LatticeEdge> edges)

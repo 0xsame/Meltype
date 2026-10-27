@@ -1511,7 +1511,9 @@ internal static class CompositionTests
         var cases = new Dictionary<string, string>
         {
             ["kaxnji"] = "かんじ", ["kannji"] = "かんじ", ["kanji"] = "かんじ", // ん: n / xn / nn
-            ["whotto"] = "うぉっと", ["ulo"] = "うぉ", ["uxo"] = "うぉ",
+            ["whotto"] = "うぉっと",
+            ["ulo"] = "うぉ",
+            ["uxo"] = "うぉ",
             ["xtu"] = "っ", ["ltsu"] = "っ", ["vu"] = "ゔ", ["thi"] = "てぃ",
         };
         foreach (var (typed, expected) in cases)

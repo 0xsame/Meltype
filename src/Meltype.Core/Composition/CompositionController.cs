@@ -1064,7 +1064,9 @@ public sealed class CompositionController
             // 英語の語が 2 語以上続いた後は、打つときと同じく英文の続き (this is + a)
             var typed = new CompositionText(_detector)
             {
-                PrecedingEnglish = englishWords > 0 ? true : null, PrecedingEnglishSentence = englishWords >= 2, Punctuation = _options.Punctuation(),
+                PrecedingEnglish = englishWords > 0 ? true : null,
+                PrecedingEnglishSentence = englishWords >= 2,
+                Punctuation = _options.Punctuation(),
             };
             foreach (var c in word) typed.Append(c);
             var segments = typed.Segments();
