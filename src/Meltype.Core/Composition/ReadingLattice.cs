@@ -11,6 +11,7 @@ namespace Meltype.Composition;
 /// | 候補・つながり | 重み |
 /// |---|---|
 /// | 日本語の語 (readings.txt と活用した形) | 1 (1 文字の語 1.5、付属語 0.8) |
+/// | 同梱の語句の読み (phrases.txt の どしたの) | 1 |
 /// | カタカナ語 (katakana.txt) と社名・サービス名の読み (brands.txt の ぎっとはぶ) | 1.1 |
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
 /// | かなの後ろで語の終わりまで続く w (笑い) | 1.5 |
@@ -295,6 +296,7 @@ public sealed partial class CompositionDetector
     {
         var particle = IsNounParticle(kana);
         if (RomajiTypoCorrector.CommonWordCost(kana) is { } cost) return (new LatticeEdge(start, end, false, kana, true, particle), cost);
+        if (CommonReadings.Phrases.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), 1);
         if (CommonReadings.Katakana.Contains(kana) || CommonReadings.Brands.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), KatakanaWordCost);
         return (new LatticeEdge(start, end, false, kana, true, false), double.NaN);
     }
@@ -387,7 +389,8 @@ public sealed partial class CompositionDetector
         for (var k = u; k < units.Count; k++)
         {
             // 語の頭でなくなったら、それより長い語は無い (1 音目は語にならなくても読む)
-            if (!first && !RomajiTypoCorrector.CommonHasPrefix(kana) && !CommonReadings.Katakana.HasPrefix(kana) && !CommonReadings.Brands.HasPrefix(kana)) break;
+            if (!first && !RomajiTypoCorrector.CommonHasPrefix(kana) && !CommonReadings.Katakana.HasPrefix(kana) && !CommonReadings.Brands.HasPrefix(kana) &&
+                !CommonReadings.Phrases.HasPrefix(kana)) break;
             var unit = units[k];
             if (!IsKanaUnit(unit) || !kanaInput && unit.Raw.Any(char.IsAsciiLetterUpper)) break;
             var from = _preparedRawOffsets[k];

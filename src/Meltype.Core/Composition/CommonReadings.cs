@@ -27,6 +27,12 @@ internal static class CommonReadings
     /// <summary>英字で書く社名・サービス名の読み (dictionaries/brands.txt の ぎっとはぶ)。</summary>
     public static PackedWordSet Brands => SharedBrands.Value;
 
+    private static readonly Lazy<PackedWordSet> SharedPhrases = new(() => PackedWordSet.FromLines(
+        string.Join('\n', DictionarySource.DataLines(DictionarySource.ReadEmbedded("phrases.txt")).Select(line => line.Split('\t')[0].TrimStart('^')))));
+
+    /// <summary>同梱の語句の読み (dictionaries/phrases.txt の どしたの。文節の頭の印 ^ は外す)。</summary>
+    public static PackedWordSet Phrases => SharedPhrases.Value;
+
     /// <summary>活用形の生成に使う本文を読み直す。共有するのは読みの集合だけで、本文は保持しない。</summary>
     public static string ReadText() => DictionarySource.ReadEmbedded("readings.txt");
 }
