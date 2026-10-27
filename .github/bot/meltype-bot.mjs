@@ -7,6 +7,7 @@
 // Issue の本文・コメントは誰でも書けるので、コマンドとして実行しない (値として次の job に渡すだけ)。
 import fs from 'node:fs';
 import path from 'node:path';
+import { codeCell } from './markdown.mjs';
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
@@ -426,8 +427,8 @@ async function parse() {
 
 // 改行は空白にする (空行でコードスパンが切れ、後ろが Markdown として表示されるため)
 const code = text => '`' + String(text ?? '').replace(/\r?\n|\r/g, ' ').replace(/`/g, 'ˋ') + '`';
-// 表のセルに入れるコード。| はコードスパンの中でもセルの区切りになるので \| にする (表の中では | と表示される)
-const cell = text => code(text).replace(/\|/g, '\\|');
+// 表のセルは記号を文字参照にし、元の文字を保って表示する。
+const cell = codeCell;
 // 利用者が書いた文をそのまま出す。リンク・画像・HTML にならないよう ASCII の記号を \ でエスケープし、
 // @ の後ろに幅の無い空白を入れてメンションにしない
 // 改行は空白にする (表のセルの中でも 1 行に収める)
