@@ -6,7 +6,7 @@ using Meltype.Detection;
 namespace Meltype.Composition;
 
 /// <summary>
-/// よく使う語の読み (dictionaries/readings.txt の「読み [TAB] 活用の種類」の読み)。
+/// よく使う語の読み (dictionaries/readings.txt と spoken.txt の「読み [TAB] 活用の種類」の読み)。
 /// 読みの集合を一度だけ構築し、かな入力の判定とローマ字の打ち間違い直しで共有する。
 /// </summary>
 internal static class CommonReadings
@@ -34,5 +34,5 @@ internal static class CommonReadings
     public static PackedWordSet Phrases => SharedPhrases.Value;
 
     /// <summary>活用形の生成に使う本文を読み直す。共有するのは読みの集合だけで、本文は保持しない。</summary>
-    public static string ReadText() => DictionarySource.ReadEmbedded("readings.txt");
+    public static string ReadText() => DictionarySource.ReadEmbedded("readings.txt") + "\n" + DictionarySource.ReadEmbedded("spoken.txt");
 }

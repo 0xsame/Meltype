@@ -1123,6 +1123,8 @@ internal static class LanguageLearningTests
                 ("let's go!", "let's go!"), ("I said no?", "I said no?"), ("sorena!", "それな！"), ("nande?", "なんで？"),
                 // 記号の前・確定時の笑いの w (きたw！ の w が確定で消えていた)
                 ("kitaw!", "きたw！"), ("hontow?w", "ほんとw？w"),
+                // 話し言葉の語 (dictionaries/spoken.txt)
+                ("ryokai", "りょかい"), ("hontonisugoi", "ほんとにすごい"),
                 // 略語 + 日本語 + 記号は今までどおり (BE|かな？ が BEkana？ になっていた)
                 ("tougouhandakaraBEkana?", "とうごうはんだからBEかな？"), ("fubusangaXshisuginadakenanda!!", "ふぶさんがXしすぎなだけなんだ！！"), ("tsubemyunorevancedtsukatteru", "つべみゅのrevancedつかってる"),
                 // テスターの報告 (2026-10-05): 英語のユーザー名が打てない。@ の後ろ (メンション)・_ の入った語は英字のまま

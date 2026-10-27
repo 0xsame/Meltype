@@ -14,7 +14,7 @@ namespace Meltype.Composition;
 /// | 同梱の語句の読み (phrases.txt の どしたの) | 1 |
 /// | カタカナ語 (katakana.txt) と社名・サービス名の読み (brands.txt の ぎっとはぶ) | 1.1 |
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
-/// | かなの後ろで語の終わりまで続く w (笑い) | 1.5 |
+/// | かなか ? ! の後ろで語の終わりまで続く w (笑い) | 1.5 |
 /// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー・ユーザーが英字に直して覚えた語) | 1 (english-readable.txt の語は 0.7) |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
 /// | english.txt の日本語由来の語 (suzuki・sushi) のローマ字で読んだかな | 日本語の語として 1 |
@@ -330,10 +330,11 @@ public sealed partial class CompositionDetector
         bool LetterEdge(int at)
         {
             if (!char.IsAsciiLetterLower(text[at])) return false;
-            // かなの後ろで語の終わりまで続く w は笑い (きた|w)。知らない英字と同じ重みで、日本語のまま置ける
+            // かなか ? ! の後ろで語の終わりまで続く w は笑い (きた|w・ほんとw？|w)。知らない英字と同じ重みで、日本語のまま置ける
             var laughter = at;
             while (laughter < length && text[laughter] == 'w') laughter++;
-            if (laughter > at && at > 0 && char.IsAsciiLetterLower(text[at - 1]) && (laughter == length || !char.IsAsciiLetter(text[laughter])))
+            if (laughter > at && at > 0 && (char.IsAsciiLetterLower(text[at - 1]) || text[at - 1] is '?' or '!') &&
+                (laughter == length || !char.IsAsciiLetter(text[laughter])))
                 edges.Add((new LatticeEdge(at, laughter, false, text[at..laughter], true, false), UnknownLetterCost));
             edges.Add((new LatticeEdge(at, at + 1, false, text[at].ToString(), true, false), UnknownKanaCost));
             return true;
