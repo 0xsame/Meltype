@@ -1125,6 +1125,8 @@ internal static class LanguageLearningTests
                 ("kitaw!", "きたw！"), ("hontow?w", "ほんとw？w"),
                 // 話し言葉の語 (dictionaries/spoken.txt)
                 ("ryokai", "りょかい"), ("hontonisugoi", "ほんとにすごい"),
+                // Issue #1216: not|とっている になっていた。Issue #1193: えんv になっていた
+                ("nottotteiru", "のっとっている"), ("env", "env"),
                 // 略語 + 日本語 + 記号は今までどおり (BE|かな？ が BEkana？ になっていた)
                 ("tougouhandakaraBEkana?", "とうごうはんだからBEかな？"), ("fubusangaXshisuginadakenanda!!", "ふぶさんがXしすぎなだけなんだ！！"), ("tsubemyunorevancedtsukatteru", "つべみゅのrevancedつかってる"),
                 // テスターの報告 (2026-10-05): 英語のユーザー名が打てない。@ の後ろ (メンション)・_ の入った語は英字のまま

@@ -30,7 +30,7 @@ pipenv poetry conda venv jupyter notebook pandas numpy scipy matplotlib tensorfl
 anthropic claude chatgpt gpt llm discord slack teams zoom notion figma jira confluence trello asana
 google youtube twitter facebook instagram amazon microsoft apple iphone ipad chrome firefox edge safari
 email gmail outlook excel word powerpoint onedrive dropbox admin root sudo chmod chown mkdir rmdir grep
-sed awk curl wget ssh scp sftp ftp tcp udp dns vpn url uri uuid token tokens auth oauth login logout
+sed awk env curl wget ssh scp sftp ftp tcp udp dns vpn url uri uuid token tokens auth oauth login logout
 logon password passwd username user users readme license todo fixme hotfix feature features bugfix bug
 bugs main master origin upstream remote remotes version versions package packages module modules import
 export function functions const let var return async await promise class classes interface type types
