@@ -824,7 +824,7 @@ public sealed class CompositionController
                 {
                     Commit(suffix: " ", fixEnglish: true);
                 }
-                else if (EndsWithEnglish(final: true)) CommitText(FixEnglishTypo(_text.RenderSegments(final: true, _options.LiveConversion() ? Convert : null)) + " ", english: true, _text.Raw);
+                else if (EndsWithEnglish()) CommitText(FixEnglishTypo(_text.RenderSegments(final: true, _options.LiveConversion() ? Convert : null)) + " ", english: true, _text.Raw);
                 else if (SpaceCommitsAutoEnglish()) CommitText(FixEnglishTypo(_text.Raw) + " ", english: true, _text.Raw);
                 else
                 {
@@ -1313,7 +1313,7 @@ public sealed class CompositionController
     /// Space を押したときに、変換ではなく確定して空白を入れる場面か (英語で終わる 3 条件)。
     /// 例: hello (英語と判定) → true、kana → false。Tab で変換を始めるかの判定にも使う。
     /// </summary>
-    private bool SpaceCommitsAsEnglish() => SpaceCommitsAlphanumeric() || EndsWithEnglish(final: true) || SpaceCommitsAutoEnglish();
+    private bool SpaceCommitsAsEnglish() => SpaceCommitsAlphanumeric() || EndsWithEnglish() || SpaceCommitsAutoEnglish();
 
     private bool HasRegisteredReading() =>
         !_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is { Length: >= 2 } raw && raw.All(char.IsAsciiLetter) &&
@@ -3005,7 +3005,7 @@ public sealed class CompositionController
     }
 
     /// <summary>変換ボックスの最後が英語の区間か (Space を空白として扱うか)。</summary>
-    private bool EndsWithEnglish(bool final = false) =>
+    private bool EndsWithEnglish() =>
         _text.Mode == DisplayMode.Auto && _text.Segments() is { Count: > 0 } segments && segments[^1].IsEnglish;
 
     private void ReplayDown(KeyEvent e)
