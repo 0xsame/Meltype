@@ -2446,7 +2446,7 @@ internal static class CompositionTests
         // 設定が OFF (既定) なら、略入力の候補は出さない
         var off = new Keyboard();
         off.Type("ast ");
-        Assert.True(!off.Host.View!.Candidates.Contains("明日"), "OFF は出さない: " + string.Join(",", off.Host.View.Candidates));
+        Assert.True(off.Host.View is null || !off.Host.View.Candidates.Contains("明日"), "OFF は出さない");
     }
 
     [Test]

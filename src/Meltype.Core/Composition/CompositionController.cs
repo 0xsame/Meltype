@@ -814,7 +814,13 @@ public sealed class CompositionController
                 // 英語と判定した語で終わっているなら、変換ではなく確定して空白を入れる
                 // (日本語の部分は、ライブ変換が ON なら漢字にして、OFF なら見えているかなのまま確定)。
                 // 数字だけ (1、12) は、前が英文なら確定して空白 (I have 2 cats)。それ以外は変換して ① 一 Ⅰ などの候補を出す。
-                if (SpaceCommitsAlphanumeric())
+                // 打った英字全体を読みとして登録した語 (ユーザー辞書の zh → ←、略入力の ast → 明日) があれば、英語と判定しても変換する
+                if (HasRegisteredReading())
+                {
+                    _spaceStartedConversion = true;
+                    StartConversion();
+                }
+                else if (SpaceCommitsAlphanumeric())
                 {
                     Commit(suffix: " ", fixEnglish: true);
                 }
@@ -1301,6 +1307,11 @@ public sealed class CompositionController
     /// </summary>
     private bool SpaceCommitsAsEnglish() => SpaceCommitsAlphanumeric() || EndsWithEnglish(final: true) || SpaceCommitsAutoEnglish();
 
+    private bool HasRegisteredReading() =>
+        !_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is { Length: >= 2 } raw && raw.All(char.IsAsciiLetter) &&
+        (_options.UserDictionary?.Lookup(raw.ToLowerInvariant()) is { Count: > 0 } ||
+         _options.ConsonantAbbreviations() && _options.Candidates?.Lookup(raw.ToLowerInvariant()) is { Count: > 0 });
+
     private bool SpaceCommitsAlphanumeric() =>
         _text.IsAlphanumericAt(final: true) && !(_text.Mode == DisplayMode.Auto && _text.IsNumeric && _text.Raw.All(char.IsAsciiDigit) && _text.PrecedingEnglish != true);
 
@@ -1615,7 +1626,7 @@ public sealed class CompositionController
                     clauses.Add(new Clause(segment.Raw, true, [segment.Raw]));
                     continue;
                 }
-                var english = EnglishCandidates(segment.Raw);
+                var english = Distinct([.. _options.UserDictionary?.Lookup(segment.Raw.ToLowerInvariant()) ?? [], .. EnglishCandidates(segment.Raw)]);
                 // 子音の略入力 (ast → 明日): 英字のまま見える語にも、candidates.txt の英字の読みの候補を足す (issue #62)
                 if (_options.ConsonantAbbreviations() && segment.Raw.Length >= 2 && segment.Raw.All(char.IsAsciiLetter) && _options.Candidates is { } abbreviations)
                 {
