@@ -486,12 +486,12 @@ public sealed partial class CompositionDetector
     }
 
     /// <summary>
-    /// スペルチェッカーが知っている語。OS のスペルチェッカー (Windows) は kore・cyii も語にするので、
-    /// 同梱のよく使う英単語 (english-words.txt) に無く、ローマ字として最後まで読める語は数えない。
+    /// スペルチェッカーが知っている語。OS のスペルチェッカー (Windows) は kore・cyii・cy も語にするので、
+    /// 同梱のよく使う英単語 (english-words.txt) に無く、2 文字以下かローマ字として最後まで読める語は数えない。
     /// </summary>
     private bool IsLatticeSpellWord(string lower) =>
         IsSpellWord(lower) && (SpellChecker is Detection.BuiltInWordChecker || Detection.BuiltInWordChecker.Shared.IsWord(lower) ||
-            !_romaji.ConvertLenient(lower, final: true).All(KanaChars.IsHiraganaOrLongMark));
+            lower.Length > 2 && !_romaji.ConvertLenient(lower, final: true).All(KanaChars.IsHiraganaOrLongMark));
 
     /// <summary>選んだ候補の並びを、英語・日本語の区間の並びにする (続いた日本語の候補は 1 つの区間にする。英語の候補は 1 つずつの区間)。</summary>
     private List<CompositionSegment> ToSegments(IReadOnlyList<CompositionUnit> units, string text, int[] unitAt, int unitsEnd, List<LatticeEdge> edges)
