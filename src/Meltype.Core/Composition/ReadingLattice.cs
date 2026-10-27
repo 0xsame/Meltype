@@ -6,99 +6,75 @@ using Meltype.Config;
 namespace Meltype.Composition;
 
 /// <summary>
-/// 日英の区切り。日本語の語と英単語を同じ候補として並べ、入力全体をいちばん軽い重みで読める区切りを選ぶ (かな漢字変換と同じ作り)。
+/// 日英の区切り。日本語の語・英単語・未知語をノードにしたラティスを作り、Viterbi で最小コスト経路を選ぶ (形態素解析・かな漢字変換と同じ作り)。
+/// コストは、ノードの生起コスト (候補 1 つの重み) と、連接コスト (日英の切り替えなど、隣の候補とのつながりの重み) の和。
+/// 日本語の語の生起コストは打ち間違い直し (RomajiTypoCorrector.WordCost) と共有する。コストの値と意味は各定数のコメントにある。
 ///
-/// 日本語の候補:
-///
-/// | 候補 | 重み | 例 |
-/// |---|---|---|
-/// | 日本語の語 (readings.txt・spoken.txt と活用した形) | 1 | きょう |
-/// | 1 文字の日本語の語 | 1.5 | め |
-/// | 付属語 | 0.8 | が |
-/// | 同梱の語句の読み (phrases.txt) | 1 | どしたの |
-/// | カタカナ語 (katakana.txt) | 1.1 | ほすてぃんぐ |
-/// | 社名・サービス名の読み (brands.txt) | 1.1 | ぎっとはぶ |
-/// | ユーザーがかなに直して覚えた語 | 1 | |
-/// | english.txt の日本語由来の語をローマ字で読んだかな | 1 | すし |
-/// | 語にならないかな | 1 音 3 | |
-/// | 語にならない っ・ー | 0.5 | |
-/// | 子音を重ねて打った っ で、前後の片方がかなでない | 3 | excel\|と |
-/// | x で打った小書きの母音 (ぇ) が語の 1 音目 | 0.5 | だめ\|ぇ |
-/// | 日本語の中に残る読めない英字 | 1 文字 3 | |
-/// | かなか ? ! の後ろで語の終わりまで続く w (笑い) | 1.5 | きた\|w |
-///
-/// 英語の候補:
-///
-/// | 候補 | 重み | 例 |
-/// |---|---|---|
-/// | 知っている英単語 (english.txt・固有名詞・english-words.txt のうちスペルチェッカーも知っている語) | 1 | meeting |
-/// | english-readable.txt の語 | 0.7 | open |
-/// | ユーザーが英字に直して覚えた語 | 0.7 | |
-/// | かな入力の 4 文字以上の知っている英単語 | 上の重み −1 | |
-/// | 知らない英字 (ローマ字として読めない所) | 1 文字 1.5 | pwd |
-/// | 知らない語の大文字 | 1 文字 1 | |
-/// | 大文字で始まり 2 文字目が小文字の 3 文字以上の知らない語の小文字 | 1 文字 0.5 | Tanaka |
-/// | 判定の強さ 積極的 | 英語の候補ごとに −0.5 | |
-/// | 判定の強さ 慎重 | 英語の候補ごとに +1 | |
-/// | 変換の候補に出す英語寄りの区切りを作るとき | 英語の候補ごとに −2 | midi\|か |
-///
-/// つながり:
-///
-/// | つながり | 重み | 例 |
-/// |---|---|---|
-/// | 日本語と英語の切り替え | 1 | |
-/// | 日本語の側が名詞に付く付属語 (が・を・に・で・する) の切り替え | 0 | github\|で |
-/// | 英文の続き ("I want ") からの、付属語への切り替え | 2 | |
-/// | 英単語どうしがスペースなしで続く | 1 | |
-/// | 英字 → 日本語 → 英字 と区切りなしに戻る (日本語に付属語を含むときは除く) | 1 | |
-/// | 大文字で始まる知らない語を小文字の途中で切って、付属語でない日本語を続ける | 3 | Ta\|なか |
-/// | ltu・xtu で打った っ の後ろに入力が続く | っ 1 つ 2 | mai\|ltu\|kau |
-/// | 小文字で終わる英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる (USBいれた は除く) | 1 | rate\|ぃす |
-/// | 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) | 1 つ 0.5 | |
-///
-/// 重みで比べない決まり:
-/// - 同じ重みなら日本語にする。
-/// - 大文字を含む区間は日本語にしない。
+/// コストで比べない決まり:
+/// - 大文字を含む区間は日本語のノードにしない。
 /// - 綴りを名指しする条件は持たない。
-/// - 知っている英単語は、英単語の書き方の大文字・小文字 (its・Its・ITS・GitHub) のときだけ数える (iTs は its にしない)。
-/// - 1 文字の英単語 (a・i・u・r) は、前後を英字以外で区切ったときだけ数える。
-/// - 判定の強さが手動なら、Shift を押して打った大文字で始まる語だけを英語の候補にする。
-/// - 記号・数字の決まり (ドメイン・拡張子・ユーザー名・- の入った語・数字を挟んだ略語・英文の中の記号) は、重みで比べずにその区間を英語にする。
+/// - 知っている英単語は、英単語の書き方の大文字・小文字 (its・Its・ITS・GitHub) のときだけノードにする (iTs は its にしない)。
+/// - 1 文字の英単語 (a・i・u・r) は、前後を英字以外で区切ったときだけノードにする。
+/// - 判定の強さが手動なら、Shift を押して打った大文字で始まる語だけを英語のノードにする。
+/// - 記号・数字の決まり (ドメイン・拡張子・ユーザー名・- の入った語・数字を挟んだ略語・英文の中の記号) は、コストで比べずにその区間を英語にする。
 /// - ローマ字入力では 1 文字ずつを区切りの位置にする (単位の途中で区切れる: get|Element、medal|s|ha)。かな入力では打った単位の境目だけ。
 /// </summary>
 public sealed partial class CompositionDetector
 {
-    private const double SwitchCost = 1;
-    private const double AggressiveEnglishBias = -0.5;
-    private const double ConservativeEnglishBias = 1;
-    // 変換の候補に出す英語寄りの区切り: 英単語 + 切り替え + 付属語 (midi + か = 2.8) が日本語の語 1 つ (みぢか = 1) より軽くなる
-    private const double LeaningEnglishBias = -2;
-    // かな入力の 4 文字以上の英単語: 英字のキーで打ったかな (さっき + かく|ちか = that) が日本語の語に読める分を打ち消す。
-    // 3 文字以下 (eh・at・id) は日本語の文の一部が英単語になりやすいので付けない
-    private const double KanaInputEnglishBias = -1;
-    private const double AdjacentEnglishCost = 1;
-    // 英単語のすぐ後ろが あ行のかな (thing|う・rate|ぃす): 英単語の最後の子音と次の母音の切り間違い
-    private const double VowelAfterEnglishCost = 1;
-    // 日本語を c 行の綴り (ca・cu・co) で読む: 日本語を打つときは k を使う
-    private const double CRowCost = 0.5;
-    // katakana.txt の語 (よく使う語の印の無いカタカナ語)。英単語をカタカナにした語 (アマゾン) が多いので、同じ綴りの英単語 (amazon) に譲る
+    // ---- 日本語のノードの生起コスト ----
+    // 1 文字の語 1.5・付属語 0.8 は RomajiTypoCorrector.WordCost
+    // 日本語の語 (readings.txt・spoken.txt と活用した形)・同梱の語句の読み (phrases.txt の どしたの)・
+    // ユーザーがかなに直して覚えた語・english.txt の日本語由来の語 (sushi) をローマ字で読んだかな
+    private const double JapaneseWordCost = 1;
+    // katakana.txt の語 (ほすてぃんぐ) と brands.txt の読み (ぎっとはぶ)。katakana.txt は英単語をカタカナにした語 (アマゾン) が多いので、同じ綴りの英単語 (amazon) に譲る
     private const double KatakanaWordCost = 1.1;
+    // 語にならないかな 1 音、日本語の中に残る読めない英字 1 文字
+    private const double UnknownKanaCost = 3;
+    // 語にならない っ・ー、x で打った小書きの母音が語の 1 音目 (だめ|ぇ)
+    private const double LightKanaCost = 0.5;
+    // 子音を重ねて打った っ で、前後の片方がかなでない (excel|と|ppt の tt)。語にならないかなと同じ 3 にする
+    private const double DanglingSokuonCost = UnknownKanaCost - LightKanaCost;
+
+    // ---- 英語のノードの生起コスト ----
+    // 知っている英単語 (english.txt・固有名詞・english-words.txt のうちスペルチェッカーも知っている語)
     private const double KnownEnglishCost = 1;
+    // english-readable.txt の語 (open・feature): ローマ字としても読めるが、英語で打つことの多い語
     private const double ReadableEnglishCost = 0.7;
     // ユーザーが英字に直して覚えた語。同じ読みの日本語の語 (sushi = すし、重み 1) より軽くする
     private const double LearnedEnglishCost = 0.7;
+    // 知らない英字 (ローマ字として読めない所: pwd) 1 文字
     private const double UnknownLetterCost = 1.5;
-    // 大文字で始まる知らない語 (Tanaka・McKinsey) の小文字。小文字の途中で切って付属語でない日本語を続ける (Ta|なか) ときは NameSplitCost を足す
-    private const double NameLetterCost = 0.5;
-    private const double NameSplitCost = 3;
-    private const double SandwichCost = 1;
-    private const double SpelledSokuonCost = 2;
+    // 知らない語の大文字 1 文字
     private const double UnknownUpperCost = 1;
-    private const double UnknownKanaCost = 3;
-    private const double LightKanaCost = 0.5;
-    // かなに挟まれていない っ (語にならないかなと同じ)
-    private const double DanglingSokuonCost = UnknownKanaCost - LightKanaCost;
-    // 同じ重みなら日本語にする
+    // 大文字で始まり 2 文字目が小文字の 3 文字以上の知らない語 (Tanaka・McKinsey) の小文字 1 文字
+    private const double NameLetterCost = 0.5;
+    // かな入力の 4 文字以上の知っている英単語に足す: 英字のキーで打ったかな (さっき + かく|ちか = that) が日本語の語に読める分を打ち消す。
+    // 3 文字以下 (eh・at・id) は日本語の文の一部が英単語になりやすいので付けない
+    private const double KanaInputEnglishBias = -1;
+    // 判定の強さ 積極的・慎重 で、英語のノードごとに足す
+    private const double AggressiveEnglishBias = -0.5;
+    private const double ConservativeEnglishBias = 1;
+    // 変換の候補に出す英語寄りの区切りを作るとき英語のノードごとに足す: 英単語 + 切り替え + 付属語 (midi + か = 2.8) が日本語の語 1 つ (みぢか = 1) より軽くなる
+    private const double LeaningEnglishBias = -2;
+
+    // ---- 連接コスト ----
+    // 日本語と英語の切り替え。日本語の側が名詞に付く付属語 (が・を・に・で・する: github|で) なら 0
+    private const double SwitchCost = 1;
+    // 英文の続き ("I want ") から日本語への切り替え。付属語でも足す
+    private const double SentenceSwitchCost = 2;
+    // 英単語どうしがスペースなしで続く
+    private const double AdjacentEnglishCost = 1;
+    // 英字 → 日本語 → 英字 と区切りなしに戻る (procras|ち|cle)。あいだが付属語を含むとき (excel|と|ppt) は除く
+    private const double SandwichCost = 1;
+    // 大文字で始まる知らない語を小文字の途中で切って、付属語でない日本語を続ける (Ta|なか)
+    private const double NameSplitCost = 3;
+    // ltu・xtu で打った っ の後ろに入力が続く (mai|ltu|kau)。かなの前の っ は子音を重ねて打つ
+    private const double SpelledSokuonCost = 2;
+    // 小文字で終わる英語のすぐ後ろの日本語が あ行のかな (thing|う・rate|ぃす) で始まる: 英単語の最後の子音と次の母音の切り間違い。USBいれた は除く
+    private const double VowelAfterEnglishCost = 1;
+    // 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) 1 つ: 日本語を打つときは k を使う
+    private const double CRowCost = 0.5;
+    // 同じコストなら日本語にする
     private const double EnglishTieBreak = 1e-6;
     // 1 つの候補として見る長さの上限 (ローマ字の文字数)
     private const int MaxSpan = 48;
@@ -219,8 +195,7 @@ public sealed partial class CompositionDetector
             else
             {
                 step = cost;
-                // 英文の続き ("I want ") からは、付属語でも切り替えの重みを 2 倍にする
-                if (state.Side == Side.Sentence) step += 2 * SwitchCost;
+                if (state.Side == Side.Sentence) step += SentenceSwitchCost;
                 else if (state.IsEnglish && !edge.Particle) step += SwitchCost;
                 next = new LatticeState(Side.Japanese, edge.Particle, state.AllEnglish && !edge.Letters, false);
             }
@@ -329,7 +304,7 @@ public sealed partial class CompositionDetector
     {
         var particle = IsNounParticle(kana);
         if (RomajiTypoCorrector.CommonWordCost(kana) is { } cost) return (new LatticeEdge(start, end, false, kana, true, particle), cost);
-        if (CommonReadings.Phrases.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), 1);
+        if (CommonReadings.Phrases.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), JapaneseWordCost);
         if (CommonReadings.Katakana.Contains(kana) || CommonReadings.Brands.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), KatakanaWordCost);
         return (new LatticeEdge(start, end, false, kana, true, false), double.NaN);
     }
@@ -474,12 +449,12 @@ public sealed partial class CompositionDetector
                 // 日本語由来の語 (suzuki・sushi) は、ローマ字で読んだかなも日本語の語として並べる
                 if (span.All(char.IsAsciiLetterLower) && IsJapaneseOriginWord(span) &&
                     _romaji.ConvertLenient(span, final: true) is var reading && reading.All(KanaChars.IsHiraganaOrLongMark))
-                    edges.Add((new LatticeEdge(start, end, false, reading, true, false), 1));
+                    edges.Add((new LatticeEdge(start, end, false, reading, true, false), JapaneseWordCost));
             }
             else if (Memory?.Get(span.ToLowerInvariant()) == false)
             {
                 // かなに直して覚えた語 (google を ごおgぇ に) は、日本語の語として読む
-                edges.Add((new LatticeEdge(start, end, false, _romaji.ConvertLenient(span.ToLowerInvariant(), final: true), true, false), 1));
+                edges.Add((new LatticeEdge(start, end, false, _romaji.ConvertLenient(span.ToLowerInvariant(), final: true), true, false), JapaneseWordCost));
                 continue;
             }
             else if (!kanaInput && unknown[end] > unknown[start])

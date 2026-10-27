@@ -62,14 +62,22 @@ public sealed class RomajiTypoCorrector
 
     private bool IsWord(ReadOnlySpan<char> hiragana) => _readings.Contains(hiragana) || _forms.Contains(hiragana);
 
-    /// <summary>同梱の読みで、kana を 1 語として読むときの重み (付属語 0.8、2 文字以上の語 1、1 文字の語 1.5)。語でなければ null。</summary>
+    /// <summary>同梱の読みで、kana を 1 語として読むときの重み (WordCost)。語でなければ null。</summary>
     internal static double? CommonWordCost(ReadOnlySpan<char> kana) =>
         CommonReadings.Words.Contains(kana) || CommonForms.Value.Contains(kana) ? WordCost(kana) : null;
 
     /// <summary>kana が、同梱の読み・付属語・活用した形のどれかの頭か。</summary>
     internal static bool CommonHasPrefix(ReadOnlySpan<char> kana) => CommonReadings.Words.HasPrefix(kana) || CommonForms.Value.HasPrefix(kana);
 
-    private static double WordCost(ReadOnlySpan<char> word) => Function.Contains(word) ? 0.8 : word.Length >= 2 ? 1 : 1.5;
+    // 語の生起コスト。日英の区切り (ReadingLattice.cs) と共有する
+    // 付属語 (が・を・て)
+    private const double FunctionWordCost = 0.8;
+    // 2 文字以上の語
+    private const double WordCostPerWord = 1;
+    // 1 文字の語 (め・き)
+    private const double SingleKanaWordCost = 1.5;
+
+    private static double WordCost(ReadOnlySpan<char> word) => Function.Contains(word) ? FunctionWordCost : word.Length >= 2 ? WordCostPerWord : SingleKanaWordCost;
 
     // 助詞・助動詞・よく付く語。1 文字でも語として数える。
     private static readonly string[] FunctionWords =
