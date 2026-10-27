@@ -85,7 +85,7 @@ Mac 版・Linux 版はプレビュー版です。気づいたことは小さな�
 
 Issue を直す Pull Request を送るつもりの場合は、その Issue のコメントに自分が対応することを書いてから、修正に取りかかってください。
 同じ Issue を何人もが同時に直してしまうのを防ぐためです。
-本文の `Fixes #123` などで閉じる Issue に担当 (Assignees) がいて、作成者がその担当に入っていない Pull Request は、bot が Draft にして理由をコメントします。担当のいない Issue なら、そのままです。担当に入ったら「Ready for review」で戻してください。
+本文の `Fixes #123` (Issue の URL でも可) などで閉じる Issue に担当 (Assignees) がいて、作成者がその担当に入っていない Pull Request は、bot が Draft にして理由をコメントします。担当のいない Issue なら、そのままです。担当に入ったら「Ready for review」で戻してください。bot は Pull Request を開いたとき・本文を書き換えたとき・Ready for review に戻したときと、1 時間ごとに確かめます。
 
 - **1 つの Pull Request は 1 つの目的にしてください。** その目的に必要な実装・テスト・文書は、一緒に入れて構いません。複数の目的をまとめた統合 PR は受け付けません。
 - **Draft を除き、同時に開ける Pull Request は 1 人 2 件までです。** Draft は件数制限の対象外です。レビューに出すときに 2 件以内になるようにしてください。

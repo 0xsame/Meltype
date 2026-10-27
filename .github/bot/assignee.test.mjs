@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { linkedIssues, mismatched, runAssigneeCheck } from './assignee.mjs';
 
 const bot = { login: 'github-actions[bot]', type: 'Bot' };
+const repository = 'yksr-melt/Meltype';
 const issue = (number, assignees = []) => ({ number, assignees: assignees.map(login => ({ login })) });
 
 /** インメモリの GitHub API。Draft にしたか・コメントを書いたかを記録する。 */
@@ -20,6 +21,8 @@ function fixture(issues, pr = {}) {
     async request(method, path, body) {
       if (method !== 'GET') writes.push({ method, path, body });
       if (method === 'GET' && path.startsWith('/issues/50/comments')) return structuredClone(comments);
+      if (method === 'GET' && path === '/pulls/50') return structuredClone(pull);
+      if (method === 'GET' && path.startsWith('/pulls?state=open')) return pull.state === 'open' ? [structuredClone(pull)] : [];
       const issueMatch = path.match(/^\/issues\/(\d+)$/);
       if (method === 'GET' && issueMatch) return structuredClone(records.get(+issueMatch[1]) ?? null);
       if (method === 'POST' && path === '/issues/50/comments') { comments.push({ id: comments.length + 1, user: bot, body: body.body }); return {}; }
@@ -37,7 +40,9 @@ function fixture(issues, pr = {}) {
   };
   return {
     api, comments, writes, pull,
-    run: (action = 'opened', extra = {}) => runAssigneeCheck(api, { action, pull_request: structuredClone(pull), ...extra }),
+    // PR のイベントで確かめた結果 (確かめなければ 'skip')
+    run: async (action = 'opened', extra = {}) =>
+      (await runAssigneeCheck(api, { action, pull_request: structuredClone(pull), ...extra }, 'pull_request_target', repository))[50] ?? 'skip',
   };
 }
 
@@ -45,6 +50,12 @@ test('本文の Fixes / Closes / Resolves から閉じる Issue を集め、テ�
   assert.deepEqual(linkedIssues('Fixes #1\nfixed #2, closes: #3\nResolves #1\n#4 も見た\n<!-- 「Fixes #123」と書いてください -->'), [1, 2, 3]);
   assert.deepEqual(linkedIssues(''), []);
   assert.deepEqual(linkedIssues('<!-<!-- x -->- Fixes #5 -->Fixes #6'), [6], '入れ子のコメントの中も読まない');
+});
+
+test('このリポジトリの Issue の URL・owner/name#123 も読み、ほかのリポジトリのものは読まない', () => {
+  const body = 'Fixes https://github.com/yksr-melt/Meltype/issues/1208\ncloses yksr-melt/meltype#5\n'
+    + 'Fixes https://github.com/other/repo/issues/9\nfixes other/repo#8';
+  assert.deepEqual(linkedIssues(body, repository), [1208, 5]);
 });
 
 test('担当のいる Issue で、作者が担当に入っていないものだけを返す (大文字・小文字は区別しない)', () => {
@@ -104,4 +115,24 @@ test('本文を書き換えたときだけ確かめ直す (タイトルだけの
   assert.equal(await f.run('edited', { changes: { title: { from: '前' } } }), 'skip');
   assert.equal(await f.run('synchronize'), 'skip');
   assert.equal(await f.run('edited', { changes: { body: { from: '' } } }), 'draft');
+});
+
+test('イベントの時点ではなく、確かめる直前の本文で判定する', async () => {
+  // イベントでは他人の担当の #1 だったが、job が動くまでに自分の担当の #2 に書き換えた
+  const f = fixture([issue(1, ['alice']), issue(2, ['bob'])]);
+  const event = { action: 'edited', changes: { body: { from: '' } }, pull_request: structuredClone(f.pull) };
+  f.pull.body = 'Fixes #2';
+  assert.equal((await runAssigneeCheck(f.api, event, 'pull_request_target', repository))[50], 'ok');
+  assert.equal(f.writes.length, 0);
+  // 閉じた・Draft にした PR も、今の状態で見る
+  f.pull.body = 'Fixes #1'; f.pull.state = 'closed';
+  assert.equal((await runAssigneeCheck(f.api, event, 'pull_request_target', repository))[50], 'skip');
+});
+
+test('定期実行では、開いているすべての PR を確かめる (イベントの job が取り消されても拾う)', async () => {
+  const f = fixture([issue(1, ['alice'])]);
+  assert.deepEqual(await runAssigneeCheck(f.api, {}, 'schedule', repository), { 50: 'draft' });
+  assert.equal(f.pull.draft, true);
+  assert.deepEqual(await runAssigneeCheck(f.api, {}, 'schedule', repository), { 50: 'skip' }, 'Draft になった PR はもう見ない');
+  assert.equal(f.comments.length, 1);
 });

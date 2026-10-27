@@ -54,11 +54,30 @@ jobs:
           ref: main
           sparse-checkout: .github/bot
           persist-credentials: false
-      # 先に Draft にしておくと、件数の数え方にも反映される
-      - if: github.event_name == 'pull_request_target'
-        run: node .github/bot/assignee.mjs
+      - run: node .github/bot/policy.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - run: node .github/bot/policy.mjs
+
+  # 閉じる Issue の担当でない人の PR を Draft にする。件数の job (policy-enforce) と同じ並び待ちに入れると、
+  # 待っている間に別のイベントが来たとき取り消されて検査が抜けるので、PR ごとに分ける。
+  # 定期実行では開いているすべての PR を確かめ、取り消されたイベントの分も拾う。
+  assignee:
+    if: contains(fromJSON('["pull_request_target","schedule","workflow_dispatch"]'), github.event_name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: policy-assignee-${{ github.event.pull_request.number || 'all' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: main
+          sparse-checkout: .github/bot
+          persist-credentials: false
+      - run: node .github/bot/assignee.mjs
         env:
           GITHUB_TOKEN: ${{ github.token }}

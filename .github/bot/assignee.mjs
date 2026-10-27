@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Yukishiro
 // PR の作者が、本文の「Fixes #123」などで閉じる Issue の担当 (Assignees) に入っていなければ、PR を Draft にする (issue #1208)。
 // 担当のいない Issue・関連 Issue の書かれていない PR はそのまま。メンテナー (OWNER / MEMBER / COLLABORATOR) の PR も対象にしない。
+// PR のイベントではその PR を、定期実行では開いているすべての PR を確かめる (イベントの job が取り消されても、次の定期実行で拾う)。
 // GitHub の本文はデータとして読むだけ。PR のコードは実行しない。
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -11,15 +12,21 @@ const Maintainers = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const Actions = new Set(['opened', 'reopened', 'ready_for_review', 'edited']);
 const BotLogins = new Set(['github-actions[bot]', 'meltype-helper[bot]']);
 
-/** 本文で閉じる Issue の番号 (Fixes / Closes / Resolves #123。重複なし)。テンプレートの説明の <!-- --> の中は読まない。 */
-export function linkedIssues(body) {
+/**
+ * 本文で閉じる Issue の番号 (重複なし)。テンプレートの説明の <!-- --> の中は読まない。
+ * Fixes / Closes / Resolves のあとの #123 と、このリポジトリ (repository = owner/name) の Issue の URL・owner/name#123 を読む。
+ */
+export function linkedIssues(body, repository = '') {
   // <!-- を入れ子にした本文でも残らないよう、変わらなくなるまで取り除く
   let text = body ?? '', previous;
   do {
     previous = text;
     text = text.replace(/<!--[\s\S]*?-->/g, '');
   } while (text !== previous);
-  const numbers = [...text.matchAll(/\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\s*:?\s+#(\d+)\b/gi)].map(m => Number(m[1]));
+  const repo = repository.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const target = repo ? `(?:https?://github\\.com/${repo}/issues/|${repo}#|#)` : '#';
+  const pattern = new RegExp(`\\b(?:fix(?:e[sd])?|close[sd]?|resolve[sd]?)\\s*:?\\s+${target}(\\d+)\\b`, 'gi');
+  const numbers = [...text.matchAll(pattern)].map(m => Number(m[1]));
   return [...new Set(numbers)];
 }
 
@@ -56,14 +63,15 @@ export function githubApi({ token, repository, api = 'https://api.github.com', f
   return { request, graphql };
 }
 
-/** PR のイベントで確かめ、担当でなければ Draft にして理由をコメントする (前のコメントがあれば書き換える)。 */
-export async function runAssigneeCheck(api, event) {
-  const pr = event.pull_request;
-  if (!pr || pr.state !== 'open' || pr.draft || !Actions.has(event.action)) return 'skip';
-  if (event.action === 'edited' && !event.changes?.body) return 'skip';
+/**
+ * 1 つの PR を確かめ、担当でなければ Draft にして理由をコメントする (前のコメントがあれば書き換える)。
+ * pr は確かめる直前に取った PR (本文・開いているか・Draft か は、イベントの時点ではなく今のもの)。
+ */
+async function checkPull(api, pr, repository) {
+  if (!pr || pr.state !== 'open' || pr.draft) return 'skip';
   if (Maintainers.has(pr.author_association) || pr.user.type === 'Bot') return 'skip';
   const issues = [];
-  for (const number of linkedIssues(pr.body)) {
+  for (const number of linkedIssues(pr.body, repository)) {
     const issue = await api.request('GET', `/issues/${number}`);
     // 消えた Issue・PR を指す番号は数えない
     if (issue && !issue.pull_request) issues.push(issue);
@@ -79,7 +87,27 @@ export async function runAssigneeCheck(api, event) {
   return 'draft';
 }
 
+/**
+ * PR のイベントならその PR を、定期実行・手動の実行なら開いているすべての PR を確かめる。
+ * 結果は PR 番号ごとの 'skip' / 'ok' / 'draft'。
+ */
+export async function runAssigneeCheck(api, event, eventName, repository = '') {
+  const results = {};
+  if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+    const pulls = await api.request('GET', '/pulls?state=open&per_page=100') ?? [];
+    for (const pr of pulls) results[pr.number] = await checkPull(api, pr, repository);
+    return results;
+  }
+  const number = event.pull_request?.number;
+  if (!number || !Actions.has(event.action)) return results;
+  if (event.action === 'edited' && !event.changes?.body) return results;
+  // イベントが届くまでの間に本文の書き換え・Draft 化・クローズがあっても、今の PR で確かめる
+  results[number] = await checkPull(api, await api.request('GET', `/pulls/${number}`), repository);
+  return results;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
-  console.log(await runAssigneeCheck(githubApi({ token: process.env.GITHUB_TOKEN, repository: process.env.GITHUB_REPOSITORY }), event));
+  const repository = process.env.GITHUB_REPOSITORY;
+  console.log(await runAssigneeCheck(githubApi({ token: process.env.GITHUB_TOKEN, repository }), event, process.env.GITHUB_EVENT_NAME, repository));
 }
