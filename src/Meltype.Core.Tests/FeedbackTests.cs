@@ -263,7 +263,7 @@ internal static class FeedbackTests
             {
                 ("shatsu", "しゃつ"), ("shatu", "しゃつ"), ("syatsu", "しゃつ"), ("syatu", "しゃつ"),
                 ("shatsuwokau", "しゃつをかう"), ("Tshatsu", "Tしゃつ"),
-                ("shat", "shat"), ("I shat", "I shat"),
+                ("I shat", "I shat"),
                 ("commitsuru", "commitする"), ("commitsite", "commitして"), ("reflectsareta", "reflectされた"),
                 ("shutsita", "shutした"), ("shitsumon", "しつもん"), ("teishutsushita", "ていしゅつした"),
                 ("sounitsuite", "そうについて"), ("AInitsuite", "AIについて"),

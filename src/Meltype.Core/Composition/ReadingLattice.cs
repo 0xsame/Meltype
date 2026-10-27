@@ -15,7 +15,7 @@ namespace Meltype.Composition;
 /// | カタカナ語 (katakana.txt) と社名・サービス名の読み (brands.txt の ぎっとはぶ) | 1.1 |
 /// | 語にならないかな・日本語の中に残る読めない英字 | 1 音 3 (っ・ー は 0.5。子音を重ねて打った っ は、前後をかなに挟まれていなければ 3) |
 /// | かなか ? ! の後ろで語の終わりまで続く w (笑い) | 1.5 |
-/// | 知っている英単語 (english.txt・固有名詞・スペルチェッカー) | 1 (english-readable.txt の語は 0.7) |
+/// | 知っている英単語 (english.txt・固有名詞・english-words.txt のうちスペルチェッカーも知っている語) | 1 (english-readable.txt の語は 0.7) |
 /// | ユーザーが英字に直して覚えた語 | 0.7 |
 /// | ユーザーがかなに直して覚えた語 | 日本語の語として 1 |
 /// | english.txt の日本語由来の語 (suzuki・sushi) のローマ字で読んだかな | 日本語の語として 1 |
@@ -486,12 +486,10 @@ public sealed partial class CompositionDetector
     }
 
     /// <summary>
-    /// スペルチェッカーが知っている語。OS のスペルチェッカー (Windows) は kore・cyii・cy も語にするので、
-    /// 同梱のよく使う英単語 (english-words.txt) に無く、2 文字以下かローマ字として最後まで読める語は数えない。
+    /// スペルチェッカーが知っている語のうち、同梱のよく使う英単語 (english-words.txt) にもある語。
+    /// OS のスペルチェッカー (Windows) は kore・cy・gattaw も語にするので、OS のスペルチェッカーだけが知っている語は数えない。
     /// </summary>
-    private bool IsLatticeSpellWord(string lower) =>
-        IsSpellWord(lower) && (SpellChecker is Detection.BuiltInWordChecker || Detection.BuiltInWordChecker.Shared.IsWord(lower) ||
-            lower.Length > 2 && !_romaji.ConvertLenient(lower, final: true).All(KanaChars.IsHiraganaOrLongMark));
+    private bool IsLatticeSpellWord(string lower) => IsSpellWord(lower) && Detection.BuiltInWordChecker.Shared.IsWord(lower);
 
     /// <summary>選んだ候補の並びを、英語・日本語の区間の並びにする (続いた日本語の候補は 1 つの区間にする。英語の候補は 1 つずつの区間)。</summary>
     private List<CompositionSegment> ToSegments(IReadOnlyList<CompositionUnit> units, string text, int[] unitAt, int unitsEnd, List<LatticeEdge> edges)
