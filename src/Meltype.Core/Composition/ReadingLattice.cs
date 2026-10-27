@@ -22,6 +22,7 @@ namespace Meltype.Composition;
 /// | 日本語と英語の切り替え | 1 (日本語の側が が・を・に・で・する など名詞に付く付属語なら 0。英文の続き "I want " からは付属語でも 2) |
 /// | 英単語どうしがスペースなしで続く | 1 |
 /// | 英字 → 日本語 → 英字 と英字のあいだで区切りなしに戻る (付属語を含むときは除く) | 1 |
+/// | ltu・xtu で打った っ の後ろに入力が続く (mai\|ltu\|kau。かなの前の っ は子音を重ねて打つ) | っ 1 つ 2 |
 /// | 英語のすぐ後ろの日本語が あ行のかな (あ〜お・ぁ〜ぉ) で始まる (英語の最後が小文字のとき。USBいれた は除く) | 1 |
 /// | 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) | 1 つ 0.5 |
 ///
@@ -53,6 +54,7 @@ public sealed partial class CompositionDetector
     private const double NameLetterCost = 0.5;
     private const double NameSplitCost = 3;
     private const double SandwichCost = 1;
+    private const double SpelledSokuonCost = 2;
     private const double UnknownUpperCost = 1;
     private const double UnknownKanaCost = 3;
     private const double LightKanaCost = 0.5;
@@ -125,6 +127,19 @@ public sealed partial class CompositionDetector
             if (current is null || node.Cost < current.Cost) current = node;
         }
 
+        // [start, end) の中の、ltu・xtu・ltsu・xtsu で打った っ のうち、後ろに入力が続くものの数
+        int SpelledSokuons(int start, int end)
+        {
+            var count = 0;
+            for (var i = start; i + 3 <= end; i++)
+            {
+                if (char.ToLowerInvariant(text[i]) is not ('l' or 'x') || char.ToLowerInvariant(text[i + 1]) != 't') continue;
+                var tail = char.ToLowerInvariant(text[i + 2]) == 's' ? i + 4 : i + 3;
+                if (tail <= end && char.ToLowerInvariant(text[tail - 1]) == 'u' && tail < length) count++;
+            }
+            return count;
+        }
+
         // position の英字が、次の文字と同じ子音を重ねたもの (tt の t = っ)
         bool DoubledAt(int position) => position + 1 < length && char.IsAsciiLetter(text[position]) && char.ToLowerInvariant(text[position + 1]) == char.ToLowerInvariant(text[position]);
 
@@ -137,7 +152,9 @@ public sealed partial class CompositionDetector
             var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetterLower(text[edge.Start - 1]) && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
             // 大文字で始まる知らない語 (Tanaka) を小文字の途中で切って、付属語でない日本語を続ける (Ta|なか)
             var nameSplit = japanese && !edge.Particle && from.Edge.Name && from.Edge.End == edge.Start && edge.Start < length && char.IsAsciiLetterLower(text[edge.Start]) ? NameSplitCost : 0;
-            var sokuon = vowel + nameSplit + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
+            // ltu・xtu で打った っ の後ろに入力が続く (まいっ|かう・れあ|っ|かう)。っ の後ろにかなが続くときは子音を重ねて打つ (maikka・moratte)
+            var spelledSokuon = japanese ? SpelledSokuonCost * SpelledSokuons(edge.Start, edge.End) : 0;
+            var sokuon = vowel + nameSplit + spelledSokuon + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
                 (japanese && edge.Kana == "っ" && DoubledAt(edge.Start) && state.Side != Side.Japanese ? DanglingSokuonCost : 0);
             if (edge.English)
             {
