@@ -758,13 +758,29 @@ internal static class LanguageLearningTests
             var next = new CompositionTests.Keyboard(languages: memory);
             next.Type("taonoerror\n");
             Assert.Equal("taoのerror", next.Host.Document, "次からは文の中でも英字");
+        }
+        finally
+        {
+            CompositionTests.Detector.Memory = null;
+        }
+    }
 
-            var convert = new CompositionTests.Keyboard(languages: memory);
-            convert.Type("tao");
-            Assert.Equal("tao", convert.Showing, "入力中は覚えた英字");
-            convert.Press(VirtualKeys.Convert);
-            var candidates = convert.Host.View!.Candidates;
-            Assert.True(candidates.Contains("たお"), $"変換キーで日本語の読みも候補に出る: {string.Join(" ", candidates)}");
+    [Test]
+    public static void Issue1015_LearnedEnglishWord_ConvertKeyOffersKanji()
+    {
+        var memory = new LanguageMemory(null);
+        // きょう はよく使う日本語の語なので、2 回直して覚える
+        memory.Remember("kyou", english: true, explicitChoice: true);
+        memory.Remember("kyou", english: true, explicitChoice: true);
+        CompositionTests.Detector.Memory = memory;
+        try
+        {
+            var k = new CompositionTests.Keyboard(languages: memory);
+            k.Type("kyou");
+            Assert.Equal("kyou", k.Showing, "入力中は覚えた英字");
+            k.Press(VirtualKeys.Convert);
+            var candidates = k.Host.View!.Candidates;
+            Assert.Equal("今日", candidates[0], $"変換キーの第一候補は変換エンジンの漢字: {string.Join(" ", candidates)}");
         }
         finally
         {
