@@ -766,6 +766,17 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void Issue960_Kwo_IsSmallO()
+    {
+        foreach (var (typed, expected) in new[] { ("kwo", "くぉ"), ("talkwo", "talkを"), ("backwo", "backを"), ("bookwotoru", "bookをとる") })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + "\n");
+            Assert.Equal(expected, k.Host.Document, typed);
+        }
+    }
+
+    [Test]
     public static void Issue1015_LearnedEnglishWord_ConvertKeyOffersKanji()
     {
         var memory = new LanguageMemory(null);
