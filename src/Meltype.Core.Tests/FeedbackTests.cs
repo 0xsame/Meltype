@@ -758,6 +758,13 @@ internal static class LanguageLearningTests
             var next = new CompositionTests.Keyboard(languages: memory);
             next.Type("taonoerror\n");
             Assert.Equal("taoのerror", next.Host.Document, "次からは文の中でも英字");
+
+            var convert = new CompositionTests.Keyboard(languages: memory);
+            convert.Type("tao");
+            Assert.Equal("tao", convert.Showing, "入力中は覚えた英字");
+            convert.Press(VirtualKeys.Convert);
+            var candidates = convert.Host.View!.Candidates;
+            Assert.True(candidates.Contains("たお"), $"変換キーで日本語の読みも候補に出る: {string.Join(" ", candidates)}");
         }
         finally
         {
