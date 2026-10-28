@@ -1123,7 +1123,7 @@ internal static class LanguageLearningTests
                 ("let's go!", "let's go!"), ("I said no?", "I said no?"), ("sorena!", "それな！"), ("nande?", "なんで？"),
                 // 記号の前・確定時の笑いの w (きたw！ の w が確定で消えていた)
                 ("kitaw!", "きたw！"), ("hontow?w", "ほんとw？w"),
-                // 話し言葉の語 (dictionaries/spoken.txt)
+                // readings.txt に手で足した読み (dictionaries/readings-extra.txt)
                 ("ryokai", "りょかい"), ("hontonisugoi", "ほんとにすごい"),
                 // Issue #1216: not|とっている になっていた。Issue #1193: えんv になっていた
                 ("nottotteiru", "のっとっている"), ("env", "env"),

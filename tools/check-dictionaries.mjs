@@ -45,7 +45,7 @@ const formats = {
   'translations.txt': tabbed(3, 3, ([, kind]) => [['n', 'na', 'i', 'v', 'adv'].includes(kind) ? null : `品詞「${kind}」が n / na / i / v / adv でない`]),
   'meanings.txt': tabbed(3, 3, ([, reading]) => [reading === '' || hiragana.test(reading) ? null : `読み「${reading}」がひらがなでない`]),
   'readings.txt': tabbed(1, 2, ([reading]) => [hiragana.test(reading) ? null : `読み「${reading}」がひらがなでない`]),
-  'spoken.txt': tabbed(1, 2, ([reading]) => [
+  'readings-extra.txt': tabbed(1, 2, ([reading]) => [
     hiragana.test(reading) ? null : `読み「${reading}」がひらがなでない`,
     [...reading].length >= 3 ? null : `読み「${reading}」が 3 文字より短い`,
   ]),

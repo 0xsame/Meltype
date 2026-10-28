@@ -22,7 +22,7 @@ public sealed partial class CompositionDetector
 {
     // ---- 日本語のノードの生起コスト ----
     // 1 文字の語 1.5・付属語 0.8 は RomajiTypoCorrector.WordCost
-    // 日本語の語 (readings.txt・spoken.txt と活用した形)・同梱の語句の読み (phrases.txt の どしたの)・
+    // 日本語の語 (readings.txt・readings-extra.txt と活用した形)・同梱の語句の読み (phrases.txt の どしたの)・
     // ユーザーがかなに直して覚えた語・english.txt の日本語由来の語 (sushi) をローマ字で読んだかな
     private const double JapaneseWordCost = 1;
     // katakana.txt の語 (ほすてぃんぐ) と brands.txt の読み (ぎっとはぶ)。katakana.txt は英単語をカタカナにした語 (アマゾン) が多いので、同じ綴りの英単語 (amazon) に譲る
