@@ -766,6 +766,33 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void ReadingLattice_SplitsReportedExamples()
+    {
+        foreach (var (typed, expected) in new[]
+        {
+            ("adbyuukounisuru", "adbゆうこうにする"), // #1131
+            ("dive into summer", "dive into summer"), // #1125
+            ("imagenzai", "いまげんざい"), ("imagewohiraku", "imageをひらく"), // #1175
+            ("pa-thisyon", "ぱーてぃしょん"), ("applenoiphonehakanaritakai", "appleのiphoneはかなりたかい"),
+            // #1148 で英語になっていた日本語
+            ("intoro", "いんとろ"), ("tonegawa", "とねがわ"), ("metaboriltuku", "めたぼりっく"), ("pureriri-su", "ぷれりりーす"), ("mainkurafuto", "まいんくらふと"),
+        })
+        {
+            CompositionTests.Detector.SpellChecker = Detection.BuiltInWordChecker.Shared;
+            try
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed + "\n");
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+            finally
+            {
+                CompositionTests.Detector.SpellChecker = null;
+            }
+        }
+    }
+
+    [Test]
     public static void Issue960_Kwo_IsSmallO()
     {
         foreach (var (typed, expected) in new[] { ("kwo", "くぉ"), ("talkwo", "talkを"), ("backwo", "backを"), ("bookwotoru", "bookをとる") })
