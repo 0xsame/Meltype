@@ -195,6 +195,11 @@ internal static class WindowsTests
         Assert.True(Composition.FocusInspector.IsSuggestionRow("OmniLinkItem"), "Vivaldi のアドレスバーの候補");
         Assert.True(!Composition.FocusInspector.IsSuggestionRow("PopupView"), "候補の行ではない");
 
+        // Outlook のメール一覧の行 (DataItem "…" (LeafRow)) は、キャレットがあっても入力欄ではない (#1226)
+        Assert.True(Composition.FocusInspector.IsListRow(50029), "DataItem (Outlook の LeafRow)");
+        Assert.True(Composition.FocusInspector.IsListRow(50024), "TreeItem (フォルダの一覧)");
+        Assert.True(!Composition.FocusInspector.IsListRow(50032), "Window (サクラエディタなどはキャレットで判定する)");
+
         // 候補を閉じた直後の、種類も名前も無い要素: 同じウィンドウで直前 (2 秒以内) が候補の行なら、入力欄として扱う
         var row = new Composition.FocusInfo(true, false, null, "候補", "35000", "PopupRowContentView");
         Assert.True(Composition.FocusInspector.KeepsPreviousTextInput(0, "", "", row, sameForeground: true, sincePreviousMs: 660), "候補の行の 0.7 秒後");

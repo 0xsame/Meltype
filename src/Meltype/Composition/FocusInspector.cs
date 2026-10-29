@@ -500,7 +500,9 @@ public sealed class FocusInspector : IDisposable
 
             // UI Automation では入力欄と分からなくても、Windows のキャレット (点滅する縦線) を出しているなら文字を打つ所
             // (サクラエディタなど、独自の編集画面を持つ Win32 のアプリ)。
-            if (!editable && HasCaret())
+            // ただし一覧・ツリーの行 (Outlook のメール一覧の LeafRow など) は、キャレットがあっても入力欄ではない。
+            // 入力欄とみなすと、フォルダを開いたときに Outlook が固まって落ちていた (#1226)。
+            if (!editable && !IsListRow(type) && HasCaret())
             {
                 editable = true;
                 description += " (キャレットあり)";
@@ -570,6 +572,9 @@ public sealed class FocusInspector : IDisposable
         }
         return false;
     }
+
+    /// <summary>一覧・ツリー・表の行 (ListItem・TreeItem・DataItem)。キャレットがあっても文字を打つ所ではない。</summary>
+    internal static bool IsListRow(int controlType) => controlType is 50007 or 50024 or 50029;
 
     private static readonly string[] NotInputParts = ["group", "wrap", "container", "label", "button", "btn", "icon"];
     private const int ControlTypeWindow = 50032, ControlTypePane = 50033;
