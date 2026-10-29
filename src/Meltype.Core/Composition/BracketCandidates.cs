@@ -35,8 +35,6 @@ internal sealed record BracketCandidates(List<string> Candidates, List<Candidate
         new("<>", Group.Angle, CandidateNote.HalfWidth, "＜＞"),
     ];
 
-    internal static bool IsPair(string text) => Entries.Any(e => e.Pair == text);
-
     internal static BracketCandidates? For(string input)
     {
         // 本文・空白・不一致の組・複数組は対象外。文章中の括弧の変換には介入しない。

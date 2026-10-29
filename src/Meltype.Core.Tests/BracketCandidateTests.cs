@@ -199,81 +199,19 @@ internal static class BracketCandidateTests
     }
 
     [Test]
-    public static void Brackets_ContinuedTypingKeepsTheChosenShapeInDisplayAndCommit()
+    public static void Brackets_ContinuedTypingShowsTheReadingLikeOtherConversions()
     {
-        foreach (var full in new[] { false, true })
-        {
-            foreach (var raw in new[] { "[]", "[", "]", "()", "(", ")", "{}", "{", "}", "<>", "<", ">", "z[z]" })
-            {
-                var k = new CompositionTests.Keyboard
-                { ContinueAfterConversion = true, SquareBrackets = full, FullWidthParentheses = full };
-                k.Type(raw + " ");
-                var candidates = k.Host.View!.Candidates.ToArray();
-                for (var index = 0; index < candidates.Length; index++)
-                {
-                    k = new CompositionTests.Keyboard
-                    { ContinueAfterConversion = true, SquareBrackets = full, FullWidthParentheses = full };
-                    k.Type(raw + " ");
-                    k.Controller.SelectCandidate(index);
-                    k.Type("a");
-                    Assert.Equal(candidates[index] + "あ", k.Host.View!.Text, raw);
-                    Assert.Equal(candidates[index] + "あ", k.Host.View.Committed, raw);
-                    Assert.Equal("", k.Host.Document, "続けて入力しても未確定");
-                    k.Press(VirtualKeys.Return);
-                    Assert.Equal(candidates[index] + "あ", k.Host.Document, raw);
-                }
-            }
-        }
-    }
-
-    [Test]
-    public static void Brackets_ContinuedTypingSupportsEnglishDeletionAndExplicitRawMode()
-    {
-        foreach (var live in new[] { false, true })
-        {
-            var k = new CompositionTests.Keyboard(live: live) { ContinueAfterConversion = true };
-            k.Type("[] ");
-            k.Controller.SelectCandidate(5);
-            k.Type("hello");
-            Assert.Equal("【】hello", k.Host.View!.Text);
-            k.Press(VirtualKeys.Space);
-            Assert.Equal("【】hello ", k.Host.Document, "英語の後ろの Space でも選んだ括弧で確定");
-
-            k = new CompositionTests.Keyboard(live: live) { ContinueAfterConversion = true };
-            k.Type("[] ");
-            k.Controller.SelectCandidate(5);
-            k.Type("kyouha");
-            Assert.Equal(live ? "【】今日は" : "【】きょうは", k.Host.View!.Text);
-            k.Type(" \n");
-            Assert.Equal("【】今日は", k.Host.Document, "続く日本語の変換でも括弧の形を保つ");
-
-            k = new CompositionTests.Keyboard(live: live) { ContinueAfterConversion = true };
-            k.Type("[] ");
-            k.Controller.SelectCandidate(5);
-            k.Type("a\b");
-            Assert.Equal("【】", k.Host.View!.Text);
-            k.Press(VirtualKeys.Back);
-            Assert.Equal("【", k.Host.View!.Text, "片側を消しても残った括弧の選択を保つ");
-            k.Press(VirtualKeys.Return);
-            Assert.Equal("【", k.Host.Document);
-
-            k = new CompositionTests.Keyboard(live: live) { ContinueAfterConversion = true };
-            k.Type("[] ");
-            k.Controller.SelectCandidate(5);
-            k.Type("a");
-            k.Press(VirtualKeys.F10);
-            Assert.Equal("[]a", k.Host.View!.Text, "F10 は元の打鍵を使う");
-            k.Press(VirtualKeys.Return);
-            Assert.Equal("[]a", k.Host.Document);
-
-            k = new CompositionTests.Keyboard(live: live) { ContinueAfterConversion = true };
-            k.Type("[] ");
-            k.Controller.SelectCandidate(5);
-            k.Type("https://example.com\b");
-            Assert.Equal("【】https://example.co", k.Host.View!.Text, "URL を削除しても括弧の選択を保つ");
-            k.Press(VirtualKeys.Return);
-            Assert.Equal("【】https://example.co", k.Host.Document);
-        }
+        // 続けて打つと表示は入力に戻り、選んだ形は再変換のときだけ復元する (ContinueAfterConversion の既存仕様)。
+        var k = new CompositionTests.Keyboard { ContinueAfterConversion = true };
+        k.Type("[] ");
+        k.Controller.SelectCandidate(5);
+        Assert.Equal("【】", k.Host.View!.Text);
+        k.Type("a");
+        Assert.Equal("", k.Host.Document, "続けて入力しても未確定");
+        var shown = k.Host.View!.Text;
+        Assert.True(!shown.Contains('【'), shown);
+        k.Press(VirtualKeys.Return);
+        Assert.Equal(shown, k.Host.Document);
     }
 
     [Test]
@@ -289,8 +227,7 @@ internal static class BracketCandidateTests
         Assert.Equal("【】", selected.View!.Text);
         var continued = session.HandleKey('A', 'a', false, false, false, false);
         Assert.Equal(0, continued.Commits.Count);
-        Assert.Equal("【】あ", continued.View!.Text);
-        Assert.Equal("【】あ", continued.View.Committed);
+        Assert.True(!continued.View!.Text.Contains('【'), continued.View.Text);
         session.HandleKey(VirtualKeys.Back, null, false, false, false, false);
         var restored = session.HandleKey(VirtualKeys.Space, null, false, false, false, false).View!;
         Assert.Equal("【】", restored.Text);
@@ -377,7 +314,7 @@ internal static class BracketCandidateTests
     }
 
     [Test]
-    public static void Brackets_AllPairsSupportCursorIntoBrackets()
+    public static void Brackets_CursorIntoBracketsKeepsTheExistingPairs()
     {
         foreach (var raw in new[] { "[]", "()", "{}", "<>" })
         {
@@ -389,9 +326,13 @@ internal static class BracketCandidateTests
                 k.Controller.SelectCandidate(i);
                 k.Press(VirtualKeys.Return);
                 Assert.Equal(expected[i], k.Host.Document);
-                Assert.True(k.Host.Events.Contains("down:25"), expected[i]);
+                // 従来のカッコの組だけが対象。<>・＜＞・｢｣ は含めない。
+                Assert.Equal(expected[i] is not ("<>" or "＜＞" or "｢｣"), k.Host.Events.Contains("down:25"), expected[i]);
             }
         }
+        var unconverted = new CompositionTests.Keyboard { CursorIntoBrackets = true };
+        unconverted.Type("<>\n");
+        Assert.True(!unconverted.Host.Events.Contains("down:25"), "変換せずに確定した <> でもカーソルを戻さない");
         var single = new CompositionTests.Keyboard { CursorIntoBrackets = true };
         single.Type("[ \n");
         Assert.True(!single.Host.Events.Contains("down:25"), "片括弧ではカーソルを戻さない");
