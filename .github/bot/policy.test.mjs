@@ -193,6 +193,15 @@ test('前の版の「Draft にする」超過の通知は、順番待ちの通�
   assert.match(f.comments.get(3)[0].body, /"version":3/);
 });
 
+test('他の人・bot のコメントやレビュー通知では投稿者の返信とみなさない', async () => {
+  const f = fixture([issue(1, [Labels.info])]);
+  await f.run();
+  f.reply(1, 'reviewer');
+  f.comments.get(1).push({ user: bot, body: 'CI 成功', created_at: new Date(start + 1000).toISOString() });
+  await f.run(start + WaitMs);
+  assert.equal(f.records.get(1).state, 'closed');
+});
+
 test('手動の PR要対応ラベルも通知から 14 日待ち、通知を重複投稿しない', async () => {
   const pr = pull(1); pr.labels = [{ name: Labels.rule }];
   const f = fixture([pr]);

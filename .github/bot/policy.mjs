@@ -166,10 +166,8 @@ export async function runPolicy(api, event, eventName, now = Date.now()) {
     }
   }
 
-  const eventNumber = event.pull_request?.number ?? event.issue?.number;
   const candidates = new Map(pulls.filter(pr => names(pr).has(Labels.limit) || names(pr).has(Labels.rule)
-    || removedLimits.has(pr.number) || pr.number === eventNumber).map(pr => [pr.number, true]));
-  if (event.pull_request) candidates.set(event.pull_request.number, true);
+    || removedLimits.has(pr.number) || pr.number === event.issue?.number).map(pr => [pr.number, true]));
   if (canClose) {
     for (const issue of await list(`/issues?state=open&labels=${encodeURIComponent(Labels.info)}`)) {
       if (!issue.pull_request) candidates.set(issue.number, false);
@@ -177,7 +175,6 @@ export async function runPolicy(api, event, eventName, now = Date.now()) {
   } else if (event.issue && !event.issue.pull_request) candidates.set(event.issue.number, false);
 
   for (const [number, isPr] of candidates) {
-    // PR が閉じられたイベントでは、この PR の通知も対象外に更新する。
     await inspect(number, isPr);
   }
 
