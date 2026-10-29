@@ -3547,6 +3547,16 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void Candidates_GoSpaceShowsEngineCandidates()
+    {
+        // #1015・#1088: go + Space の候補が go ご だけで、語 碁 後 が出ない。go もほかの語 (do no) と同じく、見えている ご を変換する
+        var k = new Keyboard(moreCandidates: reading => reading == "ご" ? ["後", "語", "碁"] : []);
+        k.Type("go ");
+        Assert.True(k.Host.View!.Candidates.Take(4).SequenceEqual(["ご", "後", "語", "碁"]), string.Join(",", k.Host.View.Candidates));
+        Assert.True(k.Host.View.Candidates.Contains("go"), "打ったままの英字も候補に残す: " + string.Join(",", k.Host.View.Candidates));
+    }
+
+    [Test]
     public static void Backspace_ThenRetype_RereadsRomaji()
     {
         // 報告: test の最後の t を消して u → 「てsう」になる。
