@@ -63,6 +63,9 @@ public sealed class KanaDetector
         return index >= 0 && index % 2 == 0 ? table[index + 1] : null;
     }
 
+    /// <summary>辞書 (japanese.txt) の日本語の語のかなか。</summary>
+    public bool IsJapaneseWord(string kana) => _words.Contains(kana);
+
     /// <summary>辞書の日本語の語か、その先頭と一致するかな (2 文字以上)。</summary>
     public bool IsJapaneseWordOrPrefix(string kana) => kana.Length >= 2 && (_words.Contains(kana) || _prefixes.Contains(kana));
 

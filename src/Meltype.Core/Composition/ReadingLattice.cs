@@ -440,7 +440,8 @@ public sealed partial class CompositionDetector
                 if (!IsContraction(span)) continue;
                 cost = KnownEnglishCost;
             }
-            else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)))
+            else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)) &&
+                     !IsLowercaseJapaneseProperNoun(span))
             {
                 cost = Memory?.Get(span.ToLowerInvariant()) == true ? LearnedEnglishCost
                     : ReadableEnglish.Value.ContainsWord(span.ToLowerInvariant()) ? ReadableEnglishCost : KnownEnglishCost;
@@ -472,6 +473,14 @@ public sealed partial class CompositionDetector
     /// <summary>英単語の書き方の大文字・小文字か (its・Its・ITS と、固有名詞の書き方 GitHub)。iTs は its の書き方ではない。</summary>
     private bool IsWordCasing(string span) =>
         !span.Skip(1).Any(char.IsAsciiLetterUpper) || span.All(char.IsAsciiLetterUpper) || _proper.Canonical(span.ToLowerInvariant()) == span;
+
+    /// <summary>
+    /// 小文字で打った、japanese.txt の語と同じ綴りの固有名詞か (wakatte は わかって、Wakatte.TV は固有名詞)。
+    /// 英単語の辞書には固有名詞の小文字も入っているので、固有名詞で見分ける。
+    /// </summary>
+    private bool IsLowercaseJapaneseProperNoun(string span) =>
+        span.All(char.IsAsciiLetterLower) && Memory?.Get(span) is null && _proper.Contains(span) &&
+        _kana?.IsJapaneseWord(_romaji.ConvertLenient(span, final: true)) == true;
 
     /// <summary>[start, end) の前後が英字でないか (1 文字の英単語 a・i は、前後を英字以外で区切ったときだけ語)。</summary>
     private static bool Standalone(string text, int start, int end) =>
