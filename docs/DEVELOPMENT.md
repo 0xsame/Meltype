@@ -90,12 +90,15 @@ dotnet run --project src/Meltype.Core.Tests -- --eval       # 品質テスト (�
 dotnet run --project src/Meltype.Core.Tests -- --version    # 版 (Meltype.Core)
 dotnet run --project src/Meltype.Core.Tests -- --repro kyouhagoogle enter   # 打ったときの見え方と確定の結果
 dotnet run --project src/Meltype.Core.Tests -- --mixed-bench out.json       # 日本語の文の中の英単語が正しく分かれるか (約 550 例)
+dotnet run --project src/Meltype.Core.Tests -- --expect src/Meltype.Core.Tests/data/issue-cases.tsv out.json  # 報告された誤変換
 dotnet run -c Release --project src/Meltype.Core.Tests -- --perf perf.json  # 変換エンジンの遅延 (p95 / p99)・候補の数・控え・メモリ・正解率 (MELTYPE_MOZC が要る)
 ```
 
 Windows のアプリ本体・Mac / Linux の IME も同じ形で版を出せます (`Meltype.exe --version`、`Meltype.app/.../Meltype --version`、`ibus-engine-meltype --version`)。
 Windows のアプリ本体は GUI アプリ (WinExe) なので、cmd では版がプロンプトの後に出ます。
 コンソールアプリ (Exe) にすると、エクスプローラーやタスク スケジューラから起動したときにコンソールの窓が一瞬フォーカスを取り、その間に打ったキーが消えるので、WinExe のままにしています。
+
+`src/Meltype.Core.Tests/data/issue-cases.tsv` は、GitHub の issue (open / closed) から「打ったもの」と「期待した結果」を取り出したコーパスです。判定の作り方に関係なく同じ物差しで比べられるので、判定を変えるときは `--eval` と合わせて `--expect` で流します。
 
 `--mixed-bench` は `MELTYPE_BENCH_OFFSET=31` などで調べる語を変えられます。
 

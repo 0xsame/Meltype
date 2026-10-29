@@ -1654,6 +1654,23 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void MixiStaysEnglish()
+    {
+        // みぃ (mi + xi)
+        var k = new Keyboard();
+        k.Type("mixi\n");
+        Assert.Equal("mixi", k.Host.Document);
+
+        k = new Keyboard();
+        k.Type("mixi2\n");
+        Assert.Equal("mixi2", k.Host.Document);
+
+        k = new Keyboard();
+        k.Type("mixidetomodachi\n");
+        Assert.Equal("mixiでともだち", k.Host.Document);
+    }
+
+    [Test]
     public static void Issue346_FusionStaysEnglish()
     {
         var k = new Keyboard();
