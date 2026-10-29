@@ -1391,6 +1391,17 @@ internal static class LanguageLearningTests
             Assert.Equal("EN:game", Segments(CompositionDetector.CreateDefault(directory)));
             File.WriteAllText(Path.Combine(directory, "japanese.txt"), "game\n");
             Assert.Equal("JA:game", Segments(CompositionDetector.CreateDefault(directory)), "ユーザーの japanese.txt の語は日本語の語");
+
+            // 読みの途中 (さくらざ・ぱぱっ) が同梱の辞書の語の頭でなくても、登録した語の最後まで探す
+            File.WriteAllText(Path.Combine(directory, "japanese.txt"), "sakurazaka\npapatto\n");
+            File.WriteAllText(Path.Combine(directory, "english.txt"), "sakurazaka\npapatto\n");
+            var registered = CompositionDetector.CreateDefault(directory);
+            foreach (var (typed, expected) in new[] { ("sakurazaka", "さくらざか"), ("papatto", "ぱぱっと") })
+            {
+                var text = new CompositionText(registered);
+                foreach (var c in typed) text.Append(c);
+                Assert.Equal(expected, text.Display(true), typed);
+            }
         }
         finally
         {

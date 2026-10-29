@@ -3967,6 +3967,32 @@ internal static class CompositionTests
     }
 
     [Test]
+    public static void UserDictionary_WholeAsciiReading_IsOneClause()
+    {
+        // 打った英字全体を読みに登録した語は、英字が区間 (hello|world) に分かれても候補に出す
+        foreach (var reading in new[] { "helloworld", "githubpython" })
+        {
+            var dictionary = new UserDictionary(null, builtIn: false);
+            dictionary.Add(reading, "登録候補");
+            var k = new Keyboard(userDictionary: dictionary);
+            k.Type(reading + " ");
+            Assert.Equal("登録候補", string.Join("|", k.Host.View!.Clauses!), reading);
+        }
+    }
+
+    [Test]
+    public static void UserDictionary_AsciiReading_TabConverts()
+    {
+        // 英語と判定する読み (hello) を登録したら、Tab でも Space と同じく変換する
+        var dictionary = new UserDictionary(null, builtIn: false);
+        dictionary.Add("hello", "登録候補");
+        var k = new Keyboard(userDictionary: dictionary, tabConversion: true);
+        k.Type("hello");
+        k.Press(VirtualKeys.Tab);
+        Assert.Equal("登録候補", k.Host.View!.Clauses![0]);
+    }
+
+    [Test]
     public static void UserDictionary_SavesAndLoads()
     {
         var path = Path.Combine(Path.GetTempPath(), $"meltype-userdict-{Guid.NewGuid():N}.txt");

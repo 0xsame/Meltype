@@ -23,6 +23,9 @@ public sealed partial class CompositionDetector
     /// <summary>ユーザーの辞書フォルダーの japanese.txt の語の読み。ラティスの日本語のノードにする (同梱の japanese.txt の語はノードにしない)。</summary>
     private readonly HashSet<string> _userJapanese = new(StringComparer.Ordinal);
 
+    /// <summary>_userJapanese の読みの頭 (さくらざか の さ・さく…)。ラティスが日本語の語を探し続けるかの判定に使う。</summary>
+    private readonly HashSet<string> _userJapanesePrefixes = new(StringComparer.Ordinal);
+
     /// <summary>ローマ字としても読める、よく使う拡張子 (Meltype.ace、setup.ini)。読めない拡張子 (dll、json) は一覧に無くても英字のまま。</summary>
     private static readonly HashSet<string> FileExtensions =
     [
@@ -38,7 +41,11 @@ public sealed partial class CompositionDetector
     {
         _kana = kana;
         foreach (var word in userJapaneseWords ?? [])
-            if (romaji.AnalyzeWord(word) is { IsValid: true, Partial: "" } reading) _userJapanese.Add(reading.Kana);
+        {
+            if (romaji.AnalyzeWord(word) is not { IsValid: true, Partial: "" } reading) continue;
+            _userJapanese.Add(reading.Kana);
+            for (var i = 1; i <= reading.Kana.Length; i++) _userJapanesePrefixes.Add(reading.Kana[..i]);
+        }
         _romaji = romaji;
         _english = english;
         _proper = proper ?? new ProperNouns();

@@ -401,7 +401,7 @@ public sealed partial class CompositionDetector
         {
             // 語の頭でなくなったら、それより長い語は無い (1 音目は語にならなくても読む)
             if (!first && !RomajiTypoCorrector.CommonHasPrefix(kana) && !CommonReadings.Katakana.HasPrefix(kana) && !CommonReadings.Brands.HasPrefix(kana) &&
-                !CommonReadings.Phrases.HasPrefix(kana)) break;
+                !CommonReadings.Phrases.HasPrefix(kana) && !_userJapanesePrefixes.Contains(kana)) break;
             var unit = units[k];
             if (!IsKanaUnit(unit) || !kanaInput && unit.Raw.Any(char.IsAsciiLetterUpper)) break;
             var from = _preparedRawOffsets[k];

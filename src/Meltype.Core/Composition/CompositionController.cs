@@ -1327,7 +1327,7 @@ public sealed class CompositionController
         // IsProtectedInput は末尾が保護区間かだけを見るため、ここでは全区間を調べる。
         if (_text.Mode == DisplayMode.Auto && _text.ProtectedSpans().Count > 0) return false;
         _text.FixTypos();
-        return !SpaceCommitsAsEnglish();
+        return HasRegisteredReading() || !SpaceCommitsAsEnglish();
     }
 
     /// <summary>変換中だけ意味を持つキー。処理したら true。</summary>
@@ -1581,11 +1581,14 @@ public sealed class CompositionController
     private void StartConversion(bool preferJapanese = false)
     {
         _tabStartedConversion = false;
-        // 子音の略入力 (ast → 明日): 打った英字全体が candidates.txt の英字の読みにあれば、それを 1 つの文節の候補にする (issue #62)
-        if (!_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is { Length: >= 2 } typedRaw && typedRaw.All(char.IsAsciiLetter) &&
-            _options.ConsonantAbbreviations() && _options.Candidates?.Lookup(typedRaw.ToLowerInvariant()) is { Count: > 0 } abbreviation)
+        // 打った英字全体がユーザー辞書の読み (helloworld → 登録した語) か子音の略入力の読み (ast → 明日。issue #62) なら、
+        // 区間に分けずに 1 つの文節にして、その語を候補の先頭にする
+        if (HasRegisteredReading())
         {
-            _clauses = [new Clause(typedRaw, true, Distinct([.. abbreviation, typedRaw, .. EnglishCandidates(typedRaw)])) { Raw = typedRaw }];
+            var typedRaw = _text.Raw;
+            var lower = typedRaw.ToLowerInvariant();
+            List<string> registered = [.. _options.UserDictionary?.Lookup(lower) ?? [], .. _options.ConsonantAbbreviations() ? _options.Candidates?.Lookup(lower) ?? [] : []];
+            _clauses = [new Clause(typedRaw, true, Distinct([.. registered, typedRaw, .. EnglishCandidates(typedRaw)])) { Raw = typedRaw }];
             _selectedClause = 0;
             _converting = true;
             return;
