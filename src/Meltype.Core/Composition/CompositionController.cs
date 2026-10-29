@@ -1582,13 +1582,18 @@ public sealed class CompositionController
     {
         _tabStartedConversion = false;
         // 打った英字全体がユーザー辞書の読み (helloworld → 登録した語) か子音の略入力の読み (ast → 明日。issue #62) なら、
-        // 区間に分けずに 1 つの文節にして、その語を候補の先頭にする
+        // 区間に分けずに 1 つの文節にして、その語を候補の先頭にする。ローマ字として読めれば、その読みの漢字も出す (go → 後・語・碁)
         if (HasRegisteredReading())
         {
             var typedRaw = _text.Raw;
             var lower = typedRaw.ToLowerInvariant();
             List<string> registered = [.. _options.UserDictionary?.Lookup(lower) ?? [], .. _options.ConsonantAbbreviations() ? _options.Candidates?.Lookup(lower) ?? [] : []];
-            _clauses = [new Clause(typedRaw, true, Distinct([.. registered, typedRaw, .. EnglishCandidates(typedRaw)])) { Raw = typedRaw }];
+            var reading = RomajiReading(typedRaw);
+            List<string> romaji = reading is null ? [] : JapaneseCandidates(reading, null);
+            List<string> english = [typedRaw, .. EnglishCandidates(typedRaw)];
+            _clauses = [new Clause(typedRaw, true, preferJapanese
+                ? Distinct([.. registered, .. romaji, .. english])
+                : Distinct([.. registered, .. english, .. romaji])) { Raw = typedRaw, Kana = reading }];
             _selectedClause = 0;
             _converting = true;
             return;

@@ -3978,6 +3978,19 @@ internal static class CompositionTests
             k.Type(reading + " ");
             Assert.Equal("登録候補", string.Join("|", k.Host.View!.Clauses!), reading);
         }
+
+        // ローマ字として読める読み (go) は、登録した語の後ろに、その読みの漢字も出す (#1141)
+        var go = new UserDictionary(null, builtIn: false);
+        go.Add("go", "登録候補");
+        foreach (var key in new[] { VirtualKeys.Space, VirtualKeys.Convert })
+        {
+            var k = new Keyboard(userDictionary: go, moreCandidates: reading => reading == "ご" ? ["後", "語", "碁"] : []);
+            k.Type("go");
+            k.Press(key);
+            var candidates = k.Host.View!.Candidates;
+            Assert.Equal("登録候補", candidates[0], $"{key}");
+            Assert.True(candidates.Contains("go") && candidates.Contains("碁"), $"{key}: " + string.Join(",", candidates));
+        }
     }
 
     [Test]
