@@ -673,21 +673,37 @@ public sealed class CompositionText
     {
         var segments = Segments();
         if (segmentIndex < 0 || segmentIndex >= segments.Count) return null;
-        var unit = 0;
-        for (var s = 0; s < segmentIndex; s++)
-        {
-            var remaining = segments[s].Raw.Length;
-            while (unit < _units.Count && remaining > 0) remaining -= _units[unit++].Raw.Length;
-        }
+        var start = segments.Take(segmentIndex).Sum(segment => segment.Raw.Length);
+        var end = start + segments[segmentIndex].Raw.Length;
+        var unitsEnd = Raw.Length - _pending.Length;
         var builder = new StringBuilder();
-        var rawLength = segments[segmentIndex].Raw.Length - (segmentIndex == segments.Count - 1 ? _pending.Length : 0);
-        while (unit < _units.Count && rawLength > 0)
+        if (UnitIndexAt(start) is int first && UnitIndexAt(Math.Min(end, unitsEnd)) is int last)
         {
-            builder.Append(_units[unit].Kana);
-            rawLength -= _units[unit++].Raw.Length;
+            for (var unit = first; unit < last; unit++) builder.Append(_units[unit].Kana);
+            if (end > unitsEnd) builder.Append(PendingText(final: true));
         }
-        if (segmentIndex == segments.Count - 1 && _pending.Length > 0) builder.Append(PendingText(final: true));
+        else
+        {
+            // ラティスが単位の途中で区切った (medals|ha の sha): 区間の打った英字を読み直す
+            var fragment = new CompositionText(_detector);
+            foreach (var c in Raw[start..end]) fragment.Append(c);
+            foreach (var unit in fragment._units) builder.Append(unit.Kana);
+            builder.Append(fragment.PendingText(final: true));
+        }
         return builder.Length > 0 ? builder.ToString() : null;
+    }
+
+    /// <summary>打った英字の offset 文字目が単位の境目なら、そこから始まる単位の番号 (末尾なら単位の数)。</summary>
+    private int? UnitIndexAt(int offset)
+    {
+        var at = 0;
+        for (var i = 0; at <= offset; i++)
+        {
+            if (at == offset) return i;
+            if (i == _units.Count) break;
+            at += _units[i].Raw.Length;
+        }
+        return null;
     }
 
     /// <param name="final">確定・変換のときは true (語末の n を ん にする)。</param>

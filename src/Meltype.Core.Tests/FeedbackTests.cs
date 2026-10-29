@@ -1377,6 +1377,31 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void F6_AfterLatticeSplitsUnit()
+    {
+        CompositionTests.Detector.SpellChecker = BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, rights, expected) in new[]
+            {
+                ("mainnipushsuru", 2, "main|に|ぷsh|する"),
+                ("soredemedalsha", 1, "それで|めだls|は"), // 単位は sha、ラティスは medals|ha
+            })
+            {
+                var k = new CompositionTests.Keyboard { FunctionKeysAffectSelectedClause = true };
+                k.Type(typed + " ");
+                for (var i = 0; i < rights; i++) k.Press(VirtualKeys.Right);
+                k.Press(VirtualKeys.F6);
+                Assert.Equal(expected, string.Join("|", k.Host.View!.Clauses!), typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
+    }
+
+    [Test]
     public static void Backspace_AfterLatticeSplitsUnit()
     {
         CompositionTests.Detector.SpellChecker = BuiltInWordChecker.Shared;
