@@ -8,8 +8,8 @@ namespace Meltype.Composition;
 /// <summary>マウスボタンの押下/解放 (変換中にクリックされたとき、確定してからクリックを再生するため)。</summary>
 public readonly record struct MouseButtonEvent(int Message, int X, int Y, uint MouseData);
 
-/// <summary>フックから変換ボックスへ渡す入力。キーかマウスボタンのどちらか。</summary>
-public readonly record struct CapturedInput(KeyEvent? Key, MouseButtonEvent? Mouse);
+/// <summary>フックから変換ボックスへ渡す入力。キー、マウスボタン、または入力モード切り替え要求。</summary>
+public readonly record struct CapturedInput(KeyEvent? Key, MouseButtonEvent? Mouse, nint? ToggleTarget = null);
 
 /// <summary>
 /// フック側の関所。変換ボックスが開いている間 (captured) は、届いたキーとマウスボタンを
@@ -17,6 +17,7 @@ public readonly record struct CapturedInput(KeyEvent? Key, MouseButtonEvent? Mou
 /// こうすることで、確定前の文字を後続の打鍵やクリックが追い越すことがない。
 ///
 /// フックのスレッドから呼ばれるので、ロック内ではキューへの出し入れしかしない。
+/// OnKey と OnMouseButton は 1 つのスレッド (フックのスレッド) から呼ぶ。
 /// </summary>
 public sealed class CaptureGate
 {
@@ -33,14 +34,23 @@ public sealed class CaptureGate
     /// <summary>true ならフックでその打鍵を握りつぶす。</summary>
     public bool OnKey(KeyEvent e, Func<KeyEvent, bool> startsComposition)
     {
+        bool captured;
         lock (_gate)
         {
-            if (!_captured)
+            captured = _captured;
+            if (captured) _queue.Enqueue(new CapturedInput(e, null));
+        }
+        if (!captured)
+        {
+            // 打ち始めの判定はフォーカスを調べ終わるのを待つことがあるので、ロックの外で行う。
+            // 関所を閉める (_captured を true にする) のも、キューに積むのもフックのスレッドだけで、関所が開いている間はキューは空。
+            // 判定の間に UI スレッドがしうるのは、開いた関所を開いたままにすること (TryRelease・Abort) だけなので、判定の後に閉めても順番は崩れない。
+            if (!startsComposition(e)) return false;
+            lock (_gate)
             {
-                if (!startsComposition(e)) return false;
                 _captured = true;
+                _queue.Enqueue(new CapturedInput(e, null));
             }
-            _queue.Enqueue(new CapturedInput(e, null));
         }
         _signal();
         return true;
@@ -55,6 +65,17 @@ public sealed class CaptureGate
         }
         _signal();
         return true;
+    }
+
+    /// <summary>登録キーの切り替え要求を、前後の入力と同じ順序で処理する。</summary>
+    public void OnToggleMode(nint target)
+    {
+        lock (_gate)
+        {
+            _captured = true;
+            _queue.Enqueue(new CapturedInput(null, null, target));
+        }
+        _signal();
     }
 
     public bool TryDequeue(out CapturedInput input)
@@ -73,12 +94,12 @@ public sealed class CaptureGate
         }
     }
 
-    /// <summary>無効化・終了時。残っている入力を返す (呼び出し側で再生する)。</summary>
+    /// <summary>無効化・終了時。切り替え要求を破棄し、残っているキー・マウス入力を返す (呼び出し側で再生する)。</summary>
     public List<CapturedInput> Abort()
     {
         lock (_gate)
         {
-            var rest = _queue.ToList();
+            var rest = _queue.Where(input => input.ToggleTarget is null).ToList();
             _queue.Clear();
             _captured = false;
             return rest;

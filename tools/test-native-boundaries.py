@@ -25,8 +25,21 @@ class NativeBoundaryTests(unittest.TestCase):
         cls.addClassCleanup(cls.data.cleanup)
         # 起動時の旧データ移行も避けるため、既に存在する空のディレクトリを渡す。
         os.environ["MELTYPE_DATA_DIR"] = cls.data.name
-        (Path(cls.data.name) / "config.json").write_text(
+        data = Path(cls.data.name)
+        (data / "config.json").write_text(
             json.dumps({"SpaceAroundEnglish": True}), encoding="utf-8")
+        # 学習データはプロセスで初回だけ読む（#558）。meltype_create より前に置く。
+        (data / "languages.json").write_text(
+            json.dumps({
+                "sushi": {
+                    "English": True,
+                    "Count": 2,
+                    "Explicit": True,
+                    "Used": "2026-10-07T00:00:00Z",
+                }
+            }),
+            encoding="utf-8",
+        )
         cls.lib = ctypes.CDLL(str(cls.library_path))
         cls.lib.meltype_init.argtypes = [ctypes.c_void_p] * 3
         cls.lib.meltype_init.restype = ctypes.c_int
@@ -37,6 +50,16 @@ class NativeBoundaryTests(unittest.TestCase):
         cls.lib.meltype_handle_key.restype = ctypes.c_void_p
         cls.lib.meltype_free.argtypes = [ctypes.c_void_p]
         cls.lib.meltype_set_direct.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        cls.lib.meltype_set_code_input.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        cls.lib.meltype_set_code_input.restype = None
+        cls.lib.meltype_set_code_terminal.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        cls.lib.meltype_set_code_terminal.restype = None
+        cls.lib.meltype_set_code_line.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p]
+        cls.lib.meltype_set_code_line.restype = ctypes.c_int
+        cls.lib.meltype_caret_moved.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+        cls.lib.meltype_caret_moved.restype = None
+        cls.lib.meltype_code_english_at.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        cls.lib.meltype_code_english_at.restype = ctypes.c_int
         assert cls.lib.meltype_init(None, None, None) == 1
 
     def setUp(self):
@@ -66,6 +89,87 @@ class NativeBoundaryTests(unittest.TestCase):
         self.assertFalse(result["consumed"])
         self.assertEqual([] if text is None else [{"deleteBefore": 0, "text": text}], result["commits"])
         self.assertIsNone(result["view"])
+
+    def test_code_line_toggle_controls_composition_without_surrounding_text(self):
+        self.lib.meltype_set_code_input(self.session, 1)
+        self.assert_pass(self.key(ord("k")))
+        self.assert_pass(self.key(0, vk=0x0D))
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 7, None))
+        self.type_text("kyouha")
+        commit = self.key(0, vk=0x0D)
+        self.assertTrue(commit["consumed"])
+        self.assertEqual([{"deleteBefore": 0, "text": "きょうは"}], commit["commits"])
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 0, None))
+        self.assert_pass(self.key(ord("k")))
+        self.assertEqual(0, self.lib.meltype_set_code_line(self.session, 0, None))
+
+    def test_code_mode_reports_utf8_and_tracks_nullable_before(self):
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, b"$ "))
+        self.assertEqual(0, self.lib.meltype_set_code_line(self.session, 1, None))
+        self.lib.meltype_set_code_input(self.session, 1)
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, b"$ "))
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, None))
+
+        prompt = "│ › 日本語😊 ".encode("utf-8")
+        before = ctypes.create_string_buffer(prompt)
+        self.assertEqual(0, self.lib.meltype_set_code_line(self.session, 1, before))
+        self.assertEqual(prompt, before.value, "set_code_line borrows the caller's UTF-8 buffer")
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, before))
+        self.assertEqual(prompt, before.value, "code_english_at borrows the caller's UTF-8 buffer")
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, None))
+        self.assertEqual(0, self.lib.meltype_set_code_line(self.session, 1, None))
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, 'printf "日本語😊'.encode("utf-8")))
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, 'printf "日本語😊"'.encode("utf-8")))
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 1, None))
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, None))
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 0, None))
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, None))
+
+    def test_passed_navigation_clears_explicit_japanese(self):
+        self.lib.meltype_set_code_input(self.session, 1)
+        actions = [(0x09, 0)] + [(vk, 0) for vk in range(0x21, 0x29)] + [(0x2E, 0), (ord("V"), 7)]
+        for vk, control in actions:
+            with self.subTest(vk=vk, control=control):
+                self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 1, b"$ "))
+                self.lib.meltype_caret_moved(self.session, ord("A"), 0)
+                self.lib.meltype_caret_moved(self.session, 0x0D, 0)
+                self.assertEqual(0, self.lib.meltype_code_english_at(self.session, None))
+                self.lib.meltype_caret_moved(self.session, vk, control)
+                self.assertEqual(1, self.lib.meltype_code_english_at(self.session, None))
+
+    def test_terminal_japanese_survives_newline_and_output_movement(self):
+        self.lib.meltype_set_code_input(self.session, 1)
+        self.lib.meltype_set_code_terminal(self.session, 7)
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 1, None))
+        self.type_text("kyouha")
+        self.assertEqual([{"deleteBefore": 0, "text": "きょうは"}], self.key(0, vk=0x0D)["commits"])
+        self.assert_pass(self.key(0, vk=0x0D))
+        self.lib.meltype_caret_moved(self.session, 0x0D, 0)
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, None))
+        self.lib.meltype_caret_moved(self.session, 0, 0)
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, None))
+        self.lib.meltype_set_code_terminal(self.session, 1)
+        self.assertEqual(0, self.lib.meltype_code_english_at(self.session, None))
+
+        self.lib.meltype_caret_moved(self.session, 0x26, 0)
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, None))
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 1, None))
+        self.lib.meltype_set_code_terminal(self.session, 0)
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, None))
+        self.assertEqual(1, self.lib.meltype_set_code_line(self.session, 1, None))
+        self.lib.meltype_caret_moved(self.session, 0, 0)
+        self.assertEqual(1, self.lib.meltype_code_english_at(self.session, None))
+
+    def test_optional_code_exports_ignore_null_session(self):
+        for before in (None, "│ › 日本語😊 ".encode("utf-8")):
+            with self.subTest(before=before):
+                self.assertEqual(0, self.lib.meltype_set_code_line(None, 1, before))
+                self.assertEqual(0, self.lib.meltype_set_code_line(None, 0, before))
+                self.assertEqual(0, self.lib.meltype_code_english_at(None, before))
+        self.lib.meltype_set_code_terminal(None, 1)
+        self.lib.meltype_set_code_terminal(None, 0)
+        self.lib.meltype_caret_moved(None, 0, 0)
+        self.lib.meltype_caret_moved(None, 0x26, 1)
 
     def test_bmp_accent_keeps_raw_base(self):
         self.type_text("e")
@@ -187,28 +291,19 @@ class NativeBoundaryTests(unittest.TestCase):
         self.type_text("kyouha「@onegaishimsu」ashita")
         self.assertEqual("きょうは「@onegaishimsu」あした", self.key(0, vk=0x0D)["commits"][0]["text"])
 
-    def test_saved_language_choice_is_loaded_by_new_session(self):
-        path = Path(self.data.name) / "languages.json"
-        previous = path.read_bytes() if path.exists() else None
+    def test_language_choice_is_shared_across_sessions(self):
+        # #558 以降、学習はプロセスで共有される。setUpClass で置いた languages.json が
+        # 別セッションでも効くことを確かめる（作成後の再読込はしない）。
+        restored = self.lib.meltype_create()
+        self.assertTrue(restored)
+        original = self.session
+        self.session = restored
         try:
-            # 2 回の明示的な選択を記録した、公開形式の合成データ。
-            path.write_text(json.dumps({"sushi": {"English": True, "Count": 2, "Explicit": True,
-                                                   "Used": "2026-10-07T00:00:00Z"}}), encoding="utf-8")
-            restored = self.lib.meltype_create()
-            self.assertTrue(restored)
-            original = self.session
-            self.session = restored
-            try:
-                self.type_text("sushi")
-                self.assertEqual("sushi", self.key(0, vk=0x0D)["commits"][0]["text"])
-            finally:
-                self.session = original
-                self.lib.meltype_destroy(restored)
+            self.type_text("sushi")
+            self.assertEqual("sushi", self.key(0, vk=0x0D)["commits"][0]["text"])
         finally:
-            if previous is None:
-                path.unlink(missing_ok=True)
-            else:
-                path.write_bytes(previous)
+            self.session = original
+            self.lib.meltype_destroy(restored)
 
 
 if __name__ == "__main__":

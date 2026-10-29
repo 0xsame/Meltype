@@ -24,25 +24,32 @@ internal sealed class Updater : IDisposable
 
     private readonly System.Threading.Timer _timer;
     private readonly Func<bool> _enabled;
+    private readonly Func<bool> _prerelease;
     private int _running;
 
     /// <summary>新しい版をダウンロードし終えた (UI スレッドとは限らない)。引数は版。</summary>
     public event Action<string>? Ready;
 
-    public Updater(Func<bool> enabled)
+    /// <param name="prerelease">プレリリース版も更新の対象にするか (issue #1206)。</param>
+    public Updater(Func<bool> enabled, Func<bool> prerelease)
     {
         _enabled = enabled;
+        _prerelease = prerelease;
         _timer = new System.Threading.Timer(_ => Check(), null, FirstCheck, Interval);
     }
 
-    /// <summary>ダウンロード済みで、今より新しい版 (無ければ null)。</summary>
-    public static (string Version, string Folder)? Staged()
+    /// <summary>
+    /// ダウンロード済みで、今より新しい版 (無ければ null)。
+    /// allowPrerelease は設定の「プレリリース版も自動で更新する」。OFF なら、ON の間にダウンロードしておいたプレリリース版は使わない。
+    /// </summary>
+    public static (string Version, string Folder)? Staged(bool allowPrerelease)
     {
         try
         {
             if (!File.Exists(ReadyFile)) return null;
             var parts = File.ReadAllText(ReadyFile).Trim().Split('\t');
             if (parts.Length != 2 || !IsNewer(parts[0]) || !File.Exists(Path.Combine(parts[1], "install.ps1"))) return null;
+            if (Config.ProjectInfo.IsPrerelease(parts[0]) && !allowPrerelease) return null;
             return (parts[0], parts[1]);
         }
         catch (Exception ex)
@@ -56,7 +63,7 @@ internal sealed class Updater : IDisposable
     /// 起動時: ダウンロード済みの新しい版があればインストールを始める (true なら Meltype はそのまま終了する。install.ps1 が新しい版を起動する)。
     /// 前回インストールに失敗していた (同じ版のまま起動した) ときは、繰り返さない。
     /// </summary>
-    public static bool ApplyStagedAtStartup(Func<bool> enabled, Func<string, bool>? confirm = null)
+    public static bool ApplyStagedAtStartup(Func<bool> enabled, bool allowPrerelease, Func<string, bool>? confirm = null)
     {
         try
         {
@@ -77,13 +84,13 @@ internal sealed class Updater : IDisposable
             Log.Warn($"更新の状態を読めませんでした: {ex.Message}");
         }
         // 更新の前に、あなたの打ち方で変わる語があれば見せる (issue #285。「あとで」なら今回は更新しない)
-        return enabled() && Staged() is { } staged && (confirm?.Invoke(staged.Version) ?? true) && Apply();
+        return enabled() && Staged(allowPrerelease) is { } staged && (confirm?.Invoke(staged.Version) ?? true) && Apply(allowPrerelease);
     }
 
     /// <summary>ダウンロード済みの新しい版のインストールを始める。install.ps1 が動いている Meltype を終了させてから入れ替え、起動する。</summary>
-    public static bool Apply()
+    public static bool Apply(bool allowPrerelease)
     {
-        if (Staged() is not { } staged) return false;
+        if (Staged(allowPrerelease) is not { } staged) return false;
         try
         {
             File.WriteAllText(ApplyingFile, staged.Version);
@@ -101,6 +108,8 @@ internal sealed class Updater : IDisposable
         catch (Exception ex)
         {
             Log.Warn($"更新を始められませんでした: {ex.Message}");
+            // 始められなかったので、次の起動で「更新に失敗した」と扱わないよう消しておく
+            try { File.Delete(ApplyingFile); } catch { }
             return false;
         }
     }
@@ -110,9 +119,9 @@ internal sealed class Updater : IDisposable
     /// 今の版とダウンロードした新しい版 (Meltype.exe --judge-words) の両方で判定し、見え方が変わる語を返す。
     /// 調べられなければ (新しい版がこの仕組みを持たない・時間切れ) null。この PC の中だけで動かし、何も送らない。
     /// </summary>
-    public static IReadOnlyList<Composition.WordChange>? PreviewChanges(IEnumerable<string> words)
+    public static IReadOnlyList<Composition.WordChange>? PreviewChanges(IEnumerable<string> words, bool allowPrerelease)
     {
-        if (Staged() is not { } staged) return null;
+        if (Staged(allowPrerelease) is not { } staged) return null;
         var list = words.Where(Composition.WordJudge.IsWord).Distinct(StringComparer.Ordinal).ToList();
         if (list.Count == 0) return [];
         var exe = Path.Combine(staged.Folder, "app", "Meltype.exe");
@@ -181,14 +190,19 @@ internal sealed class Updater : IDisposable
             {
                 start.ArgumentList.Add(arg);
             }
+            if (_prerelease()) start.ArgumentList.Add("-Prerelease");
             using var process = Process.Start(start)!;
-            var output = process.StandardOutput.ReadToEnd().Trim();
-            if (!process.WaitForExit(15 * 60 * 1000)) process.Kill();
+            var output = ReadOutput(process, 15 * 60 * 1000)?.Trim();
+            if (output is null)
+            {
+                Log.Warn("更新の確認が時間内に終わりませんでした。");
+                return null;
+            }
             var line = output.Split('\n').LastOrDefault()?.Trim() ?? "";
             if (line.StartsWith("ready ", StringComparison.Ordinal))
             {
                 var version = line[6..];
-                Log.Info($"Meltype {version} をダウンロードしました。次の起動時に更新します。");
+                Log.Info(_enabled() ? $"Meltype {version} をダウンロードしました。次の起動時に更新します。" : $"Meltype {version} をダウンロードしました。トレイの「更新」→「Meltype {version} に更新して再起動」で更新できます。");
                 Ready?.Invoke(version);
                 return $"Meltype {version} をダウンロードしました。";
             }
@@ -207,8 +221,21 @@ internal sealed class Updater : IDisposable
         }
     }
 
-    private static bool IsNewer(string version) =>
-        System.Version.TryParse(version, out var other) && System.Version.TryParse(AppInfo.Version, out var current) && other > current;
+    /// <summary>標準出力を読みながら終わるのを待つ。時間内に終わらなければ子プロセスごと終了させて null。</summary>
+    internal static string? ReadOutput(Process process, int timeout)
+    {
+        // 先に ReadToEnd すると、PowerShell が止まったときに戻らず、時間で区切れない
+        var output = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(timeout))
+        {
+            process.Kill(entireProcessTree: true);
+            return null;
+        }
+        return output.Result;
+    }
+
+    /// <summary>今の版より新しいか (1.3.1-pre.3 → 1.3.1-pre.4 → 1.3.1 の順)。</summary>
+    private static bool IsNewer(string version) => Config.ProjectInfo.CompareVersions(version, AppInfo.Version) > 0;
 
     public void Dispose() => _timer.Dispose();
 }

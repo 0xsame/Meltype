@@ -7,7 +7,7 @@
 # IT・サービス
 Amazon Google Apple Microsoft Windows macOS iOS iPadOS Android Linux Ubuntu Debian Fedora
 GitHub Meltype GitLab Bitbucket Docker Kubernetes Azure AWS Heroku Vercel Netlify Firebase Supabase Cloudflare
-YouTube Twitter Facebook Instagram TikTok LINE Discord Slack Zoom Teams Notion Figma Canva Miro Trello Jira Confluence
+YouTube Twitter Facebook Instagram TikTok LINE mixi Discord Slack Zoom Teams Notion Figma Canva Miro Trello Jira Confluence
 Netflix Spotify Hulu Disney Prime Twitch Reddit Pinterest LinkedIn Tumblr Medium Substack
 Yahoo Bing DuckDuckGo Baidu Naver Kakao WeChat WhatsApp Telegram Signal Messenger Skype Webex
 ChatGPT OpenAI Claude Anthropic Gemini Gemma Copilot Midjourney Perplexity Bard DeepL
@@ -19,7 +19,7 @@ Python JavaScript TypeScript Java Kotlin Swift Rust Ruby PHP Perl Haskell Scala 
 Node Deno Bun Django Flask Rails Laravel Spring Next Nuxt Vite Webpack Tailwind Bootstrap jQuery
 MySQL PostgreSQL SQLite MongoDB Redis Oracle Elasticsearch Kafka Nginx Apache Tomcat
 Steam PlayStation Xbox Switch Minecraft Fortnite Roblox Valorant Apex Overwatch Tetris
-Uber Airbnb Tesla Paypal Stripe Shopify Etsy eBay
+Uber Airbnb Tesla Paypal Stripe Shopify Etsy eBay DLsite
 Visa Mastercard JCB Amex
 
 # 企業・ブランド
@@ -75,3 +75,5 @@ ReVanced Lavalink Skeb FANBOX Ryzen RTX Zenfone IntelliSense Unix
 Suica DCafe ProBot Carlbot Disboard TaCZ NSFW
 # 音楽 (アーティスト名。ローマ字として読める・大文字の語 + 日本語に区切れてしまう名前: #303)
 Khalifa Ariana Grande Sheeran Marshmello Beabadoobee Chainsmokers Iann Dior Dobby
+# Issue #268
+DeVito

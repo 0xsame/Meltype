@@ -17,18 +17,8 @@ internal sealed class UserDictionaryForm : Form
     private readonly TextBox _reading = new() { Width = 220 };
     private readonly Label _readingPreview = new() { AutoSize = true, ForeColor = SystemColors.GrayText, Padding = new Padding(0, 6, 0, 0) };
     private readonly ComboBox _word = new() { Width = 220, DropDownStyle = ComboBoxStyle.DropDown };
-    private readonly DataGridView _grid = new()
-    {
-        Dock = DockStyle.Fill,
-        ReadOnly = true,
-        AllowUserToAddRows = false,
-        AllowUserToDeleteRows = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-        RowHeadersVisible = false,
-        BackgroundColor = SystemColors.Window,
-    };
-    private readonly Label _message = new() { AutoSize = true, ForeColor = Color.Firebrick, Padding = new Padding(0, 6, 0, 0) };
+    private readonly DataGridView _grid = FormControls.ReadOnlyGrid();
+    private readonly Label _message = FormControls.ErrorLabel();
     private readonly System.Windows.Forms.Timer _suggestTimer = new() { Interval = 300 };
 
     public UserDictionaryForm(CompositionService service)
@@ -36,8 +26,9 @@ internal sealed class UserDictionaryForm : Form
         _service = service;
         Text = "Meltype ユーザー辞書";
         StartPosition = FormStartPosition.CenterScreen;
-        Size = new Size(560, 520);
-        MinimumSize = new Size(460, 360);
+        // 文字は画面の拡大率に合わせて大きくなるので、窓の大きさも拡大率に合わせる。
+        Size = LogicalToDeviceUnits(new Size(560, 520));
+        MinimumSize = LogicalToDeviceUnits(new Size(460, 360));
         Font = new Font("Yu Gothic UI", 9.5F);
 
         var add = new Button { Text = "登録", AutoSize = true };
