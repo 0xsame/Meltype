@@ -392,6 +392,7 @@ public sealed partial class CompositionDetector
             }
             kana = reading.Kana;
             Add(_preparedRawOffsets[next], kana);
+            if (next == units.Count) AddPending();
             u = next;
         }
         for (var k = u; k < units.Count; k++)
@@ -407,15 +408,29 @@ public sealed partial class CompositionDetector
                 if (_romaji.AnalyzeFragment(text[from..end].ToLowerInvariant()) is { IsValid: true, Partial: "" } head) Add(end, kana + head.Kana, wordOnly: true);
             kana += unit.Kana;
             Add(_preparedRawOffsets[k + 1], kana);
-            if (k + 1 == units.Count && unitsEnd < length)
-            {
-                // 後ろの入力途中の子音 (pending) まで
-                if (pending.Any(char.IsAsciiLetterUpper)) break;
-                if (_romaji.ConvertLenient(pending.ToLowerInvariant(), final: true) is var tail && tail.All(KanaChars.IsHiraganaOrLongMark)) Add(length, kana + tail);
-            }
+            if (k + 1 == units.Count) AddPending();
         }
         return edges;
+
+        // 入力の最後まで: 後ろの入力途中の子音 (pending) と、する の活用を打っている途中 (commit|す・test|す|r。名詞に付く付属語)
+        void AddPending()
+        {
+            if (unitsEnd == length)
+            {
+                if (kana.Length > 0 && CompositionDetector.SuruForms.Any(form => form.Length > kana.Length && form.StartsWith(kana, StringComparison.Ordinal)))
+                    edges.Add((new LatticeEdge(start, length, false, kana, true, true), JapaneseWordCost));
+                return;
+            }
+            if (pending.Any(char.IsAsciiLetterUpper)) return;
+            if (_romaji.ConvertLenient(pending.ToLowerInvariant(), final: true) is var tail && tail.All(KanaChars.IsHiraganaOrLongMark)) Add(length, kana + tail);
+            else if (IsPendingSuruForm(kana, pending)) edges.Add((new LatticeEdge(start, length, false, kana, true, true), JapaneseWordCost));
+        }
     }
+
+    /// <summary>kana の後ろに入力途中の子音 (す|r・し|t) を打っている所で、母音を足すと する の活用になるか。</summary>
+    private bool IsPendingSuruForm(string kana, string pending) =>
+        pending.All(char.IsAsciiLetterLower) &&
+        "aiueo".Any(vowel => _romaji.ConvertLenient(pending + vowel, final: true) is var next && CompositionDetector.IsSuruForm(kana + next));
 
     /// <summary>
     /// start から始まる、綴りで決まる候補: 英語 (知っている英単語・知らない英字・短縮形) と、

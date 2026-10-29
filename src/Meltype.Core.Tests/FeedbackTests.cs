@@ -1411,6 +1411,28 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void EnglishWordSuru_KeepsEnglishWhileTyping()
+    {
+        foreach (var word in new[] { "test", "commit", "deploy", "merge", "build", "push" })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(word);
+            foreach (var (keys, expected) in new[] { ("s", "s"), ("u", "す"), ("r", "すr"), ("u", "する") })
+            {
+                k.Type(keys);
+                Assert.Equal(word + expected, k.Showing, $"{word}{expected} を打っている途中");
+            }
+        }
+        var shite = new CompositionTests.Keyboard();
+        shite.Type("testshi");
+        foreach (var (keys, expected) in new[] { ("t", "testしt"), ("e", "testして") })
+        {
+            shite.Type(keys);
+            Assert.Equal(expected, shite.Showing, $"{expected} を打っている途中");
+        }
+    }
+
+    [Test]
     public static void F6_AfterLatticeSplitsUnit()
     {
         CompositionTests.Detector.SpellChecker = BuiltInWordChecker.Shared;
