@@ -167,7 +167,41 @@ test('3 件目だけに通知し、通知後 24 時間でその PR だけを Dra
   // 14 日たっても、超過を理由には閉じない
   await f.run(start + WaitMs * 2);
   assert.equal(f.records.get(3).state, 'open');
-  assert.equal(f.records.get(3).labels.length, 0);
+  assert.deepEqual(f.records.get(3).labels.map(l => l.name), [Labels.waiting]);
+});
+
+test('上限で Draft にした PR の待機ラベルは、Ready for review に戻すと外す', async () => {
+  const f = fixture([pull(1), pull(2), pull(3)]);
+  await f.run();
+  await f.run(start + LimitWaitMs);
+  assert.ok(f.records.get(3).labels.some(l => l.name === Labels.waiting));
+  // 作者が自分で Draft にした PR には付けない
+  assert.ok(!f.records.get(1).labels.some(l => l.name === Labels.waiting));
+  f.records.get(1).state = 'closed';
+  f.records.get(3).draft = false; f.addEvent(3, 'ready_for_review');
+  await f.run(start + LimitWaitMs + 1000, 'pull_request', { pull_request: { number: 3 } });
+  assert.ok(!f.records.get(3).labels.some(l => l.name === Labels.waiting));
+  assert.ok(!f.records.get(3).labels.some(l => l.name === Labels.limit));
+});
+
+test('次にレビューの付いた PR は、古い PR より先に枠へ入れる', () => {
+  const next = pull(3); next.labels.push({ name: Labels.next });
+  assert.deepEqual([...excessPulls([pull(1), pull(2), next])], [2]);
+});
+
+test('次にレビューを付けて戻した PR を残し、古い PR を超過として Draft にする', async () => {
+  const f = fixture([pull(1), pull(2), pull(3)]);
+  await f.run();
+  await f.run(start + LimitWaitMs);
+  f.records.get(3).labels.push({ name: Labels.next }); f.addEvent(3, 'labeled', Labels.next);
+  f.records.get(3).draft = false; f.addEvent(3, 'ready_for_review');
+  const later = start + LimitWaitMs + 1000;
+  await f.run(later);
+  assert.ok(f.records.get(2).labels.some(l => l.name === Labels.limit));
+  assert.ok(!f.records.get(3).labels.some(l => l.name === Labels.limit));
+  await f.run(later + LimitWaitMs);
+  assert.equal(f.records.get(2).draft, true);
+  assert.equal(f.records.get(3).draft, false);
 });
 
 for (const change of ['reply', 'push', 'body']) {

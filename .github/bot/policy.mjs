@@ -3,12 +3,14 @@
 // PR の件数制限と、投稿者の返事を待っている Issue・PR の期限管理。
 // 件数の超過は警告から 24 時間で Draft にし (閉じない)、PR要対応・情報待ちは通知から 14 日で閉じる。
 // No Close の付いた PR・Issue は、自動で Draft にも閉じもしない。
+// 件数の超過で Draft にした PR には「上限で待機」を付け、作者が下書き中の Draft と見分けられるようにする。
+// メンテナーが「次にレビュー」を付けた PR は、件数を数えるときに古い PR より先に枠へ入れる。
 // GitHub の本文・差分はデータとして読むだけ。PR のコードは実行しない。
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
-export const Labels = { limit: 'PR上限超過', rule: 'PR要対応', info: '情報待ち', exempt: 'No Close' };
+export const Labels = { limit: 'PR上限超過', rule: 'PR要対応', info: '情報待ち', exempt: 'No Close', waiting: '上限で待機', next: '次にレビュー' };
 export const WaitMs = 14 * 24 * 60 * 60 * 1000;
 export const LimitWaitMs = 24 * 60 * 60 * 1000;
 // 件数の超過は 14 日で閉じる通知 (版 1) から、24 時間で Draft にする通知 (版 2) に変えた。
@@ -20,13 +22,14 @@ const names = item => new Set((item?.labels ?? []).map(l => l.name ?? l));
 const hash = body => createHash('sha256').update(body ?? '').digest('hex');
 const trusted = comment => comment.user?.type === 'Bot' && BotLogins.has(comment.user.login);
 
-/** Draft・メンテナー・Bot の PR を除き、作者ごとに作成が古い 2 件を残す。同時刻なら番号順。 */
+/** Draft・メンテナー・Bot の PR を除き、作者ごとに 2 件を残す。「次にレビュー」の PR を先に、次に作成が古い順、同時刻なら番号順。 */
 export function excessPulls(pulls) {
   const counts = new Map();
   return new Set(pulls.filter(p => p.state === 'open' && !p.draft
     && p.user.type !== 'Bot'
     && !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(p.author_association))
-    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.number - b.number)
+    .sort((a, b) => names(b).has(Labels.next) - names(a).has(Labels.next)
+      || a.created_at.localeCompare(b.created_at) || a.number - b.number)
     .filter(p => {
       const author = p.user.login.toLowerCase();
       const count = (counts.get(author) ?? 0) + 1;
@@ -145,6 +148,8 @@ export async function runPolicy(api, event, eventName, now = Date.now()) {
     [Labels.limit, 'Draft を除く同時オープン PR が 2 件を超えている (24 時間後も超過なら Draft にする)'],
     [Labels.rule, '投稿者によるルールへの対応を待つ (14 日間無反応なら閉じる)'],
     [Labels.exempt, '自動の Draft 化・クローズをしない (メンテナーが付ける)'],
+    [Labels.waiting, 'レビューできる状態だが、件数の上限で bot が Draft にした (枠が空いたら Ready for review で戻す)'],
+    [Labels.next, '取り込めそうなので、上限の枠に古い PR より先に入れる (メンテナーが付ける)'],
   ]) {
     if (!labels.some(l => l.name === name)) {
       await request('POST', '/labels', { name, color: 'FBCA04', description });
@@ -160,6 +165,11 @@ export async function runPolicy(api, event, eventName, now = Date.now()) {
       await request('DELETE', `/issues/${pr.number}/labels/${encodeURIComponent(Labels.limit)}`);
       pr.labels = pr.labels.filter(l => (l.name ?? l) !== Labels.limit);
       removedLimits.add(pr.number);
+    }
+    // Ready for review に戻した PR は、もう待機中ではない。
+    if (!pr.draft && names(pr).has(Labels.waiting)) {
+      await request('DELETE', `/issues/${pr.number}/labels/${encodeURIComponent(Labels.waiting)}`);
+      pr.labels = pr.labels.filter(l => (l.name ?? l) !== Labels.waiting);
     }
   }
 
@@ -258,8 +268,10 @@ export async function runPolicy(api, event, eventName, now = Date.now()) {
     }
     if (due.includes('limit') && expired('limit')) {
       await graphql('mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { pullRequest { isDraft } } }', { id: fresh.item.node_id });
+      await request('POST', `/issues/${number}/labels`, { labels: [Labels.waiting] });
       await request('POST', `/issues/${number}/comments`, {
         body: `${Marker}\n警告から 24 時間たっても、Draft を除く開いている PR が 3 件以上だったため、古い 2 件を残してこの PR を Draft にしました (閉じてはいません)。`
+          + `レビューを待っている Draft だと分かるように \`${Labels.waiting}\` を付けました。`
           + 'ほかの PR がマージ・クローズ・Draft になって枠が空いたら、「Ready for review」で戻してください。戻したときに件数をもう一度数えます。',
       });
     }
