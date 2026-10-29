@@ -88,14 +88,14 @@ public sealed partial class CompositionDetector
     private sealed record LatticeNode(double Cost, LatticeNode? Previous, LatticeEdge Edge);
 
     /// <summary>
-    /// 状態: 直前の言語 (Side)・直前の日本語の候補が名詞に付く付属語か・ここまで英字の日本語が無いか・直前の候補が英語か・直前の候補が っ で終わるか。
-    /// 記号・数字の候補は直前の言語を変えない。
+    /// 状態: 直前の言語 (Side)・直前の日本語の候補が名詞に付く付属語か・ここまで英字の日本語が無いか・直前の候補が英語か・直前の候補が っ で終わるか・
+    /// 前の英語の文脈 (hello ) からの切り替えをまだ数えていないか。記号・数字の候補は直前の言語を変えない。
     /// </summary>
-    private readonly record struct LatticeState(Side Side, bool Particle, bool AllEnglish, bool PreviousEnglish, bool Sokuon = false)
+    private readonly record struct LatticeState(Side Side, bool Particle, bool AllEnglish, bool PreviousEnglish, bool Sokuon = false, bool ContextSwitch = false)
     {
-        public const int Count = 64;
-        public int Key => (int)Side | (Particle ? 4 : 0) | (AllEnglish ? 8 : 0) | (PreviousEnglish ? 16 : 0) | (Sokuon ? 32 : 0);
-        public static LatticeState FromKey(int key) => new((Side)(key & 3), (key & 4) != 0, (key & 8) != 0, (key & 16) != 0, (key & 32) != 0);
+        public const int Count = 128;
+        public int Key => (int)Side | (Particle ? 4 : 0) | (AllEnglish ? 8 : 0) | (PreviousEnglish ? 16 : 0) | (Sokuon ? 32 : 0) | (ContextSwitch ? 64 : 0);
+        public static LatticeState FromKey(int key) => new((Side)(key & 3), (key & 4) != 0, (key & 8) != 0, (key & 16) != 0, (key & 32) != 0, (key & 64) != 0);
         public bool IsEnglish => Side is Side.English or Side.Sentence;
     }
 
@@ -133,7 +133,7 @@ public sealed partial class CompositionDetector
         var englishBias = extraEnglishBias + level switch { DetectionLevel.Aggressive => AggressiveEnglishBias, DetectionLevel.Conservative => ConservativeEnglishBias, _ => 0 };
         var best = new LatticeNode?[length + 1, LatticeState.Count];
         var start = new LatticeState(precedingEnglish switch { true => englishSentence ? Side.Sentence : Side.English, false => Side.Japanese, null => Side.None },
-            false, true, precedingEnglish == true);
+            false, true, precedingEnglish == true, ContextSwitch: precedingEnglish == true);
         best[0, start.Key] = new LatticeNode(0, null, default);
 
         void Offer(int position, LatticeState state, LatticeNode node)
@@ -186,7 +186,7 @@ public sealed partial class CompositionDetector
                 if (state.IsEnglish && edge.Start > 0 && char.IsAsciiLetter(text[edge.Start - 1]) && char.IsAsciiLetter(text[edge.Start])) step += AdjacentEnglishCost;
                 // 英文の続きの強さは、最初の英語の語までで使い終わる (英文の中の記号では使い終わらない)
                 var sentence = state.Side == Side.Sentence && !char.IsAsciiLetter(text[edge.Start]);
-                next = new LatticeState(sentence ? Side.Sentence : Side.English, false, state.AllEnglish, true);
+                next = new LatticeState(sentence ? Side.Sentence : Side.English, false, state.AllEnglish, true, ContextSwitch: state.ContextSwitch);
             }
             else if (edge.Neutral)
             {
@@ -198,6 +198,8 @@ public sealed partial class CompositionDetector
                 step = cost;
                 if (state.Side == Side.Sentence) step += SentenceSwitchCost;
                 else if (state.IsEnglish && !edge.Particle) step += SwitchCost;
+                // 前の英語の文脈からの切り替えは、英語の語から始めた道も最初の日本語で数える (hello + sushi|が を すしが と同じ重さの差で比べる)
+                if (state.ContextSwitch && edge.Start > 0) step += englishSentence ? SentenceSwitchCost : SwitchCost;
                 next = new LatticeState(Side.Japanese, edge.Particle, state.AllEnglish && !edge.Letters, false);
             }
             next = next with { Sokuon = japanese && edge.Kana.EndsWith('っ') && DoubledAt(edge.End - 1) };

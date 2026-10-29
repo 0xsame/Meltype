@@ -4173,6 +4173,11 @@ internal static class CompositionTests
         k.Type("kyouha\n");
         k.Type("sushi");
         Assert.Equal("すし", k.Showing, "日本語の後なら sushi は日本語");
+
+        k = new Keyboard();
+        k.Type("hello ");
+        k.Type("sushiga");
+        Assert.Equal("すしが", k.Showing, "英語の後でも、後ろに日本語が続けば日本語");
     }
 
     [Test]
