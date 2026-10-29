@@ -775,6 +775,9 @@ internal static class LanguageLearningTests
             ("imagenzai", "いまげんざい"), ("imagewohiraku", "imageをひらく"), // #1175
             ("pa-thisyon", "ぱーてぃしょん"), ("applenoiphonehakanaritakai", "appleのiphoneはかなりたかい"),
             ("erroraru", "errorある"),
+            // issue を いっ|すえ と読まない。っ で終わる語 (いっ) は た・て の前にだけ来る
+            ("issuearu", "issueある"), ("issueyomu", "issueよむ"), ("issuetaberu", "issueたべる"),
+            ("ittekita", "いってきた"), ("issyoniiku", "いっしょにいく"), ("attasou", "あったそう"), ("kittokuru", "きっとくる"),
             // #1148 で英語になっていた日本語
             ("intoro", "いんとろ"), ("tonegawa", "とねがわ"), ("metaboriltuku", "めたぼりっく"), ("pureriri-su", "ぷれりりーす"), ("mainkurafuto", "まいんくらふと"),
         })

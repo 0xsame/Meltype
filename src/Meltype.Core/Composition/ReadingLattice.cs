@@ -71,8 +71,10 @@ public sealed partial class CompositionDetector
     private const double NameSplitCost = 3;
     // ltu・xtu で打った っ の後ろに入力が続く (mai|ltu|kau)。かなの前の っ は子音を重ねて打つ
     private const double SpelledSokuonCost = 2;
-    // 小文字で終わる英語のすぐ後ろの日本語が あ行のかな (thing|う・rate|ぃす) で始まる: 英単語の最後の子音と次の母音の切り間違い。USBいれた は除く
+    // 小文字で終わる英語のすぐ後ろの日本語が あ行のかな (thing|う・rate|ぃす) で始まる: 英単語の最後の子音と次の母音の切り間違い。USBいれた と、母音字で終わる英語の後ろの大きい あ行 (issue|ある) は除く
     private const double VowelAfterEnglishCost = 1;
+    // っ で終わる語 (いっ・とっ) の後ろに、た・て・ち 以外で始まる日本語が続く。っ で終わる活用形は た・て の前にしか来ない
+    private const double SokuonStemCost = 1;
     // 日本語の中の c 行の綴り (ca・ci・cu・ce・co。ch は除く) 1 つ: 日本語を打つときは k を使う
     private const double CRowCost = 0.5;
     // 同じコストなら日本語にする
@@ -164,12 +166,16 @@ public sealed partial class CompositionDetector
             LatticeState next;
             var japanese = !edge.English && !edge.Neutral;
             // 子音を重ねて打った っ は、前後をかなに挟まれているときだけ軽い (excelとっpt・cwっで にしない。ltu・xtu で打った っ と、Goって の って は除く)
-            var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetterLower(text[edge.Start - 1]) && edge.Kana is [var head, ..] && "あいうえおぁぃぅぇぉ".Contains(head) ? VowelAfterEnglishCost : 0;
+            var vowel = japanese && state.PreviousEnglish && edge.Start > 0 && char.IsAsciiLetterLower(text[edge.Start - 1]) && edge.Kana is [var head, ..] &&
+                ("ぁぃぅぇぉ".Contains(head) || "あいうえお".Contains(head) && !"aeiou".Contains(text[edge.Start - 1])) ? VowelAfterEnglishCost : 0;
             // 大文字で始まる知らない語 (Tanaka) を小文字の途中で切って、付属語でない日本語を続ける (Ta|なか)
             var nameSplit = japanese && !edge.Particle && from.Edge.Name && from.Edge.End == edge.Start && edge.Start < length && char.IsAsciiLetterLower(text[edge.Start]) ? NameSplitCost : 0;
             // ltu・xtu で打った っ の後ろに入力が続く (まいっ|かう・れあ|っ|かう)。っ の後ろにかなが続くときは子音を重ねて打つ (maikka・moratte)
             var spelledSokuon = japanese ? SpelledSokuonCost * SpelledSokuons(edge.Start, edge.End) : 0;
-            var sokuon = vowel + nameSplit + spelledSokuon + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
+            // っ で終わる語 (いっ・とっ) の後ろに、た・て・ち 以外で始まる日本語が続く (issue を いっ|すえ と読む)
+            var stem = japanese && from.Edge is { English: false, Neutral: false, Kana: [_, .., 'っ'] } && from.Edge.End == edge.Start && edge.Kana is [var first, ..] &&
+                !"たてち".Contains(first) ? SokuonStemCost : 0;
+            var sokuon = vowel + nameSplit + spelledSokuon + stem + (state.Sokuon && !japanese ? DanglingSokuonCost : 0) +
                 (japanese && edge.Kana == "っ" && DoubledAt(edge.Start) && state.Side != Side.Japanese ? DanglingSokuonCost : 0);
             if (edge.English)
             {
