@@ -850,6 +850,62 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void Issue959_VersionCandidate_CanBeSelectedAndCommitted()
+    {
+        var expected = $"Meltype-{ProjectInfo.CoreVersion}";
+        foreach (var live in new[] { false, true })
+        {
+            foreach (var typed in new[] { "ba-jon", "ba-jonn", "ba-zyonn" })
+            {
+                var k = new CompositionTests.Keyboard(live: live,
+                    moreCandidates: reading => reading == "ばーじょん" ? ["バージョン", "Mozc-test"] : []);
+                k.Type(typed + " ");
+                var view = k.Host.View!;
+                Assert.True(view.Converting, typed + ": 変換中");
+                Assert.True(view.Candidates.Contains(expected), typed + ": " + string.Join(" ", view.Candidates));
+                Assert.Equal(1, view.Candidates.Count(c => c == expected), "版の候補を重複させない");
+                Assert.True(view.Candidates.Contains("バージョン"), "普通のカタカナの候補も残す");
+                Assert.True(view.Candidates.Contains("Mozc-test"), "変換エンジンの版の候補も残す");
+                k.Controller.SelectCandidate(view.Candidates.ToList().IndexOf(expected));
+                k.Press(VirtualKeys.Return);
+                Assert.Equal(expected, k.Host.Document, typed);
+            }
+        }
+    }
+
+    [Test]
+    public static void Issue959_VersionCandidate_LiveConversionCommitsKatakana()
+    {
+        // ライブ変換では、カタカナの「バージョン」を版の候補より前に出し、そのまま確定しても版にしない (Meltype の版を打ちたいことはまれ)
+        var version = $"Meltype-{ProjectInfo.CoreVersion}";
+        foreach (var typed in new[] { "ba-jon", "ba-jonn", "ba-zyonn" })
+        {
+            var k = new CompositionTests.Keyboard(live: true,
+                moreCandidates: reading => reading == "ばーじょん" ? ["バージョン", "Mozc-test"] : []);
+            k.Type(typed + " ");
+            var candidates = k.Host.View!.Candidates.ToList();
+            Assert.True(candidates.IndexOf("バージョン") is >= 0 and var katakana && katakana < candidates.IndexOf(version), typed + ": " + string.Join(" ", candidates));
+            k.Press(VirtualKeys.Return);
+            Assert.True(k.Host.Document != version, typed + ": " + k.Host.Document);
+        }
+    }
+
+    [Test]
+    public static void Issue959_VersionCandidate_DoesNotChangeOtherInput()
+    {
+        var expected = $"Meltype-{ProjectInfo.CoreVersion}";
+        foreach (var typed in new[] { "version", "ba-jonappu", "ba-" })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed + " ");
+            Assert.True(k.Host.View?.Candidates.Contains(expected) != true, typed + ": ほかの読みには版を出さない");
+        }
+        var english = new CompositionTests.Keyboard();
+        english.Type("version\n");
+        Assert.Equal("version", english.Host.Document);
+    }
+
+    [Test]
     public static void CompositionSize_LargerChoicesAreSaved()
     {
         // 変換ボックスの文字をもっと大きくしたい (issue #164): 特大・最大 を選べて、保存しても残る
