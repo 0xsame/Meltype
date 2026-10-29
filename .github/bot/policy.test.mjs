@@ -210,7 +210,7 @@ test('自動で Draft にした PR を Ready for review に戻したら、数え
   await f.run(); await f.run(start + LimitWaitMs);
   const back = start + LimitWaitMs + 1000;
   f.records.get(3).draft = false; f.addEvent(3, 'ready_for_review');
-  await f.run(back, 'pull_request_target', { pull_request: { number: 3 } });
+  await f.run(back);
   assert.match(f.comments.get(3)[0].body, /"status":"waiting"/);
   await f.run(back + LimitWaitMs - 1);
   assert.equal(f.records.get(3).draft, false);
