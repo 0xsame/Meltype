@@ -294,7 +294,7 @@ internal sealed class MeltypeEngine : IDisposable
         {
             var app = _foreground.Current;
             if (altTap != AltTap.None && settings.Enabled && settings.AltKeysSwitchKeyboard &&
-                settings.IsAppEnabled(app.ProcessName) && !settings.IsGame(app.ProcessName, looksLikeGame: false))
+                settings.IsAppEnabled(app.ProcessName) && !settings.IsGame(app.ProcessName, app.LooksLikeGame))
             {
                 var masked = MaskAltTap(altTap, e);
                 if (altTap == AltTap.Tapped) SetImeOpenAsync(japanese: e.Vk == VirtualKeys.RMenu);
