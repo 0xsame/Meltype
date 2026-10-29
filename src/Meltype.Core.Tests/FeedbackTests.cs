@@ -774,6 +774,7 @@ internal static class LanguageLearningTests
             ("dive into summer", "dive into summer"), // #1125
             ("imagenzai", "いまげんざい"), ("imagewohiraku", "imageをひらく"), // #1175
             ("pa-thisyon", "ぱーてぃしょん"), ("applenoiphonehakanaritakai", "appleのiphoneはかなりたかい"),
+            ("erroraru", "errorある"),
             // #1148 で英語になっていた日本語
             ("intoro", "いんとろ"), ("tonegawa", "とねがわ"), ("metaboriltuku", "めたぼりっく"), ("pureriri-su", "ぷれりりーす"), ("mainkurafuto", "まいんくらふと"),
         })
