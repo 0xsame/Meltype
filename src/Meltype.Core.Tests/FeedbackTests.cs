@@ -856,13 +856,9 @@ internal static class LanguageLearningTests
         CompositionTests.Detector.Memory = memory;
         try
         {
-            var k = new CompositionTests.Keyboard(languages: memory);
-            k.Type("go");
-            k.Press(VirtualKeys.F10);
-            k.Type("\n");
-            Assert.Equal("go", k.Host.Document);
-
-            k = new CompositionTests.Keyboard(languages: memory, moreCandidates: reading => reading == "ご" ? ["語", "碁", "後"] : []);
+            // go は英単語として見えるので、F10 は大文字・小文字を変える。英字にして確定した学習を直接入れる
+            memory.Remember("go", english: true, explicitChoice: true);
+            var k =new CompositionTests.Keyboard(languages: memory, moreCandidates: reading => reading == "ご" ? ["語", "碁", "後"] : []);
             k.Type("go");
             Assert.Equal("go", k.Showing, "覚えたとおり英字");
             k.Press(VirtualKeys.Convert);

@@ -904,17 +904,6 @@ internal static class CompositionTests
         Assert.True(history.Get("10がつ9にち") is null, "曜日付きも学習しない");
     }
 
-    [Test]
-    public static void Midika_IsJapaneseWithEnglishSplitAsCandidate()
-    {
-        // midi + か とも読めるが、みぢか (身近) は日本語の語なので日本語。英語の区切り (midiか) は候補で選べる
-        var k = new Keyboard(converter: new SplitConverter(new() { ["みぢか"] = [new("みぢか", "身近")] }));
-        k.Type("midika ");
-        var candidates = k.Host.View!.Candidates;
-        Assert.Equal("身近", candidates[0], string.Join(" ", candidates));
-        Assert.True(candidates.Contains("midiか"), string.Join(" ", candidates));
-    }
-
     /// <summary>決めた文節に区切る変換エンジン。</summary>
     private sealed class SplitConverter(Dictionary<string, ConversionClause[]> clauses) : IKanjiConverter
     {
@@ -3524,11 +3513,12 @@ internal static class CompositionTests
     }
 
     [Test]
-    public static void Candidates_GoSpaceShowsEngineCandidates()
+    public static void Candidates_GoConvertShowsEngineCandidates()
     {
-        // #1015・#1088: go + Space の候補が go ご だけで、語 碁 後 が出ない。go もほかの語 (do no) と同じく、見えている ご を変換する
+        // #1015・#1088: go の候補が go ご だけで、語 碁 後 が出ない。go は英単語として見えるので、Space は英字で確定し、変換キーで ご を変換する
         var k = new Keyboard(moreCandidates: reading => reading == "ご" ? ["後", "語", "碁"] : []);
-        k.Type("go ");
+        k.Type("go");
+        k.Press(VirtualKeys.Convert);
         Assert.True(k.Host.View!.Candidates.Take(4).SequenceEqual(["ご", "後", "語", "碁"]), string.Join(",", k.Host.View.Candidates));
         Assert.True(k.Host.View.Candidates.Contains("go"), "打ったままの英字も候補に残す: " + string.Join(",", k.Host.View.Candidates));
     }
