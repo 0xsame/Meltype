@@ -55,3 +55,5 @@ ost
 dive
 # Issue #1139
 dice die dies died
+# いっすえ と読めるが、日本語の語ではない
+issue issues
