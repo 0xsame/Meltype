@@ -20,6 +20,9 @@ public sealed partial class CompositionDetector
     private readonly ProperNouns _proper;
     private readonly KanaDetector? _kana;
 
+    /// <summary>ユーザーの辞書フォルダーの japanese.txt の語の読み。ラティスの日本語のノードにする (同梱の japanese.txt の語はノードにしない)。</summary>
+    private readonly HashSet<string> _userJapanese = new(StringComparer.Ordinal);
+
     /// <summary>ローマ字としても読める、よく使う拡張子 (Meltype.ace、setup.ini)。読めない拡張子 (dll、json) は一覧に無くても英字のまま。</summary>
     private static readonly HashSet<string> FileExtensions =
     [
@@ -30,9 +33,12 @@ public sealed partial class CompositionDetector
 
     private static readonly HashSet<string> DomainSuffixes = ["ai", "app", "au", "biz", "ca", "cn", "co", "com", "de", "dev", "edu", "eu", "fr", "gg", "gov", "info", "in", "io", "jp", "kr", "me", "net", "org", "uk", "us", "xyz"];
 
-    public CompositionDetector(RomajiDetector romaji, EnglishDetector english, ProperNouns? proper = null, KanaDetector? kana = null)
+    public CompositionDetector(RomajiDetector romaji, EnglishDetector english, ProperNouns? proper = null, KanaDetector? kana = null,
+        IEnumerable<string>? userJapaneseWords = null)
     {
         _kana = kana;
+        foreach (var word in userJapaneseWords ?? [])
+            if (romaji.AnalyzeWord(word) is { IsValid: true, Partial: "" } reading) _userJapanese.Add(reading.Kana);
         _romaji = romaji;
         _english = english;
         _proper = proper ?? new ProperNouns();
@@ -44,7 +50,8 @@ public sealed partial class CompositionDetector
         var japaneseWords = DictionarySource.Load("japanese.txt", userDictionaryDirectory).ToList();
         var proper = ProperNouns.Load(userDictionaryDirectory);
         var english = new EnglishDetector(DictionarySource.Load("english.txt", userDictionaryDirectory).Concat(proper.LowercaseWords));
-        return new CompositionDetector(romaji, english, proper, new KanaDetector(japaneseWords, romaji));
+        return new CompositionDetector(romaji, english, proper, new KanaDetector(japaneseWords, romaji),
+            DictionarySource.LoadUser("japanese.txt", userDictionaryDirectory));
     }
 
     private static readonly Lazy<WordList> ReadableEnglish = new(() => new WordList(DictionarySource.Load("english-readable.txt", null)));
@@ -191,11 +198,6 @@ public sealed partial class CompositionDetector
         return _english.Words.ContainsWord(lower) || IsSpellWord(lower);
     }
 
-    internal bool IsJapaneseWordOrPrefix(string kana) => _kana?.IsJapaneseWordOrPrefix(kana) == true;
-
-    /// <summary>kana が、よく使う語の読み (readings.txt、3 文字以上) かその頭か (すいちょ = すいちょく の頭)。</summary>
-    internal static bool IsJapaneseReadingOrPrefix(string kana) => kana.Length >= 3 && CommonReadings.Words.HasPrefix(kana);
-
     /// <summary>スペルチェッカーが正しいと言う英単語か、よくある打ち間違い (teh、recieve) か。</summary>
     internal bool IsSpellWord(string lower) => SpellChecker is { } checker && (checker.IsWord(lower) || checker.AutoCorrection(lower) is not null);
 
@@ -213,9 +215,6 @@ public sealed partial class CompositionDetector
     /// <summary>同梱の英単語の辞書・固有名詞にある語か、ユーザーが英字に直して覚えた語か (ok、github)。スペルチェッカーは使わない。</summary>
     public bool IsListedEnglishWord(string lower) =>
         lower.Length >= 2 && (Memory?.Get(lower) ?? (_english.Words.ContainsWord(lower) || _proper.Contains(lower)));
-
-    /// <summary>english-readable.txt の語か (ローマ字として最後まで読めても、日本語の語にならない英単語: open、feature)。</summary>
-    public static bool IsReadableEnglishWord(string lower) => ReadableEnglish.Value.ContainsWord(lower);
 
     /// <summary>
     /// 知っている英単語か (同梱の辞書・固有名詞・ユーザーが英字に直して覚えた語・4 文字以上ならスペルチェッカー)。

@@ -1377,6 +1377,28 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void UserJapaneseTxt_IsJapaneseWord()
+    {
+        var directory = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            string Segments(CompositionDetector detector)
+            {
+                var text = new CompositionText(detector);
+                foreach (var c in "game") text.Append(c);
+                return string.Join("|", text.Segments().Select(s => (s.IsEnglish ? "EN:" : "JA:") + s.Raw));
+            }
+            Assert.Equal("EN:game", Segments(CompositionDetector.CreateDefault(directory)));
+            File.WriteAllText(Path.Combine(directory, "japanese.txt"), "game\n");
+            Assert.Equal("JA:game", Segments(CompositionDetector.CreateDefault(directory)), "ユーザーの japanese.txt の語は日本語の語");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Test]
     public static void SingleLetterA_IsEnglishOnlyAfterEnglish()
     {
         foreach (var (before, expected) in new[] { ("", "あ"), ("I have ", "a") })

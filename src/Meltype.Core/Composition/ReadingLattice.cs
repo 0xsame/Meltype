@@ -299,11 +299,11 @@ public sealed partial class CompositionDetector
         return count;
     }
 
-    private static (LatticeEdge Edge, double Cost) JapaneseEdge(int start, int end, string kana)
+    private (LatticeEdge Edge, double Cost) JapaneseEdge(int start, int end, string kana)
     {
         var particle = IsNounParticle(kana);
         if (RomajiTypoCorrector.CommonWordCost(kana) is { } cost) return (new LatticeEdge(start, end, false, kana, true, particle), cost);
-        if (CommonReadings.Phrases.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), JapaneseWordCost);
+        if (CommonReadings.Phrases.Contains(kana) || _userJapanese.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), JapaneseWordCost);
         if (CommonReadings.Katakana.Contains(kana) || CommonReadings.Brands.Contains(kana)) return (new LatticeEdge(start, end, false, kana, true, false), KatakanaWordCost);
         return (new LatticeEdge(start, end, false, kana, true, false), double.NaN);
     }
