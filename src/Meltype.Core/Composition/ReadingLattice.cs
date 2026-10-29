@@ -43,6 +43,8 @@ public sealed partial class CompositionDetector
     private const double LearnedEnglishCost = 0.7;
     // 知らない英字 (ローマ字として読めない所: pwd) 1 文字
     private const double UnknownLetterCost = 1.5;
+    // 入力の最後の、知っている英単語の頭 (insta)。英単語 + 日本語 1 音 (ins + た) より軽く、日本語の語より重い
+    private const double EnglishPrefixCost = 2.5;
     // 知らない語の大文字 1 文字
     private const double UnknownUpperCost = 1;
     // 大文字で始まり 2 文字目が小文字の 3 文字以上の知らない語 (Tanaka・McKinsey) の小文字 1 文字
@@ -472,6 +474,10 @@ public sealed partial class CompositionDetector
                 edges.Add((new LatticeEdge(start, end, false, _romaji.ConvertLenient(span.ToLowerInvariant(), final: true), true, false), JapaneseWordCost));
                 continue;
             }
+            else if (!kanaInput && end == length && span.Length >= 4 && span.All(char.IsAsciiLetterLower) &&
+                     unknown[Math.Max(start, Math.Min(end, _preparedRaw.Length))] > unknown[start] && _english.IsPrefix(span))
+                // 入力の最後の、英単語の頭 (insta|ll)。入力途中の子音より前に、ローマ字で読めない英字があるときだけ (mala は まぁ、mits は みつ の途中)
+                cost = EnglishPrefixCost;
             else if (!kanaInput && unknown[end] > unknown[start])
             {
                 var name = span.Length >= 3 && char.IsAsciiLetterUpper(span[0]) && char.IsAsciiLetterLower(span[1]);

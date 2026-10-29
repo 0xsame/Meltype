@@ -1433,6 +1433,17 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void EnglishWordPrefix_StaysEnglishWhileTyping()
+    {
+        foreach (var (typed, expected) in new[] { ("insta", "insta"), ("instal", "instal"), ("mits", "みts"), ("mala", "まぁ") })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Type(typed);
+            Assert.Equal(expected, k.Showing, $"{typed} を打っている途中");
+        }
+    }
+
+    [Test]
     public static void F6_AfterLatticeSplitsUnit()
     {
         CompositionTests.Detector.SpellChecker = BuiltInWordChecker.Shared;
