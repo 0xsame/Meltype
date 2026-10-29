@@ -48,8 +48,7 @@ garage
 nohup
 # Issue #1121
 vocaloid
-# Issue #1122
-midi
+# midi は入れない (みぢ は みぢか = 身近 の始まりになる。issue #1179)
 # Issue #1123
 ost
 # Issue #1125
