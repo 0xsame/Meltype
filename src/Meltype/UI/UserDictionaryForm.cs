@@ -28,7 +28,7 @@ internal sealed class UserDictionaryForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         // 文字は画面の拡大率に合わせて大きくなるので、窓の大きさも拡大率に合わせる。
         Size = LogicalToDeviceUnits(new Size(560, 520));
-        MinimumSize = new Size(460, 360);
+        MinimumSize = LogicalToDeviceUnits(new Size(460, 360));
         Font = new Font("Yu Gothic UI", 9.5F);
 
         var add = new Button { Text = "登録", AutoSize = true };
