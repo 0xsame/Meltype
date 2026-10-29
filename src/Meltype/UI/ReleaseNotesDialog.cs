@@ -7,8 +7,8 @@ namespace Meltype.UI;
 
 /// <summary>
 /// リリースノートを見せる (issue #1207)。更新したあとの初めての起動で一度だけ出し、トレイの「更新」→「リリースノート...」からも開ける。
-/// 中身は自動更新でダウンロードしたときに残しておいたもの。無ければ (インストーラーで入れた など) リリースのページへ案内する。
-/// 読めなくても Meltype の動きには関係しない。
+/// 中身は配布物に同梱したその版のリリースノート (docs/release-notes/&lt;版&gt;.md。GitHub のリリースにも同じ本文を載せる)。
+/// 無ければ (開発中のビルド など) リリースのページへ案内する。読めなくても Meltype の動きには関係しない。
 /// </summary>
 internal sealed class ReleaseNotesDialog : Form
 {
@@ -24,7 +24,7 @@ internal sealed class ReleaseNotesDialog : Form
                 _open.Activate();
                 return;
             }
-            _open = new ReleaseNotesDialog(version, updated, Updater.ReleaseNotes(version));
+            _open = new ReleaseNotesDialog(version, updated, Bundled(version));
             _open.Show();
         }
         catch (Exception ex)
@@ -77,6 +77,21 @@ internal sealed class ReleaseNotesDialog : Form
         AcceptButton = close;
         CancelButton = close;
         if (notes is null) Height = intro.PreferredHeight + buttons.PreferredSize.Height + LogicalToDeviceUnits(80);
+    }
+
+    /// <summary>配布物に同梱したリリースノート (無い・読めなければ null)。</summary>
+    private static string? Bundled(string version)
+    {
+        try
+        {
+            var file = Path.Combine(AppContext.BaseDirectory, "release-notes", $"{version}.md");
+            return File.Exists(file) ? File.ReadAllText(file) : null;
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log.Warn($"リリースノートを読めませんでした: {ex.Message}");
+            return null;
+        }
     }
 
     private static void Open(string url)

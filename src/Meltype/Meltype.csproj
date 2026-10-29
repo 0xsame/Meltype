@@ -23,4 +23,8 @@
     <InternalsVisibleTo Include="Meltype.Tests" />
     <ProjectReference Include="..\Meltype.Core\Meltype.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- リリースノート (docs/release-notes/<版>.md) を配布物の release-notes に入れる。更新したあとの初めての起動で見せる (issue #1207) -->
+    <None Include="..\..\docs\release-notes\*.md" Link="release-notes\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
