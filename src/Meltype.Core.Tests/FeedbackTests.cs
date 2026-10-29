@@ -1377,6 +1377,18 @@ internal static class LanguageLearningTests
     }
 
     [Test]
+    public static void SingleLetterA_IsEnglishOnlyAfterEnglish()
+    {
+        foreach (var (before, expected) in new[] { ("", "あ"), ("I have ", "a") })
+        {
+            var k = new CompositionTests.Keyboard();
+            k.Host.PrecedingText = before;
+            k.Type("a\n");
+            Assert.Equal(expected, k.Host.Document, $"「{before}」の後ろの a");
+        }
+    }
+
+    [Test]
     public static void F6_AfterLatticeSplitsUnit()
     {
         CompositionTests.Detector.SpellChecker = BuiltInWordChecker.Shared;

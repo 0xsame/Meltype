@@ -207,7 +207,7 @@ public sealed partial class CompositionDetector
         {
             if (!IsBoundary(p)) continue;
             var japanese = JapaneseEdges(units, text, p, unitOf, unitsEnd, pending, kanaInput);
-            var english = EnglishEdges(text, p, unknown, kanaInput, level, IsBoundary);
+            var english = EnglishEdges(text, p, unknown, kanaInput, level, IsBoundary, precedingEnglish == true);
             var unit = p < unitsEnd ? unitAt[p] : -1;
             // 記号・数字・空白・z の記号 (zh = ←) の単位: 言語を切り替えない
             LatticeEdge? neutral = unit >= 0 && !IsKanaUnit(units[unit]) && !IsLetterUnit(units[unit])
@@ -421,7 +421,7 @@ public sealed partial class CompositionDetector
     /// start から始まる、綴りで決まる候補: 英語 (知っている英単語・知らない英字・短縮形) と、
     /// ユーザーがかなに直して覚えた語 (日本語の語として重み 1)。
     /// </summary>
-    private List<(LatticeEdge, double)> EnglishEdges(string text, int start, int[] unknown, bool kanaInput, DetectionLevel level, Func<int, bool> isBoundary)
+    private List<(LatticeEdge, double)> EnglishEdges(string text, int start, int[] unknown, bool kanaInput, DetectionLevel level, Func<int, bool> isBoundary, bool afterEnglish)
     {
         var edges = new List<(LatticeEdge, double)>();
         if (!char.IsAsciiLetter(text[start])) return edges;
@@ -440,7 +440,7 @@ public sealed partial class CompositionDetector
                 if (!IsContraction(span)) continue;
                 cost = KnownEnglishCost;
             }
-            else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end)) &&
+            else if (IsWordCasing(span) && IsLatticeEnglishWord(span.ToLowerInvariant()) && (span.Length > 1 || Standalone(text, start, end, afterEnglish)) &&
                      !IsLowercaseJapaneseProperNoun(span))
             {
                 cost = Memory?.Get(span.ToLowerInvariant()) == true ? LearnedEnglishCost
@@ -482,9 +482,12 @@ public sealed partial class CompositionDetector
         span.All(char.IsAsciiLetterLower) && Memory?.Get(span) is null && _proper.Contains(span) &&
         _kana?.IsJapaneseWord(_romaji.ConvertLenient(span, final: true)) == true;
 
-    /// <summary>[start, end) の前後が英字でないか (1 文字の英単語 a・i は、前後を英字以外で区切ったときだけ語)。</summary>
-    private static bool Standalone(string text, int start, int end) =>
-        (start == 0 || !char.IsAsciiLetter(text[start - 1])) && (end == text.Length || !char.IsAsciiLetter(text[end]));
+    /// <summary>
+    /// [start, end) の前後が英字以外で区切られているか (1 文字の英単語 a・i は、区切ったときだけ語)。
+    /// 入力の頭は、前が英語のときだけ区切りとして数える (a だけを打ったら あ)。
+    /// </summary>
+    private static bool Standalone(string text, int start, int end, bool afterEnglish) =>
+        (start == 0 ? afterEnglish : !char.IsAsciiLetter(text[start - 1])) && (end == text.Length || !char.IsAsciiLetter(text[end]));
 
     /// <summary>
     /// 知っている英単語か (同梱の辞書・固有名詞・スペルチェッカー・english-readable.txt・-pedia・決まり文句・ユーザーが英字に直して覚えた語)。
