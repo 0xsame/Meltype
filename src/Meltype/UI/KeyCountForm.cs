@@ -68,7 +68,12 @@ internal sealed class KeyCountForm : Form
             _counter.Save();
         };
 
-        _refresh.Tick += (_, _) => UpdateSummary();
+        // 開いたままでも、分析・キーごと・日ごとを今の数にする (数が変わったときだけ作り直す)
+        _refresh.Tick += (_, _) =>
+        {
+            if (_counter.Total != _shownTotal) Reload();
+            else UpdateSummary();
+        };
         _refresh.Start();
         FormClosed += (_, _) => _refresh.Dispose();
         Reload();
@@ -77,8 +82,11 @@ internal sealed class KeyCountForm : Form
     private void UpdateSummary() =>
         _summary.Text = $"合計 {_counter.Total:N0} 打    今日 {_counter.OnDay(DateTime.Today):N0} 打";
 
+    private long _shownTotal = -1;
+
     private void Reload()
     {
+        _shownTotal = _counter.Total;
         UpdateSummary();
         var total = Math.Max(1, _counter.TopKeys().Sum(p => p.Value));
         _keyGrid.Rows.Clear();

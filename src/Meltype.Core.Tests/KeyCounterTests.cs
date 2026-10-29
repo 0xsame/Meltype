@@ -32,6 +32,18 @@ internal static class KeyCounterTests
     }
 
     [Test]
+    public static void Count_PairsDownAndUpByPhysicalKey()
+    {
+        // 押下と解放で仮想キーコードが変わっても (同じスキャンコード)、離したことにして次の打鍵を数える
+        var counter = OnCounter();
+        var day = new DateTime(2026, 10, 19);
+        counter.Count(new KeyEvent(0xF3, 0x29, false, false, false, 0), day, true);
+        counter.Count(new KeyEvent(0xF4, 0x29, false, true, false, 0), day, true);
+        counter.Count(new KeyEvent(0xF4, 0x29, false, false, false, 0), day, true);
+        Assert.Equal(2L, counter.Total);
+    }
+
+    [Test]
     public static void Count_DoesNothingWhenOffOrNotAllowed()
     {
         var off = new KeyCounter(null);

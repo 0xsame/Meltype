@@ -536,9 +536,13 @@ internal sealed class MeltypeEngine : IDisposable
 
     private bool IsCodeApp(Settings settings) => CurrentCodeFocus(settings) != CodeFocus.None;
 
-    /// <summary>打鍵数に数えてよいか。Meltype を一時停止しているとき・アプリ別に OFF のとき・パスワード欄では数えない。</summary>
+    /// <summary>
+    /// 打鍵数に数えてよいか。Meltype を一時停止しているとき・アプリ別に OFF のとき・パスワード欄では数えない。
+    /// フォーカスが移った先をまだ調べている間も数えない (前の入力欄の判定のままパスワード欄の打鍵を数えないように)。
+    /// </summary>
     private bool KeyCountAllowed(Settings settings) =>
-        settings.Enabled && settings.IsAppEnabled(_foreground.Current.ProcessName) && _composition?.Focus.Current.IsPassword != true;
+        settings.Enabled && settings.IsAppEnabled(_foreground.Current.ProcessName) &&
+        (_composition is null || _composition.Focus.Resolved && !_composition.Focus.Current.IsPassword);
 
     /// <summary>
     /// 前面のアプリが「コード」で、キャレットがコード (コメント・文字列・AI の入力行の外) にあるか。フックのスレッドで呼ばれる。

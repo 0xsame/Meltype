@@ -71,6 +71,7 @@ internal sealed partial class KeyCounter
     /// <summary>
     /// 1 打鍵を数える。押しっぱなしの繰り返しは数えない (離すまで 1 回)。
     /// allowed が false (一時停止中・アプリ別に OFF・パスワード欄など) のときは数えないが、離したことは覚えておく。
+    /// 押したキーと離したキーは物理キー (PhysicalId) で対にする (押下と解放で仮想キーコードが変わっても、押したままにしない)。
     /// </summary>
     public void Count(KeyEvent e, DateTime now, bool allowed)
     {
@@ -78,10 +79,10 @@ internal sealed partial class KeyCounter
         {
             if (e.IsUp)
             {
-                _held.Remove(e.Vk);
+                _held.Remove(e.PhysicalId);
                 return;
             }
-            if (!_held.Add(e.Vk) || !allowed || !_data.Enabled) return;
+            if (!_held.Add(e.PhysicalId) || !allowed || !_data.Enabled) return;
             Add(KeyName(e.Vk), DayKey(now), 1);
             _data.Hours[now.Hour]++;
         }
