@@ -7,6 +7,7 @@
 // Issue の本文・コメントは誰でも書けるので、コマンドとして実行しない (値として次の job に渡すだけ)。
 import fs from 'node:fs';
 import path from 'node:path';
+import { codeCell } from './markdown.mjs';
 
 const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
 const repo = process.env.GITHUB_REPOSITORY;
@@ -206,7 +207,7 @@ const Help = [
   '| `/test-repro <SHA> <キー>` | PR のコードで `/repro` | メンテナー |',
   '| `/test-jht <SHA> <文> [/ 読み]` | PR のコードで `/jht` | メンテナー |',
   '| `/test-explain <SHA> <キー>` | PR のコードで `/explain` | メンテナー |',
-  '| `/release <版>` | 版 (例: `1.2.3`) のタグとリリースの下書きを作り、Windows・Mac・Linux の配布物のビルドを始める。csproj・Info.plist の版が <版> でなければ止める | 管理者 |',
+  '| `/release <版>` | 版 (例: `1.2.3`) のタグとリリースの下書きを作り、Windows・Mac・Linux の配布物のビルドを始める。csproj・Info.plist の版が <版> でないか、docs/release-notes/<版>.md が無ければ止める | 管理者 |',
   '| `/pre-release <版>` | `/release` のプレリリース版 (版は `1.2.3-pre.1` の形) | 管理者 |',
   '| `/self-assign` | 自分を Issue の Assignees に入れる (担当になる)。`要トリアージ` の間はメンテナーだけ | だれでも |',
   '| `/help` | この一覧 | だれでも |',
@@ -218,7 +219,7 @@ const Help = [
 //   1. 版の形を確かめる (release: 1.2.3 / pre-release: 1.2.3-pre.1)
 //   2. main の csproj (2 つ)・Info.plist の版が <版> と合うか確かめる (版を上げ忘れた配布を防ぐ: issue #601)
 //   3. タグ v<版> を main の先頭に作る (もうあれば止める)
-//   4. リリースの下書きを作る (リリースノートは自動生成。pre-release は prerelease)
+//   4. リリースの下書きを作る。本文は main の docs/release-notes/<版>.md (配布物にも同じものを同梱する: issue #1207)。無ければ止める。pre-release は prerelease
 //   5. 配布物のビルド (build / mac / linux) を、そのタグで始める。ビルドが終わると、下書きに配布物が付く
 // タグを GITHUB_TOKEN で作ると push の起動が掛からないので、workflow_dispatch で明示的に起動する。
 async function releaseCommand(issue, command, version) {
@@ -239,12 +240,16 @@ async function releaseCommand(issue, command, version) {
   const plist = await read('mac/Resources/Info.plist');
   const plistVersion = plist.match(/<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/)?.[1];
   if (plistVersion !== plain) mismatches.push(`mac/Resources/Info.plist: ${plistVersion ?? '(版なし)'} (期待 ${plain})`);
-  if (mismatches.length > 0) return reply(`❌ main の版が ${version} になっていないので、リリースしません (docs/RELEASE.md の「版を上げる」を先に main に入れてください):\n\n${mismatches.map(m => `- ${m}`).join('\n')}`);
+  // リリースノートは配布物に同梱し、更新したあとの初めての起動で見せるので、先に main に入れておく
+  const notesFile = `docs/release-notes/${version}.md`;
+  const notes = await read(notesFile).catch(() => null);
+  if (!notes?.trim()) mismatches.push(`${notesFile}: (無い。リリースノートを書いて main に入れてください)`);
+  if (mismatches.length > 0) return reply(`❌ main で ${version} のリリースの準備 (版・リリースノート) ができていないので、リリースしません (docs/RELEASE.md の「版を上げる」を先に main に入れてください):\n\n${mismatches.map(m => `- ${m}`).join('\n')}`);
   const tag = `v${version}`;
   if (await gh('GET', `/git/ref/tags/${tag}`).then(() => true).catch(() => false)) return reply(`❌ タグ \`${tag}\` はもうあります。`);
   const sha = (await gh('GET', '/git/ref/heads/main')).object.sha;
   await gh('POST', '/git/refs', { ref: `refs/tags/${tag}`, sha });
-  await gh('POST', '/releases', { tag_name: tag, name: `Meltype ${version}`, draft: true, prerelease: pre, generate_notes: true });
+  await gh('POST', '/releases', { tag_name: tag, name: `Meltype ${version}`, draft: true, prerelease: pre, body: notes });
   const started = [], failed = [];
   for (const workflow of ['build.yml', 'mac.yml', 'linux.yml']) {
     try {
@@ -255,7 +260,7 @@ async function releaseCommand(issue, command, version) {
     }
   }
   await reply([
-    `✅ タグ \`${tag}\` (${sha.slice(0, 7)}) とリリースの下書き (${pre ? 'プレリリース' : '通常'}、リリースノートは自動生成) を作りました。`,
+    `✅ タグ \`${tag}\` (${sha.slice(0, 7)}) とリリースの下書き (${pre ? 'プレリリース' : '通常'}、本文は \`${notesFile}\`) を作りました。`,
     started.length > 0 ? `\nビルドを始めました: ${started.join('・')}。終わると下書きに配布物が付くので、中身を確かめてから公開してください。` : '',
     failed.length > 0 ? `\n⚠ 始められなかったビルド (Actions の画面から ${tag} で手で実行してください):\n${failed.map(f => `- ${f}`).join('\n')}` : '',
   ].join('\n'));
@@ -426,8 +431,8 @@ async function parse() {
 
 // 改行は空白にする (空行でコードスパンが切れ、後ろが Markdown として表示されるため)
 const code = text => '`' + String(text ?? '').replace(/\r?\n|\r/g, ' ').replace(/`/g, 'ˋ') + '`';
-// 表のセルに入れるコード。| はコードスパンの中でもセルの区切りになるので \| にする (表の中では | と表示される)
-const cell = text => code(text).replace(/\|/g, '\\|');
+// 表のセルは記号を文字参照にし、元の文字を保って表示する。
+const cell = codeCell;
 // 利用者が書いた文をそのまま出す。リンク・画像・HTML にならないよう ASCII の記号を \ でエスケープし、
 // @ の後ろに幅の無い空白を入れてメンションにしない
 // 改行は空白にする (表のセルの中でも 1 行に収める)
