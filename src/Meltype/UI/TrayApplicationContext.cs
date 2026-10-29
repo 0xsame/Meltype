@@ -179,7 +179,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         updates.DropDownItems.Add("リリースノート...", null, (_, _) => ReleaseNotesDialog.ShowFor(AppInfo.Version, updated: false));
         _updateItem = new ToolStripMenuItem("", null, (_, _) => ApplyUpdate()) { Visible = false };
         updates.DropDownItems.Add(_updateItem);
-        updates.DropDownOpening += (_, _) => _autoUpdateItem.Checked = _engine.Settings.AutoUpdate;
+        updates.DropDownOpening += (_, _) =>
+        {
+            _autoUpdateItem.Checked = _engine.Settings.AutoUpdate;
+            // プレリリース版の更新を OFF にしたら、ダウンロード済みのプレリリース版の「更新して再起動」は出さない
+            ShowUpdateItem();
+        };
         if (!AppPaths.IsPortable) menu.Items.Add(updates);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("終了", null, (_, _) => ExitThread());
@@ -193,7 +198,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _engine.ToggleRequested += OnToggleRequested;
         _enabledItem.Text = _hotkey.Name is { } hotkey ? $"Meltype を有効にする (Ctrl+半角/全角, {hotkey})" : "Meltype を有効にする (Ctrl+半角/全角)";
         _engine.StatusChanged += OnEngineStatusChanged;
-        _updater = new Updater(() => !AppPaths.IsPortable && _engine.Settings.AutoUpdate);
+        _updater = new Updater(() => !AppPaths.IsPortable && _engine.Settings.AutoUpdate, () => Prerelease);
         _updater.Ready += OnUpdateReady;
         ShowUpdateItem();
         UpdateStatus();
@@ -394,11 +399,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         return $"{string.Join("、", names)}{remaining}\n詳細は「ログ / 判定理由」で確認できます。";
     }
 
+    /// <summary>
+    /// プレリリース版も更新の対象にするか (設定の「プレリリース版も自動で更新する」)。
+    /// ダウンロード (Updater) と更新 (Staged・Apply) のどちらも、そのときのこの値で決める。
+    /// </summary>
+    private bool Prerelease => _engine.Settings.UpdatePrerelease;
+
+    /// <summary>ダウンロード済みの新しい版があれば「更新して再起動」を出し、無ければ隠す。</summary>
     private void ShowUpdateItem()
     {
-        if (Updater.Staged() is not { } staged) return;
-        _updateItem.Text = $"Meltype {staged.Version} に更新して再起動";
-        _updateItem.Visible = true;
+        var staged = Updater.Staged(Prerelease);
+        _updateItem.Visible = staged is not null;
+        if (staged is { } shown) _updateItem.Text = $"Meltype {shown.Version} に更新して再起動";
     }
 
     private bool _applyingUpdate;
@@ -412,14 +424,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             // 更新の前に、あなたの打ち方で変わる語があれば見せる (issue #285)。
             // 判定は新しい版の Meltype.exe を起動して待つので、UI スレッドの外で行う (待つ間も Meltype IME に応答するため)
-            if (Updater.Staged() is { } staged)
+            if (Updater.Staged(Prerelease) is { } staged)
             {
                 var words = _composition.Languages.Entries().Select(e => e.Word).Distinct().ToList();
-                var preview = await Task.Run(() => Updater.PreviewChanges(words));
+                var preview = await Task.Run(() => Updater.PreviewChanges(words, Prerelease));
                 if (!UpdateChangesDialog.Confirm(_composition.Languages, staged.Version, _engine.Settings, preview)) return;
             }
             // install.ps1 が Meltype を終了させてから入れ替え、新しい版を起動する。
-            if (!Updater.Apply()) MessageBox.Show("更新を始められませんでした。ログを確認してください。", "Meltype", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!Updater.Apply(Prerelease)) MessageBox.Show("更新を始められませんでした。ログを確認してください。", "Meltype", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
@@ -431,7 +443,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         var result = await _updater.CheckNowAsync();
         ShowUpdateItem();
-        if (Updater.Staged() is { } staged)
+        if (Updater.Staged(Prerelease) is { } staged)
         {
             if (MessageBox.Show($"Meltype {staged.Version} に更新できます。今すぐ更新しますか？ (Meltype が再起動します)", "Meltype の更新", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes) ApplyUpdate();
             return;
