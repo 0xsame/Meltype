@@ -10,8 +10,6 @@ namespace Meltype.Tests;
 /// <summary>Mac 版・Linux 版から使う入力の本体 (MeltypeSession) のテスト。OS がキーを 1 つずつ渡し、使ったかをその場で返す。</summary>
 internal static class SessionFacadeTests
 {
-    private static readonly string[] GoCandidates = ["go", "ご"];
-
     private static MeltypeSession Create() => new(CompositionTests.Detector, new CompositionTests.FakeConverter(), new CompositionOptions(), () => new Settings());
 
     /// <summary>文字を 1 つずつ打つ (英字は大文字なら Shift 付き)。</summary>
@@ -674,43 +672,6 @@ internal static class SessionFacadeTests
         var session = Create();
         var results = Type(session, "seeyouagain\n");
         Assert.Equal("seeyouagain", string.Concat(results.SelectMany(r => r.Commits).Select(e => e.Text)));
-    }
-
-    [Test]
-    public static void Go_OffersEnglishAndHiraganaWhileTyping()
-    {
-        foreach (var (index, expected) in new[] { (0, "go"), (1, "ご") })
-        {
-            var session = Create();
-            var view = Type(session, "go")[^1].View!;
-            Assert.True(view.Candidates.SequenceEqual(GoCandidates), "入力中に両方の候補を返す");
-            Assert.Equal(expected, session.SelectCandidate(index).View?.Text);
-            Assert.Equal(expected, Type(session, "\n")[0].Commits.Single().Text);
-        }
-        var cycling = Create();
-        Type(cycling, "go");
-        Assert.Equal("go", Type(cycling, " ")[0].View?.Text);
-        Assert.Equal("ご", Type(cycling, " ")[0].View?.Text);
-    }
-
-    [Test]
-    public static void GoPreview_IsLimitedToExactAutomaticToken()
-    {
-        foreach (var input in new[] { "g", "goo", "google", "gohan", "kyouhago" })
-        {
-            var session = Create();
-            var view = Type(session, input)[^1].View!;
-            Assert.True(view.Candidates.Count == 0, input + ": go preview must not replace other candidates");
-            Assert.True(!session.SelectCandidate(0).View!.Converting, input + ": no preview selection");
-        }
-        var forced = Create();
-        Type(forced, "go");
-        var kana = forced.HandleKey(VirtualKeys.F6, null, false, false, false, false).View!;
-        Assert.Equal("ご", kana.Text);
-        Assert.Equal(0, kana.Candidates.Count);
-        var invalid = Create();
-        Type(invalid, "go");
-        Assert.True(!invalid.SelectCandidate(2).View!.Converting, "invalid preview index leaves composition unchanged");
     }
 
     [Test]

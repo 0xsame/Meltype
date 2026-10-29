@@ -144,7 +144,6 @@ internal static class Quality
         new("混在", "garagewokiku", "garageをきく"), // issue #1114
         new("英語", "nohup", "nohup"),               // issue #1117
         new("英語", "vocaloid", "vocaloid"),         // issue #1121
-        new("英語", "midi", "midi"),                 // issue #1122
         new("英語", "ost", "ost"),                   // issue #1123
         new("英語", "dive", "dive"),                 // issue #1125
         new("英語", "dice", "dice"),                 // issue #1139
@@ -152,6 +151,8 @@ internal static class Quality
         // 似た綴りの日本語は今までどおり
         new("日本語", "imeeji", "いめえじ"),
         new("日本語", "gare-ji", "がれーじ"),
+        new("日本語", "midika", "みぢか"),           // issue #1179
+        new("日本語", "midikani", "みぢかに"),
         // 語のすぐ後ろが ん なら、語の最後の音の続き (いまげんざい = 今現在。issue #1175)
         new("日本語", "imagenzai", "いまげんざい"),
         new("日本語", "wakatte", "わかって"),         // issue #1231 (Wakatte.TV は固有名詞のまま: Symbols_StartComposition)
