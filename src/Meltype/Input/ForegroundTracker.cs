@@ -168,6 +168,23 @@ internal sealed class ForegroundTracker
         @"\.minecraft\runtime\", @"\Minecraft Launcher\runtime\", @"\Microsoft.4297127D64EC6_8wekyb3d8bbwe\LocalCache\Local\runtime\",
     ];
 
+    /// <summary>そのプロセスの実行ファイルがゲームのフォルダーにあるか。調べられなければ false。</summary>
+    public static bool LooksLikeGame(uint processId)
+    {
+        var process = Native.OpenProcess(Native.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process == IntPtr.Zero) return false;
+        try
+        {
+            var buffer = new char[1024];
+            var size = buffer.Length;
+            return Native.QueryFullProcessImageName(process, 0, buffer, ref size) && LooksLikeGame(new string(buffer, 0, size));
+        }
+        finally
+        {
+            Native.CloseHandle(process);
+        }
+    }
+
     public static bool LooksLikeGame(string path) =>
         GameFolders.Any(folder => path.Contains(folder, StringComparison.OrdinalIgnoreCase)) &&
         // ランチャー本体 (Steam のクライアントなど) は除く。ストアの画面の検索欄では Meltype を使える
