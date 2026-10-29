@@ -1273,6 +1273,53 @@ internal static class LanguageLearningTests
             CompositionTests.Detector.Memory = null;
         }
     }
+
+    [Test]
+    public static void ExplicitEnglish_BeatsLattice()
+    {
+        var memory = new LanguageMemory(null);
+        CompositionTests.Detector.Memory = memory;
+        try
+        {
+            // すし はよく使う日本語の語なので、F10 で直しても 2 回で覚える
+            memory.Remember("sushi", english: true, explicitChoice: true);
+            memory.Remember("sushi", english: true, explicitChoice: true);
+            var k = new CompositionTests.Keyboard(languages: memory);
+            k.Type("sushi");
+            Assert.Equal("sushi", k.Showing);
+            k.Type("\n");
+            Assert.Equal("sushi", k.Host.Document);
+        }
+        finally
+        {
+            CompositionTests.Detector.Memory = null;
+        }
+    }
+
+    [Test]
+    public static void Backspace_AfterLatticeSplitsUnit()
+    {
+        CompositionTests.Detector.SpellChecker = BuiltInWordChecker.Shared;
+        try
+        {
+            foreach (var (typed, shown, afterBackspace) in new[]
+            {
+                ("pythonno", "pythonの", "python"), // 単位は nn|o、ラティスは python|no
+                ("soredemedalsha", "それでmedalsは", "それでmedals"), // 単位は sha、ラティスは medals|ha
+            })
+            {
+                var k = new CompositionTests.Keyboard();
+                k.Type(typed);
+                Assert.Equal(shown, k.Showing, typed);
+                k.Type("\b");
+                Assert.Equal(afterBackspace, k.Showing, typed);
+            }
+        }
+        finally
+        {
+            CompositionTests.Detector.SpellChecker = null;
+        }
+    }
 }
 
 internal static class RawCandidateTests
