@@ -249,25 +249,18 @@ public sealed class CompositionText
             }
         }
         if (_pending.Length > 0) _pending.Length--;
-        else if (!KanaInput && Mode == DisplayMode.Auto && MisalignedTailLength() is int length)
-        {
-            // ラティスが最後の単位の途中で区切った (pythonの の nno、medalsは の sha): 区間の末尾の 1 音 (英語なら 1 文字) を原文から消して読み直す。
-            var truncated = Raw[..^length];
-            _units.Clear();
-            foreach (var c in truncated) Append(c);
-        }
         else if (_units.Count > 0)
         {
-            var englishTail = Mode is DisplayMode.HalfWidthAlphanumeric or DisplayMode.FullWidthAlphanumeric ||
-                              (Mode == DisplayMode.Auto && Segments() is { Count: > 0 } segments && segments[^1].IsEnglish);
-            var last = _units[^1];
-            _units.RemoveAt(_units.Count - 1);
-            // 英字として見せている部分は 1 文字ずつ消す (google の "le" のように 1 音にまとまった単位を丸ごと消さない)。
-            if (englishTail && last.Raw.Length > 1 && !KanaInput)
+            // 見えている最後の 1 音 (英字なら 1 文字) の分だけ後ろから単位を外し、外しすぎた原文を打ち直す。
+            // 単位 (nn|o・sha) とラティスの区切り (python|no・medals|ha) は揃うとは限らない。
+            var length = KanaInput ? _units[^1].Raw.Length : TailLength();
+            var removed = "";
+            while (_units.Count > 0 && removed.Length < length)
             {
-                _pending.Append(last.Raw[..^1]);
-                Normalize(final: false);
+                removed = _units[^1].Raw + removed;
+                _units.RemoveAt(_units.Count - 1);
             }
+            foreach (var c in removed[..^length]) Append(c);
         }
         if (IsEmpty)
         {
@@ -277,25 +270,15 @@ public sealed class CompositionText
         }
     }
 
-    /// <summary>
-    /// 最後の区間の読みが単位の区切りと揃わないとき (pythonの の nn|o、medalsは の sha)、Backspace で消す原文の長さ
-    /// (日本語は区間を読み直した最後の 1 音、英語は 1 文字)。揃っていれば null。
-    /// </summary>
-    private int? MisalignedTailLength()
+    /// <summary>Backspace で消す原文の長さ (英字なら 1 文字、日本語の区間なら区間を読み直した最後の 1 音)。</summary>
+    private int TailLength()
     {
-        if (_units.Count == 0 || Segments() is not { Count: > 0 } segments) return null;
-        var segment = segments[^1];
-        var raw = Raw;
-        if (segment.Raw.Length == 0 || !raw.EndsWith(segment.Raw, StringComparison.Ordinal)) return null;
-        var start = raw.Length - segment.Raw.Length;
-        var onBoundary = false;
-        for (int i = 0, offset = 0; i < _units.Count && offset <= start; offset += _units[i].Raw.Length, i++) onBoundary |= offset == start;
-        if (segment.IsEnglish) return onBoundary ? null : 1;
+        if (Mode is DisplayMode.HalfWidthAlphanumeric or DisplayMode.FullWidthAlphanumeric) return 1;
+        var segment = Mode == DisplayMode.Auto && Segments() is { Count: > 0 } segments ? segments[^1] : default;
+        if (segment.IsEnglish) return 1;
         var fragment = new CompositionText(_detector);
-        foreach (var c in segment.Raw) fragment.Append(c);
-        if (fragment.Pending.Length > 0 || fragment.Units.Count == 0) return null;
-        var length = fragment.Units[^1].Raw.Length;
-        return onBoundary && length == _units[^1].Raw.Length ? null : length;
+        foreach (var c in segment.Raw ?? "") fragment.Append(c);
+        return fragment.Pending.Length == 0 && fragment.Units.Count > 0 ? fragment.Units[^1].Raw.Length : _units[^1].Raw.Length;
     }
 
     public void Clear()
