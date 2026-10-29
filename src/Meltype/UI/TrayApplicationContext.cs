@@ -176,6 +176,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _autoUpdateItem = new ToolStripMenuItem("自動で更新する", null, (_, _) => ToggleAutoUpdate());
         updates.DropDownItems.Add(_autoUpdateItem);
         updates.DropDownItems.Add("今すぐ更新を確認", null, (_, _) => CheckForUpdate());
+        updates.DropDownItems.Add("リリースノート...", null, (_, _) => ReleaseNotesDialog.ShowFor(AppInfo.Version, updated: false));
         _updateItem = new ToolStripMenuItem("", null, (_, _) => ApplyUpdate()) { Visible = false };
         updates.DropDownItems.Add(_updateItem);
         updates.DropDownOpening += (_, _) => _autoUpdateItem.Checked = _engine.Settings.AutoUpdate;
@@ -204,6 +205,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
             next.WelcomeShown = true;
             _engine.ApplySettings(next);
             _invoker.BeginInvoke(ShowWelcome);
+        }
+        // 更新したあとの初めての起動なら、その版のリリースノートを一度だけ見せる (issue #1207)。
+        // 初めて起動した人には見せず、今の版を見せたことにしておく
+        if (_engine.Settings.ReleaseNotesShown != AppInfo.Version)
+        {
+            var showNotes = ProjectInfo.ShouldShowReleaseNotes(_engine.Settings.ReleaseNotesShown, AppInfo.Version, firstRun);
+            var next = _engine.Settings.Clone();
+            next.ReleaseNotesShown = AppInfo.Version;
+            _engine.ApplySettings(next);
+            if (showNotes) _invoker.BeginInvoke(() => ReleaseNotesDialog.ShowFor(AppInfo.Version, updated: true));
         }
         // Meltype IME が入る前の版から更新した人に、一度だけ Meltype IME を入れるかを聞く
         // (初めて起動した人には、インストーラーが聞いている)
@@ -670,7 +681,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>設定・学習データ・ユーザー辞書を 1 つのファイルに書き出す (PC の買い替え・別の PC への移行)。</summary>
-    private void CreateBackup()
+    private static void CreateBackup()
     {
         using var dialog = new SaveFileDialog
         {

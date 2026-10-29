@@ -172,6 +172,12 @@ public sealed class Settings
     private static JsonSerializerOptions JsonOptions => SettingsJsonContext.Default.Options;
     private static System.Text.Json.Serialization.Metadata.JsonTypeInfo<Settings> JsonType => SettingsJsonContext.Default.Settings;
 
+    private const string SchemaKey = "$schema";
+
+    /// <summary>config.json の JSON Schema (<see cref="SettingsSchema"/>) の場所。エディターが読む。Meltype は使わないが、保存で消さないように持っておく。</summary>
+    [Browsable(false), JsonPropertyName(SchemaKey)]
+    public string? Schema { get; set; } = "./" + SettingsSchema.FileName;
+
     [Category("1. 全般"), DisplayName("Meltype を有効にする")]
     public bool Enabled { get; set; } = true;
 
@@ -532,6 +538,10 @@ public sealed class Settings
     [Browsable(false)]
     public bool TsfOffered { get; set; }
 
+    /// <summary>リリースノートを最後に見せた版 (更新したあとの初めての起動で一度だけ見せる。issue #1207)。</summary>
+    [Browsable(false)]
+    public string? ReleaseNotesShown { get; set; }
+
     /// <summary>設定画面の下に、項目の説明を出すか (設定画面のチェックボックスで切り替える)。</summary>
     [Browsable(false)]
     public bool SettingsShowHelp { get; set; } = true;
@@ -555,10 +565,10 @@ public sealed class Settings
     /// </summary>
     private static readonly HashSet<string> SharedKeys =
     [
-        nameof(Profiles), nameof(ActiveProfile), nameof(SettingsVersion), nameof(WelcomeShown),
+        SchemaKey, nameof(Profiles), nameof(ActiveProfile), nameof(SettingsVersion), nameof(WelcomeShown),
         nameof(Enabled), nameof(JapaneseKeyboardOnly), nameof(AllowInjectedInput), nameof(FileLog), nameof(LogTypedText), nameof(AutoUpdate),
         // 入力の方式 (Windows の IME として入力するか) は PC 全体の選び方なので、プロファイルで変えない
-        nameof(Mode), nameof(TsfIntroduced), nameof(TsfOffered),
+        nameof(Mode), nameof(TsfIntroduced), nameof(TsfOffered), nameof(ReleaseNotesShown),
         // 設定画面の見た目は、プロファイルを切り替えても変えない
         nameof(SettingsShowHelp), nameof(SettingsWheelChangesValue),
     ];

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Yukishiro
 
+using System.Globalization;
 using System.Text;
 using Meltype.Config;
 using Meltype.Detection;
@@ -457,16 +458,10 @@ public sealed class CompositionController
         // 入力中に出した候補 (設定「入力中も変換候補をいくつか表示」) をクリックしたら、変換を始めてからその候補を選ぶ
         // 入力中の候補は読み全体の候補なので、変換を始めて文節に分かれると一覧が変わり、番号が別の語を指す。
         // 見えていた一覧のまま、読み全体 1 つの文節にして、クリックした語を選ぶ
-        if (!_converting && PreviewCandidates() is null && TypingCandidates() is { } typing)
+        if (!_converting && TypingCandidates() is { } typing)
         {
             if (index < 0 || index >= typing.Count) return;
             _clauses = [new Clause(_text.AllKana(final: false), false, typing) { Raw = _text.Raw, Expanded = true }];
-            _selectedClause = 0;
-            _converting = true;
-        }
-        if (!_converting && PreviewCandidates() is { } preview && index >= 0 && index < preview.Count)
-        {
-            _clauses = [new Clause("ご", false, preview) { Raw = _text.Raw, Expanded = true }];
             _selectedClause = 0;
             _converting = true;
         }
@@ -805,11 +800,6 @@ public sealed class CompositionController
             case VirtualKeys.Space:
                 // 保護区間 (メンション・URL・パス) の末尾は、自動変換せず原文のまま + 半角空白で確定する。
                 if (IsProtectedInput) { CommitProtected(" "); return; }
-                if (_text.PrecedingEnglish != true && PreviewCandidates() is not null)
-                {
-                    SelectCandidate(0);
-                    return;
-                }
                 _text.FixTypos();
                 // 英語と判定した語で終わっているなら、変換ではなく確定して空白を入れる
                 // (日本語の部分は、ライブ変換が ON なら漢字にして、OFF なら見えているかなのまま確定)。
@@ -1315,7 +1305,6 @@ public sealed class CompositionController
         // 保護区間が語の途中にあり、その後にかなが続く入力も Tab 変換しない。
         // IsProtectedInput は末尾が保護区間かだけを見るため、ここでは全区間を調べる。
         if (_text.Mode == DisplayMode.Auto && _text.ProtectedSpans().Count > 0) return false;
-        if (_text.PrecedingEnglish != true && PreviewCandidates() is not null) return false;
         _text.FixTypos();
         return !SpaceCommitsAsEnglish();
     }
@@ -1415,7 +1404,7 @@ public sealed class CompositionController
     private bool SelectByNumber(int row)
     {
         var clause = _clauses[_selectedClause];
-        if (!clause.IsEnglish && !clause.Expanded) Expand(clause);
+        if (!clause.Expanded) Expand(clause);
         var index = Math.Max(0, clause.Index) / CandidatePageSize * CandidatePageSize + row;
         if (index >= clause.Candidates.Count) return false;
         clause.Index = index;
@@ -1595,7 +1584,7 @@ public sealed class CompositionController
         {
             var repository = GitHubIssueTitles.Normalize(_options.GitHubRepository());
             var hashCandidates = new List<string> { _text.Raw };
-            if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits)) is { Length: > 0 } title)
+            if (_options.GitHubIssueCandidates() && _options.GitHubTitles() is { } titles && titles.Lookup(repository, int.Parse(digits, CultureInfo.InvariantCulture)) is { Length: > 0 } title)
                 hashCandidates.AddRange([$"{_text.Raw} {title}", $"{title} ({_text.Raw})", $"{repository}{_text.Raw}"]);
             hashCandidates.Add(CompositionText.ToFullWidth(_text.Raw));
             _clauses = [new Clause(_text.Raw, true, Distinct([.. hashCandidates])) { Raw = _text.Raw }];
@@ -1624,7 +1613,8 @@ public sealed class CompositionController
                         if (!english.Contains(word)) english.Add(word);
                     }
                 }
-                var romaji = RomajiCandidates(segment.Raw);
+                var reading = RomajiReading(segment.Raw);
+                List<string> romaji = reading is null ? [] : JapaneseCandidates(reading, null);
                 clauses.Add(new Clause(segment.Raw, true, preferJapanese && romaji.Count > 0
                     ? Distinct([.. romaji, .. english])
                     : Distinct([.. english, .. romaji, .. NumberCandidates.For(segment.Raw)])) { Kana = _text.KanaForSegment(s) });
@@ -2043,7 +2033,7 @@ public sealed class CompositionController
     {
         var text = _precedingText;
         if (string.IsNullOrEmpty(text) || LanguageOf(text) != false) return null;
-        var start = text.LastIndexOfAny(SentenceEnds);
+        var start = text.AsSpan().LastIndexOfAny(SentenceEndSearch);
         text = text[(start + 1)..].Trim();
         return text.Length == 0 ? null : text.Length > 10 ? text[^10..] : text;
     }
@@ -2056,7 +2046,7 @@ public sealed class CompositionController
         wide.WideContext = string.IsNullOrEmpty(text) || LanguageOf(text) != false ? null : text.Length > 100 ? text[^100..] : text;
     }
 
-    private static readonly char[] SentenceEnds = ['。', '．', '！', '？', '\n', '\r'];
+    private static readonly System.Buffers.SearchValues<char> SentenceEndSearch = System.Buffers.SearchValues.Create("。．！？\n\r");
 
     private static bool IsSymbolOnly(string text) => text.Length > 0 && !text.Any(char.IsLetterOrDigit);
 
@@ -2173,7 +2163,7 @@ public sealed class CompositionController
     {
         if (EraReading.Match(reading) is not { Success: true } match) return null;
         var number = match.Groups["n"].Value;
-        var n = number == "がん" ? 1 : int.Parse(new string(number.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()));
+        var n = number == "がん" ? 1 : int.Parse(new string(number.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()), CultureInfo.InvariantCulture);
         (int Start, int Last) range = match.Groups["e"].Value switch
         {
             "れいわ" => (2019, 2100),
@@ -2184,7 +2174,7 @@ public sealed class CompositionController
         };
         var year = range.Start + n - 1;
         if (n < 1 || year > range.Last) return null;
-        return [$"{year}年", year.ToString()];
+        return [$"{year}年", year.ToString(CultureInfo.InvariantCulture)];
     }
 
     /// <summary>尺貫法の単位 (読み → 単位の字、メートル法での大きさ、メートル法の単位)。</summary>
@@ -2207,11 +2197,11 @@ public sealed class CompositionController
     {
         if (UnitReading.Match(reading) is not { Success: true } match) return null;
         var digits = new string(match.Groups["n"].Value.Select(c => c switch { >= '０' and <= '９' => (char)(c - '０' + '0'), '．' => '.', _ => c }).ToArray());
-        if (!double.TryParse(digits, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value)) return null;
+        if (!double.TryParse(digits, System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out var value)) return null;
         var unit = TraditionalUnits.First(u => u.Reading == match.Groups["u"].Value);
         var size = value * unit.Size;
-        var text = size >= 100 ? Math.Round(size).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
-            : Math.Round(size, 2).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        var text = size >= 100 ? Math.Round(size).ToString("0", CultureInfo.InvariantCulture)
+            : Math.Round(size, 2).ToString("0.##", CultureInfo.InvariantCulture);
         return [$"{digits}{unit.Unit}", $"約{text}{unit.Metric}"];
     }
 
@@ -2238,7 +2228,7 @@ public sealed class CompositionController
     /// </summary>
     private IEnumerable<string>? TypedDateCandidates(string reading)
     {
-        static int Number(string digits) => int.Parse(new string(digits.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()));
+        static int Number(string digits) => int.Parse(new string(digits.Select(c => c is >= '０' and <= '９' ? (char)(c - '０' + '0') : c).ToArray()), CultureInfo.InvariantCulture);
         if (DateReading.Match(reading) is { Success: true } date)
         {
             var (month, day) = (Number(date.Groups["m"].Value), Number(date.Groups["d"].Value));
@@ -2342,14 +2332,14 @@ public sealed class CompositionController
     private static string ToHalfWidth(string text) =>
         new(text.Select(c => c is >= '！' and <= '～' ? (char)(c - 0xFEE0) : c == '　' ? ' ' : c).ToArray());
 
-    /// <summary>英語と判定した語を、ローマ字として読んだときの候補 (go → 語 ご ゴ)。読み切れなければ空。</summary>
-    private List<string> RomajiCandidates(string raw)
+    /// <summary>英語と判定した語を、ローマ字として読んだかな (go → ご)。読み切れなければ null。</summary>
+    private string? RomajiReading(string raw)
     {
         // 大文字だけで打った語 (TEN) は、最後の n を ん と読む (TEN → てん: issue #833)。小文字の英文の中の語 (pen) は日本語にしない
         var finalN = raw.All(char.IsAsciiLetterUpper);
         if (_detector.Romaji.AnalyzeFragment(raw.ToLowerInvariant()) is not { IsValid: true } analysis || analysis.Partial != "" && !(finalN && analysis.Partial == "n") ||
-            analysis.Kana.Length == 0 && analysis.Partial.Length == 0) return [];
-        return JapaneseCandidates(analysis.Kana + (analysis.Partial == "n" ? "ん" : ""), null);
+            analysis.Kana.Length == 0 && analysis.Partial.Length == 0) return null;
+        return analysis.Kana + (analysis.Partial == "n" ? "ん" : "");
     }
 
     /// <summary>日本語の候補 (かな・漢字) か。英語の文節で選ばれたら、その語を日本語として覚える。</summary>
@@ -2380,22 +2370,27 @@ public sealed class CompositionController
     private void NextCandidate(int step)
     {
         var clause = _clauses[_selectedClause];
-        if (!clause.IsEnglish && !clause.Expanded) Expand(clause);
+        if (!clause.Expanded) Expand(clause);
         clause.Index = (clause.Index + step + clause.Candidates.Count) % clause.Candidates.Count;
         clause.Changed = true;
     }
 
     /// <summary>
     /// 変換中に文節を選んだときに、変換エンジンの候補の一覧 (はし → 橋 端 箸 …) を 2 番目以降に足す。
+    /// 英語の文節は、ローマ字として読んだかなで一覧を引き、かなの候補 (go → ご) の後ろに足す。
     /// 打つたびには呼ばない (時間がかかることがあるため。ライブ変換では呼ばない)。今選んでいる候補はそのまま選んだ状態にする。
     /// </summary>
     private void Expand(Clause clause)
     {
         clause.Expanded = true;
         if (_options.MoreCandidates is not { } more) return;
+        var reading = clause.IsEnglish ? RomajiReading(clause.Reading) : clause.Reading;
+        if (reading is null) return;
+        var anchor = clause.IsEnglish ? clause.Candidates.IndexOf(reading) : 0;
+        if (anchor < 0) return;
         var current = clause.Text;
-        var merged = new List<string> { clause.Candidates[0] };
-        foreach (var candidate in more(clause.Reading).Select(c => NormalizeHalfWidth(c, clause.Reading)).Concat(clause.Candidates.Skip(1)))
+        var merged = clause.Candidates.Take(anchor + 1).ToList();
+        foreach (var candidate in more(reading).Select(c => NormalizeHalfWidth(c, reading)).Concat(clause.Candidates.Skip(anchor + 1)))
         {
             if (!merged.Contains(candidate)) merged.Add(candidate);
         }
@@ -2998,7 +2993,7 @@ public sealed class CompositionController
         {
             var selected = _clauses[_selectedClause];
             // 選んでいる文節は、最初から候補の一覧をすべて出す (Space を 1 回押しただけでは一部しか出ず、選び間違えやすかった)。
-            if (!selected.IsEnglish && !selected.Expanded) Expand(selected);
+            if (!selected.Expanded) Expand(selected);
             _host.Show(new CompositionView(
                 string.Concat(_clauses.Select(c => c.Text)),
                 selected.Candidates,
@@ -3017,14 +3012,13 @@ public sealed class CompositionController
         {
             var hint = _text.IsAlphanumeric ? "Enter 確定　Space 確定+空白　Shift+Space 日本語で変換　半角/全角 日本語に" : (_options.TabConversion() ? "Space/Tab 変換" : "Space 変換") + "　←→ 文節　Enter 確定　F7 カタカナ　F10 英字";
             if (_text.Suggestion() is { } suggestion) hint = $"Tab → {suggestion} (英字に)　" + hint;
-            var preview = PreviewCandidates();
             var misspelling = MisspellingSuggestion();
             UpdatePredictions(blocked: misspelling is not null || _text.Suggestion() is not null);
             if (_predictions.Count > 0) hint = "Tab 予測の候補を選ぶ　" + hint;
             var selected = _predictionIndex >= 0 ? _predictions[_predictionIndex] : null;
             var display = selected ?? CurrentDisplay(final: false);
             // 設定「入力中も変換候補をいくつか表示」: Space の前から候補を出す (issue #666)
-            if (preview is null && selected is null && misspelling is null) preview = TypingCandidates();
+            var preview = selected is null && misspelling is null ? TypingCandidates() : null;
             _host.Show(new CompositionView(display, preview ?? [], preview?.IndexOf(display) ?? -1, false, hint, Suggestion: misspelling,
                 Predictions: _predictions.Count > 0 ? _predictions : null, SelectedPrediction: _predictionIndex, Typed: TypedKeys(),
                 Committed: selected ?? CurrentDisplay(final: true)));
@@ -3096,10 +3090,6 @@ public sealed class CompositionController
         UpdatePredictions(blocked: false);
         return _predictions;
     }
-
-    private List<string>? PreviewCandidates() =>
-        _text.Mode == DisplayMode.Auto && _text.Raw.Equals("go", StringComparison.OrdinalIgnoreCase)
-            ? [_text.Raw, "ご"] : null;
 
     private static bool IsShift(int vk) => vk is VirtualKeys.Shift or VirtualKeys.LShift or VirtualKeys.RShift;
 
