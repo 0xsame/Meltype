@@ -502,7 +502,7 @@ public sealed class FocusInspector : IDisposable
             // (サクラエディタなど、独自の編集画面を持つ Win32 のアプリ)。
             // ただし一覧・ツリーの行 (Outlook のメール一覧の LeafRow など) は、キャレットがあっても入力欄ではない。
             // 入力欄とみなすと、フォルダを開いたときに Outlook が固まって落ちていた (#1226)。
-            if (!editable && !IsListRow(type) && HasCaret())
+            if (!editable && !IsListRow(type, element.ClassName) && HasCaret())
             {
                 editable = true;
                 description += " (キャレットあり)";
@@ -573,8 +573,12 @@ public sealed class FocusInspector : IDisposable
         return false;
     }
 
-    /// <summary>一覧・ツリー・表の行 (ListItem・TreeItem・DataItem)。キャレットがあっても文字を打つ所ではない。</summary>
-    internal static bool IsListRow(int controlType) => controlType is 50007 or 50024 or 50029;
+    /// <summary>
+    /// 一覧・ツリーの行と、Outlook のメール一覧の行。キャレットがあっても文字を打つ所ではない。
+    /// DataItem は Excel のセルでもある (選んでそのまま打てる) ので、Outlook の行 (LeafRow) だけにする。
+    /// </summary>
+    private static bool IsListRow(int controlType, string? className) =>
+        controlType is 50007 /* ListItem */ or 50024 /* TreeItem */ || (controlType == 50029 /* DataItem */ && className == "LeafRow");
 
     private static readonly string[] NotInputParts = ["group", "wrap", "container", "label", "button", "btn", "icon"];
     private const int ControlTypeWindow = 50032, ControlTypePane = 50033;
