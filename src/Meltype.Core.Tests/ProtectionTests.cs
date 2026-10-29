@@ -97,7 +97,7 @@ internal static class ProtectionTests
         keyboard.Press(VirtualKeys.Convert);
         Assert.True(keyboard.Showing is null, "日本語にする所が無いので再変換を始めない");
         keyboard.Press(VirtualKeys.Return);
-        Assert.True(!keyboard.Host.Events.Any(e => e.StartsWith("replace:")), "選択を置き換えない");
+        Assert.True(!keyboard.Host.Events.Any(e => e.StartsWith("replace:", StringComparison.Ordinal)), "選択を置き換えない");
         Assert.Equal(0, keyboard.Host.Output.Count, "確定入力を足さない");
     }
 
