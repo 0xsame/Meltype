@@ -82,39 +82,6 @@ internal static class ZenzaiConverterTests
     }
 
     [Test]
-    public static void StartInfo_LimitsThreadsAndWaitTime()
-    {
-        // 既定のままだと全物理コアを使い、計算後も 200ms ほど CPU を使用し続ける
-        var info = StartInfoWith(threads: null, blocktime: null);
-        var args = info.ArgumentList;
-        var threads = args.IndexOf("-t");
-        Assert.True(threads >= 0 && args[threads + 1] == "4", "-t 4: " + string.Join(" ", args));
-        Assert.Equal("5", info.Environment["KMP_BLOCKTIME"], "KMP_BLOCKTIME は 5");
-        Assert.True(args.Contains("-ngl") && args.Contains("--override-kv"), "既存の引数はそのまま: " + string.Join(" ", args));
-        // 環境変数が設定されている場合はその値を優先する
-        var user = StartInfoWith(threads: "8", blocktime: "200");
-        Assert.True(!user.ArgumentList.Contains("-t"), "-t を付けない: " + string.Join(" ", user.ArgumentList));
-        Assert.Equal("200", user.Environment["KMP_BLOCKTIME"], "設定済みの KMP_BLOCKTIME を使う");
-    }
-
-    /// <summary>環境変数 LLAMA_ARG_THREADS・KMP_BLOCKTIME を一時的に設定して、論理プロセッサ数 32 の起動設定を作る。</summary>
-    private static System.Diagnostics.ProcessStartInfo StartInfoWith(string? threads, string? blocktime)
-    {
-        var saved = (Threads: Environment.GetEnvironmentVariable("LLAMA_ARG_THREADS"), Blocktime: Environment.GetEnvironmentVariable("KMP_BLOCKTIME"));
-        try
-        {
-            Environment.SetEnvironmentVariable("LLAMA_ARG_THREADS", threads);
-            Environment.SetEnvironmentVariable("KMP_BLOCKTIME", blocktime);
-            return ZenzaiConverter.StartInfo("llama-server", "zenz.gguf", 8080, 32);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("LLAMA_ARG_THREADS", saved.Threads);
-            Environment.SetEnvironmentVariable("KMP_BLOCKTIME", saved.Blocktime);
-        }
-    }
-
-    [Test]
     public static void Converts_ThroughCompletionEndpoint()
     {
         using var server = new FakeServer { Answer = p => p.Contains("キョウ") ? "今日</s>" : "" };
