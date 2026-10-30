@@ -233,7 +233,8 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
     /// <summary>
     /// llama-server の起動設定。Windows 版の llama.cpp は既定で全物理コアを使い、計算後も 200ms ほど CPU を使用し続ける。
     /// ライブ変換では打鍵のたびに変換するため、入力中はこの状態が続く。
-    /// スレッド数を <see cref="Threads"/> に制限し、計算後の待機 (KMP_BLOCKTIME) を 5ms に短縮する。環境変数が設定されている場合はその値を優先する。
+    /// スレッド数を 4 までに制限し (zenz は小さいモデルなので、4 より増やしてもほとんど速くならない)、計算後の待機 (KMP_BLOCKTIME) を 5ms に短縮する。
+    /// 環境変数が設定されている場合はその値を優先する。
     /// </summary>
     internal static ProcessStartInfo StartInfo(string serverPath, string modelPath, int port, int processorCount)
     {
@@ -252,17 +253,11 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
         if (!info.Environment.ContainsKey("LLAMA_ARG_THREADS"))
         {
             info.ArgumentList.Add("-t");
-            info.ArgumentList.Add(Threads(processorCount).ToString(CultureInfo.InvariantCulture));
+            info.ArgumentList.Add(Math.Min(processorCount, 4).ToString(CultureInfo.InvariantCulture));
         }
         info.Environment.TryAdd("KMP_BLOCKTIME", "5");
         return info;
     }
-
-    /// <summary>
-    /// llama-server のスレッド数。論理プロセッサ数が 4 以下なら全部、それより多ければ半分にして、上限は 4 (llama.cpp が物理コア数を取れないときと同じ式)。
-    /// zenz は小さいモデルなので、4 より増やしてもほとんど速くならない。
-    /// </summary>
-    internal static int Threads(int processorCount) => Math.Clamp(processorCount <= 4 ? processorCount : processorCount / 2, 1, 4);
 
     private bool Ping(Uri endpoint)
     {

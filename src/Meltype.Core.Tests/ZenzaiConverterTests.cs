@@ -82,16 +82,6 @@ internal static class ZenzaiConverterTests
     }
 
     [Test]
-    public static void Threads_UseAllUpToFourAndHalfAbove()
-    {
-        Assert.Equal(1, ZenzaiConverter.Threads(1), "1 つなら 1");
-        Assert.Equal(4, ZenzaiConverter.Threads(4), "4 つ以下は全部 (4 コア 4 スレッドの CPU で減らさない)");
-        Assert.Equal(3, ZenzaiConverter.Threads(6), "4 つより多ければ半分");
-        Assert.Equal(4, ZenzaiConverter.Threads(8), "4 コア 8 スレッド");
-        Assert.Equal(4, ZenzaiConverter.Threads(32), "上限は 4");
-    }
-
-    [Test]
     public static void StartInfo_LimitsThreadsAndWaitTime()
     {
         // 既定のままだと全物理コアを使い、計算後も 200ms ほど CPU を使用し続ける
