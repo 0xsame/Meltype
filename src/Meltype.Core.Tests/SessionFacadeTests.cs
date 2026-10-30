@@ -303,6 +303,21 @@ internal static class SessionFacadeTests
     }
 
     [Test]
+    public static void NavigationKeysWithoutCharacters_CommitAndPassThrough()
+    {
+        foreach (var vk in new[] { 0x21, 0x22, 0x23, 0x24 }) // Page Up, Page Down, End, Home
+        {
+            var session = Create();
+            Assert.True(!session.HandleKey(vk, null, false, false, false, false).Consumed, "未確定がなければアプリへ渡す");
+            Type(session, "a");
+            var result = session.HandleKey(vk, null, false, false, false, false);
+            Assert.True(!result.Consumed, "未確定文字を確定してキーをアプリへ渡す");
+            Assert.Equal("あ", result.Commits.Single().Text, "操作キーの特殊文字を含めない");
+            Assert.True(result.View is null, "未確定表示を閉じる");
+        }
+    }
+
+    [Test]
     public static void AutoCorrect_ReplacesPreviousWord()
     {
         // i を確定したあと、want で英文と分かったら i を確定し直す (前の文字を消して入れ直す)
