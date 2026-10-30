@@ -73,7 +73,7 @@ internal static class Quality
         new("曖昧な語", "sushi", "すし"),
         new("曖昧な語", "sushi", "sushi", Before: "I like "),
         new("曖昧な語", "sushi", "すし", Before: "今日は"),
-        new("曖昧な語", "repo", "れぽ"),
+        new("曖昧な語", "repo", "repo"),
         new("曖昧な語", "make", "make", Before: "Please "),
 
         // --- 英語 ---
@@ -210,7 +210,7 @@ internal static class Quality
         new("混在", "microsoftnokaisha", "microsoftのかいしゃ"),
         new("混在", "kyouhaclaudetohanashita", "きょうはclaudeとはなした"),
         new("混在", "pythonnobug", "pythonのbug"),
-        new("混在", "GitHub no repo", "GitHub のれぽ"),
+        new("混在", "GitHub no repo", "GitHub のrepo"),
         new("混在", "Google to Apple", "Google とApple"),
         // 助詞「や」+ 英単語 / 英単語 + 助詞「や」(Particles / TrailingParticles に ya)
         new("混在", "yagithub", "やgithub"),

@@ -93,9 +93,10 @@ final class MeltypeInputController: IMKInputController, ModeServiceTarget {
         // (補助面の文字・結合文字・ZWJ 絵文字・異体字セレクター)。1 要素へ切り詰めたり 0 に置き換えたりしない。
         // 1 スカラーならそのコードポイントのまま本体へ渡し、複数スカラーは未確定内容だけ確定して
         // 元のイベントを 1 回アプリへ通す (本体側の pass-through 契約と対にする)。
-        let scalars = Array((event.characters ?? "").unicodeScalars)
+        let text = KeyMapping.text(for: event, virtualKey: vk)
+        let scalars = Array(text.unicodeScalars)
         if scalars.count > 1 {
-            apply(NativeCore.shared.commitBeforeExternalText(session, text: event.characters ?? ""), to: client)
+            apply(NativeCore.shared.commitBeforeExternalText(session, text: text), to: client)
             return false
         }
         let character: Int32 = scalars.count == 1 ? Int32(scalars[0].value) : 0

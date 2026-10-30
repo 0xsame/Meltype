@@ -804,11 +804,17 @@ public sealed class CompositionController
                 // 英語と判定した語で終わっているなら、変換ではなく確定して空白を入れる
                 // (日本語の部分は、ライブ変換が ON なら漢字にして、OFF なら見えているかなのまま確定)。
                 // 数字だけ (1、12) は、前が英文なら確定して空白 (I have 2 cats)。それ以外は変換して ① 一 Ⅰ などの候補を出す。
-                if (SpaceCommitsAlphanumeric())
+                // 打った英字全体を読みとして登録した語 (ユーザー辞書の zh → ←、略入力の ast → 明日) があれば、英語と判定しても変換する
+                if (HasRegisteredReading())
+                {
+                    _spaceStartedConversion = true;
+                    StartConversion();
+                }
+                else if (SpaceCommitsAlphanumeric())
                 {
                     Commit(suffix: " ", fixEnglish: true);
                 }
-                else if (EndsWithEnglish(final: true)) CommitText(FixEnglishTypo(_text.RenderSegments(final: true, _options.LiveConversion() ? Convert : null)) + " ", english: true, _text.Raw);
+                else if (EndsWithEnglish()) CommitText(FixEnglishTypo(_text.RenderSegments(final: true, _options.LiveConversion() ? Convert : null)) + " ", english: true, _text.Raw);
                 else if (SpaceCommitsAutoEnglish()) CommitText(FixEnglishTypo(_text.Raw) + " ", english: true, _text.Raw);
                 else
                 {
@@ -906,7 +912,12 @@ public sealed class CompositionController
         {
             if (_host.GetReconversionSelection() is not { } selection || string.IsNullOrWhiteSpace(selection.Reading)) return;
             _correctable.Clear();
-            if (IsRomajiText(selection.Text) && StartRomajiReconversion(selection)) return;
+            // ローマ字のまま入った文は、日本語にする所が無ければ何もしない (英字をローマ字として読んだ候補を出さない)
+            if (IsRomajiText(selection.Text))
+            {
+                StartRomajiReconversion(selection);
+                return;
+            }
             BeginComposition();
             _reconversion = selection;
             foreach (var kana in selection.Reading) _text.AppendKana(kana, kana);
@@ -1008,15 +1019,15 @@ public sealed class CompositionController
     /// <summary>
     /// ローマ字のまま入った文を選んで変換キーを押したとき (Meltype が止まっていた・ターミナルで打った: issue #288)。
     /// Meltype の判定で日本語の所だけを日本語にした文を候補として見せ、Enter で選んだ文字と置き換える。
-    /// 候補は 日本語にした文 → 選んだままの文。日本語にする所が無ければ false (今までの再変換に任せる)。
+    /// 候補は 日本語にした文 → 選んだままの文。日本語にする所が無ければ何もしない。
     /// </summary>
-    private bool StartRomajiReconversion(ReconversionSelection selection)
+    private void StartRomajiReconversion(ReconversionSelection selection)
     {
         var converted = ConvertRomajiText(selection.Text);
         if (converted == selection.Text)
         {
             Diagnostics.Log.Info("再変換: 選んだ文字に、日本語にする所がありませんでした。");
-            return false;
+            return;
         }
         BeginComposition();
         _reconversion = selection;
@@ -1025,7 +1036,6 @@ public sealed class CompositionController
         _clauses = [new Clause(converted, false, [converted, selection.Text])];
         _selectedClause = 0;
         _converting = true;
-        return true;
     }
 
     /// <summary>
@@ -1037,13 +1047,19 @@ public sealed class CompositionController
     {
         var output = new StringBuilder();
         var kana = new StringBuilder();
-        bool? previousEnglish = null;
+        var englishWords = 0;
         foreach (var word in text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
-            // 前の語が日本語でも「日本語の続き」とはしない (空白で区切って打った語なので、語の途中ではない)
-            var typed = new CompositionText(_detector) { PrecedingEnglish = previousEnglish == true ? true : null, Punctuation = _options.Punctuation() };
+            // 前の語が日本語でも「日本語の続き」とはしない (空白で区切って打った語なので、語の途中ではない)。
+            // 英語の語が 2 語以上続いた後は、打つときと同じく英文の続き (this is + a)
+            var typed = new CompositionText(_detector)
+            {
+                PrecedingEnglish = englishWords > 0 ? true : null,
+                PrecedingEnglishSentence = englishWords >= 2,
+                Punctuation = _options.Punctuation(),
+            };
             foreach (var c in word) typed.Append(c);
-            var segments = typed.Segments(final: true);
+            var segments = typed.Segments();
             foreach (var segment in segments)
             {
                 if (!segment.IsEnglish)
@@ -1057,7 +1073,7 @@ public sealed class CompositionController
                 if (output.Length > 0 && output[^1] != ' ') output.Append(' ');
                 output.Append(segment.Raw).Append(' ');
             }
-            previousEnglish = segments.Count > 0 && segments[^1].IsEnglish;
+            englishWords = segments.Count > 0 && segments[^1].IsEnglish ? (segments.Count == 1 ? englishWords + 1 : 1) : 0;
         }
         if (kana.Length > 0) output.Append(Convert(kana.ToString()));
         return output.ToString().TrimEnd();
@@ -1289,7 +1305,12 @@ public sealed class CompositionController
     /// Space を押したときに、変換ではなく確定して空白を入れる場面か (英語で終わる 3 条件)。
     /// 例: hello (英語と判定) → true、kana → false。Tab で変換を始めるかの判定にも使う。
     /// </summary>
-    private bool SpaceCommitsAsEnglish() => SpaceCommitsAlphanumeric() || EndsWithEnglish(final: true) || SpaceCommitsAutoEnglish();
+    private bool SpaceCommitsAsEnglish() => SpaceCommitsAlphanumeric() || EndsWithEnglish() || SpaceCommitsAutoEnglish();
+
+    private bool HasRegisteredReading() =>
+        !_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is { Length: >= 2 } raw && raw.All(char.IsAsciiLetter) &&
+        (_options.UserDictionary?.Lookup(raw.ToLowerInvariant()) is { Count: > 0 } ||
+         _options.ConsonantAbbreviations() && _options.Candidates?.Lookup(raw.ToLowerInvariant()) is { Count: > 0 });
 
     private bool SpaceCommitsAlphanumeric() =>
         _text.IsAlphanumericAt(final: true) && !(_text.Mode == DisplayMode.Auto && _text.IsNumeric && _text.Raw.All(char.IsAsciiDigit) && _text.PrecedingEnglish != true);
@@ -1306,7 +1327,7 @@ public sealed class CompositionController
         // IsProtectedInput は末尾が保護区間かだけを見るため、ここでは全区間を調べる。
         if (_text.Mode == DisplayMode.Auto && _text.ProtectedSpans().Count > 0) return false;
         _text.FixTypos();
-        return !SpaceCommitsAsEnglish();
+        return HasRegisteredReading() || !SpaceCommitsAsEnglish();
     }
 
     /// <summary>変換中だけ意味を持つキー。処理したら true。</summary>
@@ -1560,11 +1581,19 @@ public sealed class CompositionController
     private void StartConversion(bool preferJapanese = false)
     {
         _tabStartedConversion = false;
-        // 子音の略入力 (ast → 明日): 打った英字全体が candidates.txt の英字の読みにあれば、それを 1 つの文節の候補にする (issue #62)
-        if (!_text.KanaInput && _text.Mode == DisplayMode.Auto && _text.Raw is { Length: >= 2 } typedRaw && typedRaw.All(char.IsAsciiLetter) &&
-            _options.ConsonantAbbreviations() && _options.Candidates?.Lookup(typedRaw.ToLowerInvariant()) is { Count: > 0 } abbreviation)
+        // 打った英字全体がユーザー辞書の読み (helloworld → 登録した語) か子音の略入力の読み (ast → 明日。issue #62) なら、
+        // 区間に分けずに 1 つの文節にして、その語を候補の先頭にする。ローマ字として読めれば、その読みの漢字も出す (go → 後・語・碁)
+        if (HasRegisteredReading())
         {
-            _clauses = [new Clause(typedRaw, true, Distinct([.. abbreviation, typedRaw, .. EnglishCandidates(typedRaw)])) { Raw = typedRaw }];
+            var typedRaw = _text.Raw;
+            var lower = typedRaw.ToLowerInvariant();
+            List<string> registered = [.. _options.UserDictionary?.Lookup(lower) ?? [], .. _options.ConsonantAbbreviations() ? _options.Candidates?.Lookup(lower) ?? [] : []];
+            var reading = RomajiReading(typedRaw);
+            List<string> romaji = reading is null ? [] : JapaneseCandidates(reading, null);
+            List<string> english = [typedRaw, .. EnglishCandidates(typedRaw)];
+            _clauses = [new Clause(typedRaw, true, preferJapanese
+                ? Distinct([.. registered, .. romaji, .. english])
+                : Distinct([.. registered, .. english, .. romaji])) { Raw = typedRaw, Kana = reading }];
             _selectedClause = 0;
             _converting = true;
             return;
@@ -1604,7 +1633,7 @@ public sealed class CompositionController
                     clauses.Add(new Clause(segment.Raw, true, [segment.Raw]));
                     continue;
                 }
-                var english = EnglishCandidates(segment.Raw);
+                var english = Distinct([.. _options.UserDictionary?.Lookup(segment.Raw.ToLowerInvariant()) ?? [], .. EnglishCandidates(segment.Raw)]);
                 // 子音の略入力 (ast → 明日): 英字のまま見える語にも、candidates.txt の英字の読みの候補を足す (issue #62)
                 if (_options.ConsonantAbbreviations() && segment.Raw.Length >= 2 && segment.Raw.All(char.IsAsciiLetter) && _options.Candidates is { } abbreviations)
                 {
@@ -1678,6 +1707,17 @@ public sealed class CompositionController
         clause.Candidates.AddRange(words);
     }
 
+    /// <summary>打った英字を英語寄りに区切り直して、英語と日本語が混ざる形 (midiか) になれば返す。</summary>
+    private string? EnglishSplit(string raw)
+    {
+        var typed = new CompositionText(_detector);
+        foreach (var c in raw) typed.Append(c);
+        if (typed.Pending.Length > 0) return null;
+        var segments = _detector.SegmentLeaningEnglish(typed.Units);
+        if (!segments.Any(s => s.IsEnglish) || segments.All(s => s.IsEnglish)) return null;
+        return string.Concat(segments.Select(s => s.IsEnglish ? s.Raw : s.Kana));
+    }
+
     private void AddRawCandidates(Clause clause)
     {
         // 子音の略入力 (ast → 明日): 打った英字を読みとする候補 (candidates.txt の英字の読み) を足す (issue #62)
@@ -1695,6 +1735,8 @@ public sealed class CompositionController
             clause.Candidates.Add(half);
         }
         if (clause.Raw is not { } raw || !raw.Any(c => c is >= '!' and <= '~')) return;
+        // 英語を含む区切り (midika → 身近 の候補に midiか)
+        if (raw.All(char.IsAsciiLetter) && EnglishSplit(raw) is { } split && !clause.Candidates.Contains(split)) clause.Candidates.Add(split);
         foreach (var candidate in new[] { raw, CompositionText.ToFullWidth(raw) })
         {
             if (!clause.Candidates.Contains(candidate)) clause.Candidates.Add(candidate);
@@ -2696,7 +2738,7 @@ public sealed class CompositionController
         if (!_options.Learning() || _options.Languages is not { } memory || _escReverted) return;
         var raw = _text.Raw;
         if (raw.Length < 2 || !raw.All(char.IsAsciiLetter)) return;
-        var automatic = _text.Segments(final: true);
+        var automatic = _text.Segments();
         switch (_text.Mode)
         {
             case DisplayMode.HalfWidthAlphanumeric or DisplayMode.FullWidthAlphanumeric when !automatic.All(s => s.IsEnglish):
@@ -2968,8 +3010,8 @@ public sealed class CompositionController
     }
 
     /// <summary>変換ボックスの最後が英語の区間か (Space を空白として扱うか)。</summary>
-    private bool EndsWithEnglish(bool final = false) =>
-        _text.Mode == DisplayMode.Auto && _text.Segments(final) is { Count: > 0 } segments && segments[^1].IsEnglish;
+    private bool EndsWithEnglish() =>
+        _text.Mode == DisplayMode.Auto && _text.Segments() is { Count: > 0 } segments && segments[^1].IsEnglish;
 
     private void ReplayDown(KeyEvent e)
     {
