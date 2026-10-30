@@ -1,5 +1,3 @@
-AI エージェント（Claude Code・Codex など）が Meltype で作業するときの決まりです。
-
 詳しい開発手順は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)、貢献の決まりは [CONTRIBUTING.md](CONTRIBUTING.md) を見てください。
 
 ## 構成（どこを触るか）
@@ -32,7 +30,7 @@ dotnet run --project src/Meltype.Core.Tests -- --eval # 品質テスト（正解
 dotnet run --project src/Meltype.Core.Tests -- --repro kyouhagoogle enter # 打ったときの見え方と確定結果
 dotnet run --project src/Meltype.Core.Tests -- --explain konnichiwa hello # 1文字ずつの判定理由
 dotnet run --project src/Meltype.Core.Tests -- --segments kyouhagoogle # 単位と英日区間分け
-dotnet run --project src/Meltype.Core.Tests -- --expect path/to/cases.tsv out.json # 報告された誤変換
+dotnet run --project src/Meltype.Core.Tests -- --expect src/Meltype.Core.Tests/data/issue-cases.tsv out.json # 報告された誤変換
 dotnet run --project src/Meltype.Core.Tests -- --mixed-bench out.json # 日本語文中の英単語の区切り
 dotnet run --project src/Meltype.Core.Tests -- --version
 
@@ -57,9 +55,7 @@ node tools/check-dictionaries.mjs
 
 
 
-## フォーマット
-
-CI は **変えた行の空白・改行・字下げ** だけを見る（前からある違反は失敗にしない）。自動では直さない。
+## 作業後の確認
 
 ```bash
 
@@ -71,21 +67,16 @@ node tools/check-format.mjs origin/main
 
 ```
 
-PR を出す前に、変えた `.cs` に対して `dotnet format whitespace` をかけておく。フォーマットの失敗を CI まで残さない。
-
 ## テストの書き方
 
-判定・変換を変えたら、報告された例をテストに足す。特に次を優先する。
+判定・変換を変えたら、報告された例をテストに足す。報告された入力は症状の 1 例。原因を突き止め、同じ原因で起きる入力をまとめて直す。特に次を優先する。
 
 - **リグレしそうなもの**（直した語の逆向き・似た入力）
 - **エッジケース**
-- **複数の解釈がありそうなもの**（例: `midika` → `midiか` / `身近`）
 
 実装の写しのようなテストは書かない。将来の挙動を保証したいものも書く。
 
-例: `midi` を英語にする直しをしたら、`midika`（身近）が壊れないかも足す。英語にする直しならその語で始まる日本語、日本語にする直しならその語を含む英単語を足す。
-
-## 必ず守ること
+## 守ること
 
 - **新しいソースファイルの先頭**にライセンスと著作権を入れる。既存ファイルを真似て `Yukishiro` にせず、変更を頼んだ人（PR を出す人）の名前にする。分からなければ聞く。
 
@@ -103,12 +94,15 @@ PR を出す前に、変えた `.cs` に対して `dotnet format whitespace` を
 
 * kyouhagoogle → 今日はgoogle
 * midika → 身近
+* きょうは → 今日は（変換の候補に含まれていれば成功）
+* 「Fixes」で閉じる誤変換 Issue の、入力した文字 → 期待した結果
 
 ```
 
 - **AI を使ったことを PR に書く。** テンプレートの「AI を使った」にチェックを入れ、使った部分を書く。
 - **説明は日本語で書く。** PR の本文・コメント・文書は日本語で書く。
 - **PR と関係ない場所を変更しない。**
+- **機能実装や枠組みを変える変更は、先に Issue で相談する。**
 
 ## してはいけないこと
 
@@ -119,5 +113,4 @@ PR を出す前に、変えた `.cs` に対して `dotnet format whitespace` を
 ## 迷ったとき
 
 1. **スコープを超えない** … 頼まれた Issue / 指示に必要な最小限だけ。関係ない場所は触らない。
-2. **判定・変換の変更は Core から** … `src/Meltype.Core` を直し、テストは `src/Meltype.Core.Tests` に足す。
-3. **分からないことは聞く** … 著作権名、仕様の解釈、配布まわりなど、推測で進めない。
+2. **分からないことは聞く** … 著作権名、仕様の解釈、配布まわりなど、推測で進めない。
