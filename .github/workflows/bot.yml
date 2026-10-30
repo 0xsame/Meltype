@@ -3,7 +3,7 @@
 #   コメントの行の先頭のコマンド (1 つのコメントに 1 つ。/repro だけは複数行):
 #     だれでも: /repro /explain /ca /jht /help
 #     メンテナー (PR のみ): /test /pack /test-repro /test-jht /test-explain (どれも 1 語目に確かめた commit の SHA (40 桁)。PR の head と違えば動かさない)
-#     管理者: /release <版> /pre-release <版> (タグとリリースの下書きを作り、配布物のビルドを始める)
+#     管理者: /release <版> /pre-release <版> (コメントの 1 行目だけ。タグとリリースの下書きを作り、配布物のビルドを始める)
 # Issue・コメントの文は誰でも書けるので、run: の中に ${{ }} で埋め込まず、環境変数で値として渡す。
 # Pull Request のコードは、書き込みの権限を持たない job (pr) でだけ動かす。結果のコメントは別の job (report) が書く。
 # 漢字変換には最新リリースの meltype_mozc_helper を使う (毎回 Bazel ビルドしない)。
@@ -181,10 +181,11 @@ jobs:
           if ($release) { git worktree add ../release $tag }
           $i = 0
           foreach ($r in ($env:REPROS | ConvertFrom-Json)) {
+            $build = if ($i -gt 0) { '--no-build' }
             New-Item -ItemType Directory -Force "results/$i" | Out-Null
-            dotnet run --project src/Meltype.Tests -c Release -- --repro "$($r.keys)" "$($r.last)" | Out-File "results/$i/repro-main.json" -Encoding utf8
+            dotnet run --project src/Meltype.Tests -c Release $build -- --repro "$($r.keys)" "$($r.last)" | Out-File "results/$i/repro-main.json" -Encoding utf8
             if ($release) {
-              dotnet run --project ../release/src/Meltype.Tests -c Release -- --repro "$($r.keys)" "$($r.last)" | Out-File "results/$i/repro-$tag.json" -Encoding utf8
+              dotnet run --project ../release/src/Meltype.Tests -c Release $build -- --repro "$($r.keys)" "$($r.last)" | Out-File "results/$i/repro-$tag.json" -Encoding utf8
             }
             $i++
           }

@@ -195,7 +195,7 @@ function triageLabels(form, labels) {
 }
 
 const Help = [
-  'Meltype bot のコマンド (コメントの行の先頭に書いてください。1 つのコメントに 1 つ。`/repro` だけは 1 行に 1 つずつ複数書けます):',
+  'Meltype bot のコマンド (コメントの行の先頭に書いてください。`/release`・`/pre-release` は 1 行目だけ。1 つのコメントに 1 つ。`/repro` だけは 1 行に 1 つずつ複数書けます):',
   '',
   '| コマンド | すること | 使える人 |',
   '|---|---|---|',
@@ -336,8 +336,10 @@ async function parse() {
     await upsertComment(issue, 'self-assign-hint', untriaged() && !maintainer ? UntriagedNote : 'この Issue の担当になるときは、`/self-assign` とだけコメントしてください。bot が Assignees に入れます。');
     return output({ action: 'none' });
   }
-  // コマンドはどの行に書いてもよい。/test/foo のようなパスはコマンドにしない
-  const commands = lines.map(l => l.match(/^\/(self-assign|repro|explain|ca|jht|test-repro|test-jht|test-explain|test|pack|pre-release|release|help)(?=\s|$)\s*(.*)$/)).filter(Boolean);
+  // コマンドはどの行に書いてもよい。/test/foo のようなパスはコマンドにしない。
+  // /release・/pre-release は 1 行目だけ (手順の説明やコードブロックの中の行でタグとリリースを作らないため)
+  const commands = lines.map(l => l.match(/^\/(self-assign|repro|explain|ca|jht|test-repro|test-jht|test-explain|test|pack|pre-release|release|help)(?=\s|$)\s*(.*)$/))
+    .filter((m, i) => m && (i === 0 || !['release', 'pre-release'].includes(m[1])));
   if (commands.length === 0 || event.comment.user?.type === 'Bot') return output({ action: 'none' });
   if (commands.length > 1 && !commands.every(([, c]) => c === 'repro')) {
     await upsertComment(issue, `error-${event.comment.id}`, `1 つのコメントに書けるコマンドは 1 つです (\`/repro\` だけは 1 行に 1 つずつ ${MaxRepros} 個まで書けます)。`);
