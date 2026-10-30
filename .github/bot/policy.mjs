@@ -225,7 +225,8 @@ export async function runPolicy(api, event, eventName, now = Date.now()) {
         continue;
       }
       // No Close の間は期限を数えない。外したときは新しい待機期間にする (cycleOf)。
-      if (names(item).has(Labels.exempt)) {
+      // 件数の超過では閉じないので、順番待ちの通知は No Close があってもそのままにする。
+      if (kind !== 'limit' && names(item).has(Labels.exempt)) {
         const notice = readNotice(comments, kind);
         if (notice && !['resolved', 'exempt'].includes(notice.state.status)) await writeNotice(number, { ...notice.state, status: 'exempt' }, notice);
         continue;

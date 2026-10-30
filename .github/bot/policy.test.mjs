@@ -331,12 +331,15 @@ test('フォームなど bot 名義の報告は、人からの補足でも待機
   assert.equal(f.records.get(1).state, 'open');
 });
 
-test('No Close の PR は、超過していても Draft にせず通知を止める', async () => {
+test('No Close の PR も、超過していれば順番待ちの通知のままにする (Draft にも閉じもしない)', async () => {
   const f = fixture([pull(1), pull(2), pull(3)]); await f.run();
   f.records.get(3).labels.push({ name: Labels.exempt }); f.addEvent(3, 'labeled', Labels.exempt);
   await f.run(start + WaitMs * 2);
   assert.equal(f.records.get(3).draft, false);
-  assert.match(f.comments.get(3)[0].body, /No Close/);
+  assert.equal(f.records.get(3).state, 'open');
+  assert.ok(f.records.get(3).labels.some(l => l.name === Labels.limit));
+  assert.match(f.comments.get(3)[0].body, /順番待ち/);
+  assert.doesNotMatch(f.comments.get(3)[0].body, /クローズを止めています/);
 });
 
 test('No Close の間は閉じず、外したあとは新しく 14 日待つ', async () => {
