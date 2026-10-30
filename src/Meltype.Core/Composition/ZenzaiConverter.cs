@@ -194,17 +194,7 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
         try
         {
             var port = FreePort();
-            var info = new ProcessStartInfo(_serverPath)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            foreach (var argument in new[] { "-m", _modelPath, "--host", "127.0.0.1", "--port", port.ToString(CultureInfo.InvariantCulture), "-c", "1024", "-ngl", "0", "--parallel", "1",
-                // zenz の前処理 (gpt2-small-japanese-char) は本家の llama.cpp に無く、読み込めない。gpt-2 に差し替えると本家でも動く (#849 で Serugu さんが確かめた)
-                "--override-kv", "tokenizer.ggml.pre=str:gpt-2" })
-                info.ArgumentList.Add(argument);
+            var info = StartInfo(_serverPath, _modelPath, port, Environment.ProcessorCount);
             KillStaleServer();
             var process = Process.Start(info);
             if (process is null) { Fail(); return; }
@@ -239,6 +229,40 @@ public sealed class ZenzaiConverter : IKanjiConverter, IDisposable
             Fail();
         }
     }
+
+    /// <summary>
+    /// llama-server の起動設定。Windows 版の llama.cpp は既定で全物理コアを使い、計算後も 200ms ほど CPU を使用し続ける。
+    /// ライブ変換では打鍵のたびに変換するため、入力中はこの状態が続く。
+    /// スレッド数を <see cref="Threads"/> に制限し、計算後の待機 (KMP_BLOCKTIME) を 5ms に短縮する。環境変数が設定されている場合はその値を優先する。
+    /// </summary>
+    internal static ProcessStartInfo StartInfo(string serverPath, string modelPath, int port, int processorCount)
+    {
+        var info = new ProcessStartInfo(serverPath)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in new[] { "-m", modelPath, "--host", "127.0.0.1", "--port", port.ToString(CultureInfo.InvariantCulture), "-c", "1024", "-ngl", "0", "--parallel", "1",
+            // zenz の前処理 (gpt2-small-japanese-char) は本家の llama.cpp に無く、読み込めない。gpt-2 に差し替えると本家でも動く (#849 で Serugu さんが確かめた)
+            "--override-kv", "tokenizer.ggml.pre=str:gpt-2" })
+            info.ArgumentList.Add(argument);
+        // -t は LLAMA_ARG_THREADS より優先されるので、環境変数が設定されている場合は付けない
+        if (!info.Environment.ContainsKey("LLAMA_ARG_THREADS"))
+        {
+            info.ArgumentList.Add("-t");
+            info.ArgumentList.Add(Threads(processorCount).ToString(CultureInfo.InvariantCulture));
+        }
+        info.Environment.TryAdd("KMP_BLOCKTIME", "5");
+        return info;
+    }
+
+    /// <summary>
+    /// llama-server のスレッド数。論理プロセッサ数が 4 以下なら全部、それより多ければ半分にして、上限は 4 (llama.cpp が物理コア数を取れないときと同じ式)。
+    /// zenz は小さいモデルなので、4 より増やしてもほとんど速くならない。
+    /// </summary>
+    internal static int Threads(int processorCount) => Math.Clamp(processorCount <= 4 ? processorCount : processorCount / 2, 1, 4);
 
     private bool Ping(Uri endpoint)
     {
